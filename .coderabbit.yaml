@@ -1,0 +1,90 @@
+# CodeRabbit Configuration
+# This file configures CodeRabbit AI code review for this repository
+# Documentation: https://docs.coderabbit.ai/
+
+language: en
+
+reviews:
+  # Automatically review pull requests
+  pull_requests:
+    enabled: true
+    
+  # Review summary
+  summary:
+    enabled: true
+    title: "AI Code Review"
+    
+  # Review comments
+  comments:
+    enabled: true
+    
+  # Review status
+  status:
+    enabled: true
+    
+# Paths to review
+paths:
+  include:
+    - "**/*.js"
+    - "**/*.json"
+    - "**/*.md"
+    - "**/*.html"
+    - "**/*.yaml"
+    - "**/*.yml"
+  exclude:
+    - "node_modules/**"
+    - ".wwebjs_auth/**"
+    - ".wwebjs_cache/**"
+    - "dist/**"
+    - "coverage/**"
+    - ".git/**"
+
+# Review settings
+review:
+  # Request changes threshold
+  request_changes_workflow: true
+  
+  # Review types
+  review_type: full
+  
+  # Number of files to review per PR
+  max_files: 50
+  
+  # Ignore large files
+  ignore_large_files: true
+  
+  # Ignore generated files
+  ignore_generated_files: true
+
+# Chat settings
+chat:
+  # Enable chat in PR comments
+  enabled: true
+  
+  # Model to use for chat
+  model: "gpt-4"
+
+# Commands
+commands:
+  # Enable commands in PR comments
+  enabled: true
+  
+  # Available commands
+  allowed_commands:
+    - "/review"
+    - "/summarize"
+    - "/explain"
+
+# Language-specific settings
+javascript:
+  # Enable ESLint suggestions
+  eslint: true
+  
+  # Code quality checks
+  quality:
+    enabled: true
+    
+  # Security checks
+  security:
+    enabled: true
+

@@ -229,6 +229,38 @@ Edit `public/index.html` to customize the landing page design, colors, and messa
 - Use responsibly - don't send spam or bulk messages that could get your account banned
 - Consider using the official WhatsApp Business API for production/commercial use
 
+## CodeRabbit Integration 🤖
+
+CodeRabbit provides AI-powered code reviews for your pull requests. The repository is already configured with a `.coderabbit.yaml` file.
+
+### Setup CodeRabbit
+
+1. **Install CodeRabbit GitHub App:**
+   - Visit [CodeRabbit.ai](https://coderabbit.ai/)
+   - Click "Login with GitHub"
+   - Authorize CodeRabbit to access your repositories
+   - Select your repository: `wedding-invite-app`
+
+2. **Enable for Your Repository:**
+   - Go to your repository settings on GitHub
+   - Navigate to **Settings** > **Integrations** > **Installed GitHub Apps**
+   - Find CodeRabbit and configure it
+   - Ensure it's enabled for pull request reviews
+
+3. **Configuration:**
+   - The repository includes a `.coderabbit.yaml` configuration file
+   - CodeRabbit will automatically review pull requests
+   - You can interact with CodeRabbit in PR comments using commands like `/review`, `/summarize`, `/explain`
+
+### CodeRabbit Features
+
+- **Automated Reviews**: CodeRabbit automatically reviews pull requests and provides feedback
+- **Interactive Chat**: Ask questions or request clarifications directly in PR comments
+- **Code Quality Checks**: ESLint suggestions, security checks, and code quality analysis
+- **Smart Summaries**: Get concise summaries of code changes
+
+For more information, visit the [CodeRabbit Documentation](https://docs.coderabbit.ai/).
+
 ## Production Deployment
 
 For production:
