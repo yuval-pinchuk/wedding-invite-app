@@ -24,8 +24,6 @@ async function sendInvitations() {
     // Get configuration from environment
     const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
     const rsvpBaseUrl = process.env.RSVP_BASE_URL || 'http://localhost:8080';
-    const invitationMessage = process.env.INVITATION_MESSAGE || 
-      `You're invited to our wedding! 🎉\n\nWe would love to celebrate this special day with you. Please let us know if you can join us.`;
 
     if (!guestSheetId) {
       console.error('Error: GOOGLE_GUEST_SHEET_ID is not set in .env file');
