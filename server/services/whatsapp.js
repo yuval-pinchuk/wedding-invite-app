@@ -1,28 +1,39 @@
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import whatsappWeb, { Client } from 'whatsapp-web.js';
+const { LocalAuth } = whatsappWeb.default || whatsappWeb;
 import qrcodeTerminal from 'qrcode-terminal';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-let whatsappClient = null;
-let isReady = false;
-let qrCodeResolve = null;
+// Store multiple WhatsApp clients (one per sender)
+const whatsappClients = new Map(); // Map of sender name -> client
+const clientStatus = new Map(); // Map of sender name -> { isReady, qrCodeResolve }
 
 /**
- * Initialize WhatsApp client
+ * Initialize WhatsApp client for a specific sender
  * Note: This uses WhatsApp Web.js which is an unofficial library.
  * It may violate WhatsApp's Terms of Service. Use at your own risk.
+ * @param {string} senderName - Name of the sender (used to create separate session)
  */
-export async function initializeWhatsApp() {
-  if (whatsappClient && isReady) {
-    return whatsappClient;
+export async function initializeWhatsApp(senderName = 'default') {
+  // Check if client already exists and is ready
+  if (whatsappClients.has(senderName)) {
+    const status = clientStatus.get(senderName);
+    if (status && status.isReady && whatsappClients.get(senderName)) {
+      return whatsappClients.get(senderName);
+    }
   }
 
   return new Promise((resolve, reject) => {
-    // Create client with local auth to persist session
-    whatsappClient = new Client({
+    // Initialize status for this sender
+    const status = { isReady: false, qrCodeResolve: null };
+    clientStatus.set(senderName, status);
+
+    // Create client with local auth to persist session per sender
+    // Use sender name in data path to create separate sessions
+    const whatsappClient = new Client({
       authStrategy: new LocalAuth({
-        dataPath: './.wwebjs_auth'
+        dataPath: `./.wwebjs_auth_${encodeURIComponent(senderName)}`
       }),
       puppeteer: {
         headless: true,
@@ -30,41 +41,48 @@ export async function initializeWhatsApp() {
       }
     });
 
+    // Store client
+    whatsappClients.set(senderName, whatsappClient);
+
     // QR Code generation for first-time login
     whatsappClient.on('qr', (qr) => {
-      console.log('\n📱 WhatsApp QR Code - Scan this with your phone:');
+      console.log(`\n📱 WhatsApp QR Code for ${senderName} - Scan this with your phone:`);
       console.log('(Open WhatsApp > Settings > Linked Devices > Link a Device)\n');
       qrcodeTerminal.generate(qr, { small: true });
-      console.log('\nWaiting for QR code scan...\n');
+      console.log(`\nWaiting for QR code scan for ${senderName}...\n`);
       
-      if (qrCodeResolve) {
-        qrCodeResolve(qr);
+      if (status.qrCodeResolve) {
+        status.qrCodeResolve(qr);
       }
     });
 
     // Ready event - client is ready to send messages
-    whatsappClient.on('ready', () => {
-      console.log('✅ WhatsApp client is ready!');
-      isReady = true;
+    whatsappClient.on('ready', async () => {
+      console.log(`✅ WhatsApp client for ${senderName} is ready!`);
+      // Wait a bit more to ensure everything is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      status.isReady = true;
       resolve(whatsappClient);
     });
 
     // Authentication event
     whatsappClient.on('authenticated', () => {
-      console.log('✅ WhatsApp authenticated');
+      console.log(`✅ WhatsApp authenticated for ${senderName}`);
+      console.log(`   Waiting for client to fully initialize...`);
     });
 
     // Authentication failure
     whatsappClient.on('auth_failure', (msg) => {
-      console.error('❌ WhatsApp authentication failed:', msg);
-      reject(new Error('WhatsApp authentication failed'));
+      console.error(`❌ WhatsApp authentication failed for ${senderName}:`, msg);
+      reject(new Error(`WhatsApp authentication failed for ${senderName}`));
     });
 
     // Disconnected event
     whatsappClient.on('disconnected', (reason) => {
-      console.log('⚠️  WhatsApp client disconnected:', reason);
-      isReady = false;
-      whatsappClient = null;
+      console.log(`⚠️  WhatsApp client disconnected for ${senderName}:`, reason);
+      status.isReady = false;
+      whatsappClients.delete(senderName);
+      clientStatus.delete(senderName);
     });
 
     // Initialize the client
@@ -73,57 +91,191 @@ export async function initializeWhatsApp() {
 }
 
 /**
- * Wait for WhatsApp client to be ready
+ * Wait for WhatsApp client to be ready for a specific sender
+ * @param {string} senderName - Name of the sender
+ * @param {number} maxWaitTime - Maximum time to wait in milliseconds (default: 120000 = 2 minutes)
  */
-export async function waitForReady() {
-  if (isReady && whatsappClient) {
-    return whatsappClient;
+export async function waitForReady(senderName = 'default', maxWaitTime = 120000) {
+  if (whatsappClients.has(senderName)) {
+    const status = clientStatus.get(senderName);
+    if (status && status.isReady && whatsappClients.get(senderName)) {
+      const client = whatsappClients.get(senderName);
+      // Double-check that client is actually ready
+      if (client.info && client.info.wid) {
+        return client;
+      }
+    }
   }
-  return await initializeWhatsApp();
+  
+  const client = await initializeWhatsApp(senderName);
+  
+  // Wait for client to be fully ready with timeout
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitTime) {
+    const status = clientStatus.get(senderName);
+    if (status && status.isReady && client && client.info && client.info.wid) {
+      // Add a small delay to ensure everything is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return client;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  throw new Error(`WhatsApp client for ${senderName} did not become ready within ${maxWaitTime}ms`);
+}
+
+/**
+ * Get client for a specific sender
+ * @param {string} senderName - Name of the sender
+ */
+export function getClient(senderName = 'default') {
+  return whatsappClients.get(senderName);
+}
+
+/**
+ * Format phone number for WhatsApp
+ * Handles Israeli numbers (starts with 0) by converting to country code format
+ * @param {string} phone - Phone number in various formats
+ * @returns {string} Formatted phone number without @c.us suffix
+ */
+function formatPhoneNumber(phone) {
+  // Remove all non-digit characters except +
+  let cleaned = phone.replace(/[^\d+]/g, '');
+  
+  // Handle Israeli numbers (start with 0 or 972)
+  // If starts with 0, replace with 972 (Israel country code)
+  if (cleaned.startsWith('0')) {
+    cleaned = '972' + cleaned.substring(1);
+  } else if (cleaned.startsWith('+972')) {
+    cleaned = cleaned.substring(1); // Remove + but keep 972
+  } else if (!cleaned.startsWith('972') && cleaned.length === 9) {
+    // Assume it's an Israeli number without country code
+    cleaned = '972' + cleaned;
+  }
+  
+  // Remove leading + if present
+  cleaned = cleaned.replace(/^\+/, '');
+  
+  return cleaned;
 }
 
 /**
  * Send WhatsApp invitation to a guest
  * @param {string} to - Recipient phone number (E.164 format: +1234567890 or without +)
- * @param {string} from - Sender WhatsApp number (not used with WhatsApp Web.js, but kept for compatibility)
- * @param {string} message - Invitation message
+ * @param {string} senderName - Name of the sender (for WhatsApp client selection)
+ * @param {string} message - Invitation message (already formatted with name and addons)
  * @param {string} rsvpLink - Link to RSVP landing page
  * @returns {Promise<Object>} Message result
  */
-export async function sendWhatsAppInvitation(to, from, message, rsvpLink) {
-  try {
-    const client = await waitForReady();
-    
-    // Format phone number (remove + and any spaces/dashes)
-    // WhatsApp Web.js expects format: country code + number (e.g., 1234567890)
-    let phoneNumber = to.replace(/[+\s-()]/g, '');
-    
-    // Ensure it's in international format (add country code if missing)
-    // For WhatsApp Web.js, format should be: countrycode + number (no + sign)
-    // Example: 1234567890 for US number
-    
-    // Combine message with RSVP link
-    const fullMessage = `${message}\n\nRSVP here: ${rsvpLink}`;
+export async function sendWhatsAppInvitation(to, senderName, message, rsvpLink, retries = 3) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const client = await waitForReady(senderName);
+      
+      // Verify client is actually ready
+      if (!client || !client.info || !client.info.wid) {
+        throw new Error('WhatsApp client is not fully initialized');
+      }
+      
+      // Format phone number
+      const phoneNumber = formatPhoneNumber(to);
+      
+      // Combine message with RSVP link
+      const fullMessage = `${message}\n\n${rsvpLink}`;
 
-    // Send message - format: countrycode + number@c.us
-    const chatId = `${phoneNumber}@c.us`;
-    
-    const messageResult = await client.sendMessage(chatId, fullMessage);
+      // Send message - format: countrycode + number@c.us
+      const chatId = `${phoneNumber}@c.us`;
+      
+      console.log(`📤 Attempting to send to ${phoneNumber} (chatId: ${chatId})...`);
+      console.log(`   Original number: ${to}`);
+      console.log(`   Formatted number: ${phoneNumber}`);
+      
+      // Add a small delay before sending to ensure client is stable
+      if (attempt === 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Check if number is registered (optional check)
+      try {
+        const isRegistered = await client.isRegisteredUser(chatId);
+        if (!isRegistered) {
+          console.warn(`   ⚠️  Warning: Phone number ${phoneNumber} may not be registered on WhatsApp`);
+          console.warn(`   The message may not be delivered if the number is not on WhatsApp`);
+        } else {
+          console.log(`   ✓ Number is registered on WhatsApp`);
+        }
+      } catch (checkError) {
+        console.log(`   ℹ️  Could not verify registration status (will attempt to send anyway)`);
+      }
+      
+      // Send the message
+      console.log(`   Sending message (length: ${fullMessage.length} chars)...`);
+      console.log(`   Message preview: ${fullMessage.substring(0, 50)}...`);
+      const messageResult = await client.sendMessage(chatId, fullMessage);
+      
+      if (!messageResult || !messageResult.id) {
+        throw new Error('sendMessage returned invalid result - no message ID');
+      }
+      
+      console.log(`   Message sent, ID: ${messageResult.id._serialized}`);
+      
+      // Wait a moment for the message to be processed by WhatsApp
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Try to verify by getting the chat and checking for the message
+      try {
+        const chat = await client.getChatById(chatId);
+        const messages = await chat.fetchMessages({ limit: 10 });
+        const foundMessage = messages.find(msg => msg.id._serialized === messageResult.id._serialized);
+        
+        if (foundMessage) {
+          console.log(`✅ WhatsApp invitation confirmed sent to ${phoneNumber}`);
+          console.log(`   Message found in chat history`);
+        } else {
+          console.log(`✅ WhatsApp invitation sent to ${phoneNumber}`);
+          console.log(`   ⚠️  Note: Message not yet visible in chat (may still be processing)`);
+        }
+      } catch (verifyError) {
+        console.log(`✅ WhatsApp invitation sent to ${phoneNumber} (Message ID: ${messageResult.id._serialized})`);
+        console.log(`   ⚠️  Note: Could not verify in chat history: ${verifyError.message}`);
+      }
 
-    console.log(`✅ WhatsApp invitation sent to ${phoneNumber}`);
-    return {
-      success: true,
-      id: messageResult.id._serialized,
-      to: phoneNumber,
-    };
-  } catch (error) {
-    console.error(`❌ Error sending WhatsApp to ${to}:`, error.message);
-    return {
-      success: false,
-      error: error.message,
-      to: to,
-    };
+      return {
+        success: true,
+        id: messageResult.id._serialized,
+        to: phoneNumber,
+        chatId: chatId,
+      };
+    } catch (error) {
+      lastError = error;
+      const errorMsg = error.message || String(error);
+      console.error(`❌ Error sending WhatsApp to ${to} (attempt ${attempt}/${retries}):`, errorMsg);
+      
+      // Log full error for debugging
+      if (error.stack) {
+        console.error(`   Stack trace:`, error.stack);
+      }
+      
+      // If it's an evaluation error, wait longer before retry
+      if (errorMsg.includes('Evaluation failed') || errorMsg.includes('Protocol error') || errorMsg.includes('not registered')) {
+        if (attempt < retries) {
+          console.log(`   Waiting 5 seconds before retry...`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      } else {
+        // For other errors, break early
+        break;
+      }
+    }
   }
+  
+  return {
+    success: false,
+    error: lastError?.message || String(lastError) || 'Unknown error',
+    to: to,
+  };
 }
 
 /**
