@@ -317,10 +317,20 @@
           form.reset();
           guestsGroup.classList.remove('show');
         } else {
-          throw new Error(result.error || 'Failed to submit RSVP');
+          // Handle permission errors with detailed instructions
+          if (result.details && result.details.serviceAccountEmail) {
+            let errorMessage = result.error || 'Permission denied.';
+            errorMessage += '\n\nTo fix this, please share the response sheet with:';
+            errorMessage += `\n${result.details.serviceAccountEmail}`;
+            errorMessage += '\n\nGive it "Editor" permissions.';
+            messageDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
+          } else {
+            messageDiv.textContent = result.error || 'Failed to submit RSVP. Please try again or contact us directly.';
+          }
+          messageDiv.classList.add('show', 'error');
         }
       } catch (error) {
-        messageDiv.textContent = `Error: ${error.message}. Please try again or contact us directly.`;
+        messageDiv.textContent = `Error: ${error.message || 'An unexpected error occurred'}. Please try again or contact us directly.`;
         messageDiv.classList.add('show', 'error');
       } finally {
         submitBtn.disabled = false;
@@ -328,11 +338,31 @@
       }
     });
 
-    // Extract phone number from URL if provided as query parameter
+    // Extract phone number from URL and auto-fill form
     const urlParams = new URLSearchParams(window.location.search);
     const phoneParam = urlParams.get('phone');
     if (phoneParam) {
       document.getElementById('phone').value = phoneParam;
+      document.getElementById('phone').readOnly = true;
+      
+      // Fetch guest info from server
+      fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`)
+        .then(response => response.json())
+        .then(result => {
+          if (result.success && result.guest) {
+            document.getElementById('name').value = result.guest.name || '';
+            if (result.guest.addons) {
+              // If there are addons, show them in the name field or add a note
+              const nameField = document.getElementById('name');
+              nameField.value = result.guest.name;
+              nameField.readOnly = true;
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching guest info:', error);
+          // Continue with form as-is if fetch fails
+        });
     }
   </script>
 </body>

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import rsvpRouter from './routes/rsvp.js';
+import adminRouter from './routes/admin.js';
 import { configureSheets } from './services/googleSheets.js';
 
 dotenv.config();
@@ -27,6 +28,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/rsvp', rsvpRouter);
+app.use('/api/admin', adminRouter);
 
 app.get('*', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));

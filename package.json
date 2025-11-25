@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node server/app.js",
     "dev": "nodemon server/app.js",
+    "debug": "node --inspect server/app.js",
+    "debug-brk": "node --inspect-brk server/app.js",
     "send:invitations": "node scripts/sendInvitations.js",
     "lint": "eslint ."
   },

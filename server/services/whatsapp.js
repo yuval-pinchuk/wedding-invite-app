@@ -7,7 +7,7 @@ dotenv.config();
 
 // Store multiple WhatsApp clients (one per sender)
 const whatsappClients = new Map(); // Map of sender name -> client
-const clientStatus = new Map(); // Map of sender name -> { isReady, qrCodeResolve }
+const clientStatus = new Map(); // Map of sender name -> { isReady, qrCodeResolve, qrCode }
 
 /**
  * Initialize WhatsApp client for a specific sender
@@ -19,14 +19,28 @@ export async function initializeWhatsApp(senderName = 'default') {
   // Check if client already exists and is ready
   if (whatsappClients.has(senderName)) {
     const status = clientStatus.get(senderName);
-    if (status && status.isReady && whatsappClients.get(senderName)) {
-      return whatsappClients.get(senderName);
+    const client = whatsappClients.get(senderName);
+    if (status && status.isReady && client && client.info && client.info.wid) {
+      console.log(`[WhatsApp] Client for ${senderName} is already ready`);
+      return client;
+    }
+    // If client exists but isn't ready, check if it has a QR code
+    if (status && status.qrCode) {
+      console.log(`[WhatsApp] Client for ${senderName} exists with QR code, waiting for scan...`);
+      // Return the existing client promise - it will resolve when ready
+      // But we still want to return a promise that resolves to the client
     }
   }
 
   return new Promise((resolve, reject) => {
-    // Initialize status for this sender
-    const status = { isReady: false, qrCodeResolve: null };
+    // Initialize or update status for this sender
+    let status = clientStatus.get(senderName);
+    if (!status) {
+      status = { isReady: false, qrCodeResolve: null, qrCode: null };
+    } else {
+      // Reset ready status but keep existing QR code if any
+      status.isReady = false;
+    }
     clientStatus.set(senderName, status);
 
     // Create client with local auth to persist session per sender
@@ -41,15 +55,34 @@ export async function initializeWhatsApp(senderName = 'default') {
       }
     });
 
-    // Store client
+    // Store client (replace if exists)
     whatsappClients.set(senderName, whatsappClient);
+    
+    console.log(`[WhatsApp] Starting initialization for ${senderName}...`);
+    console.log(`[WhatsApp] Event listeners will be registered before initialize()`);
 
-    // QR Code generation for first-time login
+    // Register ALL event listeners BEFORE calling initialize()
+    // This ensures we catch all events including QR code
+    
+    // Loading screen event - shows what's happening
+    whatsappClient.on('loading_screen', (percent, message) => {
+      console.log(`[WhatsApp] Loading: ${percent}% - ${message}`);
+    });
+
+    // QR Code generation for first-time login (only fires if no saved session)
     whatsappClient.on('qr', (qr) => {
-      console.log(`\n📱 WhatsApp QR Code for ${senderName} - Scan this with your phone:`);
+      console.log(`\n[WhatsApp] 📱 QR Code event FIRED for ${senderName}`);
+      console.log(`📱 WhatsApp QR Code for ${senderName} - Scan this with your phone:`);
       console.log('(Open WhatsApp > Settings > Linked Devices > Link a Device)\n');
       qrcodeTerminal.generate(qr, { small: true });
       console.log(`\nWaiting for QR code scan for ${senderName}...\n`);
+      
+      // Store QR code in status
+      status.qrCode = qr;
+      status.isReady = false; // Make sure ready is false when QR is shown
+      clientStatus.set(senderName, status);
+      
+      console.log(`[WhatsApp] QR code stored for ${senderName}`);
       
       if (status.qrCodeResolve) {
         status.qrCodeResolve(qr);
@@ -65,9 +98,12 @@ export async function initializeWhatsApp(senderName = 'default') {
       resolve(whatsappClient);
     });
 
-    // Authentication event
+    // Authentication event (fires when session is restored or after QR scan)
     whatsappClient.on('authenticated', () => {
       console.log(`✅ WhatsApp authenticated for ${senderName}`);
+      console.log(`   This means either:`);
+      console.log(`   1. Session was restored from saved data (no QR needed)`);
+      console.log(`   2. QR code was scanned successfully`);
       console.log(`   Waiting for client to fully initialize...`);
     });
 
@@ -86,7 +122,26 @@ export async function initializeWhatsApp(senderName = 'default') {
     });
 
     // Initialize the client
-    whatsappClient.initialize().catch(reject);
+    console.log(`[WhatsApp] Calling initialize() for ${senderName}...`);
+    console.log(`[WhatsApp] If you see 'authenticated' without 'qr', it means a saved session exists.`);
+    console.log(`[WhatsApp] To force QR code, delete the folder: .wwebjs_auth_${encodeURIComponent(senderName)}`);
+    
+    whatsappClient.initialize().catch((err) => {
+      console.error(`[WhatsApp] Initialization error for ${senderName}:`, err);
+      console.error(`[WhatsApp] Error details:`, err.message, err.stack);
+      reject(err);
+    });
+    
+    // Add a timeout to detect if initialization is stuck
+    setTimeout(() => {
+      if (!status.qrCode && !status.isReady) {
+        console.warn(`[WhatsApp] Initialization for ${senderName} taking longer than expected...`);
+        console.warn(`[WhatsApp] No QR code yet. This could mean:`);
+        console.warn(`   1. A saved session exists (check .wwebjs_auth_${encodeURIComponent(senderName)})`);
+        console.warn(`   2. Initialization is still in progress`);
+        console.warn(`   3. An error occurred (check logs above)`);
+      }
+    }, 5000);
   });
 }
 
@@ -95,25 +150,43 @@ export async function initializeWhatsApp(senderName = 'default') {
  * @param {string} senderName - Name of the sender
  * @param {number} maxWaitTime - Maximum time to wait in milliseconds (default: 120000 = 2 minutes)
  */
-export async function waitForReady(senderName = 'default', maxWaitTime = 120000) {
+export async function waitForReady(senderName = 'default', maxWaitTime = null) {
+  // If maxWaitTime is null, wait indefinitely
+  console.log(`[waitForReady] Checking if client for ${senderName} is ready...`);
+  
   if (whatsappClients.has(senderName)) {
     const status = clientStatus.get(senderName);
-    if (status && status.isReady && whatsappClients.get(senderName)) {
-      const client = whatsappClients.get(senderName);
+    const client = whatsappClients.get(senderName);
+    console.log(`[waitForReady] Client exists. Status ready: ${status?.isReady}, has client: ${!!client}, has info: ${!!client?.info}`);
+    
+    if (status && status.isReady && client) {
       // Double-check that client is actually ready
       if (client.info && client.info.wid) {
+        console.log(`[waitForReady] Client is ready, returning immediately`);
         return client;
+      } else {
+        console.log(`[waitForReady] Client exists but info/wid not available yet`);
       }
     }
   }
   
+  console.log(`[waitForReady] Initializing or waiting for client ${senderName}...`);
   const client = await initializeWhatsApp(senderName);
+  console.log(`[waitForReady] initializeWhatsApp returned, checking if ready...`);
   
-  // Wait for client to be fully ready with timeout
+  // Wait for client to be fully ready (unlimited time if maxWaitTime is null)
   const startTime = Date.now();
-  while (Date.now() - startTime < maxWaitTime) {
+  let checkCount = 0;
+  while (maxWaitTime === null || Date.now() - startTime < maxWaitTime) {
     const status = clientStatus.get(senderName);
+    checkCount++;
+    
+    if (checkCount % 5 === 0) {
+      console.log(`[waitForReady] Still waiting... (check ${checkCount}, status ready: ${status?.isReady}, has client: ${!!client}, has info: ${!!client?.info})`);
+    }
+    
     if (status && status.isReady && client && client.info && client.info.wid) {
+      console.log(`[waitForReady] Client is ready after ${checkCount} checks!`);
       // Add a small delay to ensure everything is fully initialized
       await new Promise(resolve => setTimeout(resolve, 2000));
       return client;
@@ -130,6 +203,29 @@ export async function waitForReady(senderName = 'default', maxWaitTime = 120000)
  */
 export function getClient(senderName = 'default') {
   return whatsappClients.get(senderName);
+}
+
+/**
+ * Get QR code for a specific sender
+ * @param {string} senderName - Name of the sender
+ * @returns {string|null} QR code string or null if not available
+ */
+export function getQRCode(senderName = 'default') {
+  const status = clientStatus.get(senderName);
+  return status?.qrCode || null;
+}
+
+/**
+ * Get status for a specific sender
+ * @param {string} senderName - Name of the sender
+ * @returns {Object} Status object with ready and qrCode
+ */
+export function getStatus(senderName = 'default') {
+  const status = clientStatus.get(senderName);
+  return {
+    ready: status?.isReady || false,
+    qrCode: status?.qrCode || null,
+  };
 }
 
 /**
