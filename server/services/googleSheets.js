@@ -87,7 +87,8 @@ export async function configureSheets() {
 
 /**
  * Read guest list from Google Sheet with Hebrew columns
- * Column A: First name (Hebrew)
+ * Column A: First name (שם פרטי)
+ * Column B: Last name (שם משפחה)
  * Column L: Addons (optional, Hebrew name)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
@@ -110,14 +111,25 @@ export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
       return [];
     }
 
-    // Map rows to objects (column indices: A=0, L=11, N=13, O=14)
+    // Map rows to objects (column indices: A=0, B=1, L=11, N=13, O=14)
     const guests = rows.slice(1).map((row, index) => {
+      const firstName = (row[0] || '').toString().trim(); // Column A - First name (שם פרטי)
+      const lastName = (row[1] || '').toString().trim(); // Column B - Last name (שם משפחה)
+      
+      // Combine first name + last name to create full name
+      let fullName = firstName;
+      if (lastName) {
+        fullName = `${firstName} ${lastName}`.trim();
+      }
+      
       return {
         rowNumber: index + 2, // +2 because we skip header and arrays are 0-indexed
-        name: row[0] || '', // Column A - First name
-        addons: row[11] || '', // Column L - Addons (optional)
+        name: firstName, // Keep first name for backward compatibility
+        lastName: lastName, // Last name
+        fullName: fullName, // Full name (first + last)
+        addons: (row[11] || '').toString().trim(), // Column L - Addons (optional)
         sendConfirmation: (row[13] || '').toString().toLowerCase().trim(), // Column N - לשלוח אישורי הגעה
-        sender: row[14] || '', // Column O - Sender
+        sender: (row[14] || '').toString().trim(), // Column O - Sender
         phoneTo: findPhoneNumber(row), // Detect phone number from row
       };
     }).filter(guest => guest.name && guest.phoneTo); // Filter out empty rows
@@ -134,13 +146,15 @@ export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
  * Looks for columns that match phone number patterns
  */
 function findPhoneNumber(row) {
-  // Common phone number columns might be in different positions
-  // Try to find a column that looks like a phone number
-  for (let i = 0; i < row.length; i++) {
+  // Skip first 2 columns (A and B) which are name columns
+  // Start searching from column C (index 2) onwards
+  for (let i = 2; i < row.length; i++) {
     const cell = (row[i] || '').toString().trim();
     // Check if it looks like a phone number (contains digits, might have +, -, spaces, etc.)
     const phonePattern = /[\d\s\-\+\(\)]{8,}/;
-    if (phonePattern.test(cell) && cell.replace(/[\s\-\+\(\)]/g, '').length >= 8) {
+    const cleaned = cell.replace(/[\s\-\+\(\)]/g, '');
+    // Must have at least 8 digits and be mostly digits
+    if (phonePattern.test(cell) && cleaned.length >= 8 && /^\d+$/.test(cleaned)) {
       return cell;
     }
   }

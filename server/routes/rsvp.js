@@ -113,7 +113,7 @@ router.get('/guest/:phone', async (req, res) => {
     res.json({
       success: true,
       guest: {
-        name: guest.name,
+        name: guest.fullName || guest.name, // Use full name (first + last)
         phone: guest.phoneTo,
         addons: guest.addons,
       },

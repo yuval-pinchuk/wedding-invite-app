@@ -379,7 +379,7 @@
                    onchange="toggleGuest(${index}, this.checked)">
           </div>
           <div class="guest-info" style="flex: 1;">
-            <div class="guest-name">${guest.name}</div>
+            <div class="guest-name">${guest.fullName || guest.name}</div>
             <div class="guest-phone">${guest.phoneTo}</div>
             ${guest.addons ? `<div class="guest-addons">+ ${guest.addons}</div>` : ''}
           </div>
