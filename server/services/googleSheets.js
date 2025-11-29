@@ -11,36 +11,12 @@ let serviceAccountEmail = null;
  * Get service account key from environment
  */
 function getServiceAccountKey() {
-  // First try reading from .env file directly (handles multi-line JSON)
-  const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-  if (keyFromFile) {
-    return keyFromFile;
-  }
-  
-  // Fallback to process.env (for single-line JSON)
-  const envValue = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-  if (!envValue) {
-    return null;
-  }
-
-  let jsonString = envValue.trim();
-  
-  // Remove surrounding quotes if present
-  if ((jsonString.startsWith('"') && jsonString.endsWith('"')) || 
-      (jsonString.startsWith("'") && jsonString.endsWith("'"))) {
-    jsonString = jsonString.slice(1, -1);
-  }
-  
-  // Replace escaped newlines with actual newlines
-  jsonString = jsonString.replace(/\\n/g, '\n');
-  jsonString = jsonString.replace(/\\r/g, '\r');
-  
-  // Unescape quotes
-  jsonString = jsonString.replace(/\\"/g, '"');
-  jsonString = jsonString.replace(/\\'/g, "'");
-  
   try {
-    return JSON.parse(jsonString);
+    const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    if (keyFromFile) {
+      return keyFromFile;
+    }
+    return null;
   } catch (error) {
     console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON');
     console.error('Error:', error.message);
