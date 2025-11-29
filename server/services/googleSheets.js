@@ -1,12 +1,134 @@
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
 let sheets = null;
 let auth = null;
 let serviceAccountEmail = null;
+
+/**
+ * Read multi-line JSON from .env file
+ * Standard dotenv doesn't handle multi-line values well, so we read the file directly
+ */
+function readServiceAccountKeyFromEnv() {
+  try {
+    const envPath = path.resolve(process.cwd(), '.env');
+    if (!fs.existsSync(envPath)) {
+      return null;
+    }
+
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const lines = envContent.split('\n');
+    
+    let inKey = false;
+    let jsonLines = [];
+    let braceCount = 0;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Skip comments and empty lines
+      if (trimmedLine.startsWith('#') || trimmedLine === '') {
+        if (inKey) {
+          // If we're in the middle of JSON, include comment/empty lines
+          jsonLines.push(line);
+        }
+        continue;
+      }
+      
+      // Check if this line starts the GOOGLE_SERVICE_ACCOUNT_KEY
+      if (trimmedLine.startsWith('GOOGLE_SERVICE_ACCOUNT_KEY=')) {
+        inKey = true;
+        // Extract the part after the = sign
+        const afterEquals = line.substring(line.indexOf('=') + 1).trim();
+        if (afterEquals) {
+          jsonLines.push(afterEquals);
+          // Count braces to know when JSON is complete
+          braceCount += (afterEquals.match(/{/g) || []).length;
+          braceCount -= (afterEquals.match(/}/g) || []).length;
+        }
+        continue;
+      }
+      
+      // If we're inside the key and haven't closed all braces, continue collecting
+      if (inKey) {
+        jsonLines.push(line);
+        braceCount += (line.match(/{/g) || []).length;
+        braceCount -= (line.match(/}/g) || []).length;
+        
+        // If braces are balanced, we've reached the end
+        if (braceCount === 0) {
+          break;
+        }
+      }
+    }
+    
+    if (jsonLines.length === 0) {
+      return null;
+    }
+    
+    // Join all lines and parse as JSON
+    const jsonString = jsonLines.join('\n').trim();
+    
+    // Remove surrounding quotes if present
+    let cleanedJson = jsonString;
+    if ((cleanedJson.startsWith('"') && cleanedJson.endsWith('"')) || 
+        (cleanedJson.startsWith("'") && cleanedJson.endsWith("'"))) {
+      cleanedJson = cleanedJson.slice(1, -1);
+    }
+    
+    return JSON.parse(cleanedJson);
+  } catch (error) {
+    console.error('Failed to read GOOGLE_SERVICE_ACCOUNT_KEY from .env file:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get service account key from environment
+ * Tries to read from .env file first (for multi-line JSON), then falls back to process.env
+ */
+function getServiceAccountKey() {
+  // First try reading from .env file directly (handles multi-line JSON)
+  const keyFromFile = readServiceAccountKeyFromEnv();
+  if (keyFromFile) {
+    return keyFromFile;
+  }
+  
+  // Fallback to process.env (for single-line JSON)
+  const envValue = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!envValue) {
+    return null;
+  }
+
+  let jsonString = envValue.trim();
+  
+  // Remove surrounding quotes if present
+  if ((jsonString.startsWith('"') && jsonString.endsWith('"')) || 
+      (jsonString.startsWith("'") && jsonString.endsWith("'"))) {
+    jsonString = jsonString.slice(1, -1);
+  }
+  
+  // Replace escaped newlines with actual newlines
+  jsonString = jsonString.replace(/\\n/g, '\n');
+  jsonString = jsonString.replace(/\\r/g, '\r');
+  
+  // Unescape quotes
+  jsonString = jsonString.replace(/\\"/g, '"');
+  jsonString = jsonString.replace(/\\'/g, "'");
+  
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON');
+    console.error('Error:', error.message);
+    console.error('First 200 chars of value:', jsonString.substring(0, 200));
+    throw new Error(`Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY: ${error.message}`);
+  }
+}
 
 /**
  * Get the service account email for sharing sheets
@@ -17,10 +139,8 @@ export function getServiceAccountEmail() {
   }
 
   try {
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      // Service account authentication
-      const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-      const serviceAccountKey = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    const serviceAccountKey = getServiceAccountKey();
+    if (serviceAccountKey) {
       serviceAccountEmail = serviceAccountKey.client_email;
     } else if (process.env.GOOGLE_CLIENT_EMAIL) {
       serviceAccountEmail = process.env.GOOGLE_CLIENT_EMAIL;
@@ -54,10 +174,9 @@ function isPermissionError(error) {
 export async function configureSheets() {
   try {
     // Support both service account and OAuth2
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      // Service account authentication
-      const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-      const serviceAccountKey = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    const serviceAccountKey = getServiceAccountKey();
+    if (serviceAccountKey) {
+      // Service account authentication - read from .env file (supports multi-line JSON)
       serviceAccountEmail = serviceAccountKey.client_email;
       auth = new google.auth.GoogleAuth({
         credentials: serviceAccountKey,
@@ -87,8 +206,7 @@ export async function configureSheets() {
 
 /**
  * Read guest list from Google Sheet with Hebrew columns
- * Column A: First name (שם פרטי)
- * Column B: Last name (שם משפחה)
+ * Column A: First name (Hebrew)
  * Column L: Addons (optional, Hebrew name)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
@@ -111,25 +229,14 @@ export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
       return [];
     }
 
-    // Map rows to objects (column indices: A=0, B=1, L=11, N=13, O=14)
+    // Map rows to objects (column indices: A=0, L=11, N=13, O=14)
     const guests = rows.slice(1).map((row, index) => {
-      const firstName = (row[0] || '').toString().trim(); // Column A - First name (שם פרטי)
-      const lastName = (row[1] || '').toString().trim(); // Column B - Last name (שם משפחה)
-      
-      // Combine first name + last name to create full name
-      let fullName = firstName;
-      if (lastName) {
-        fullName = `${firstName} ${lastName}`.trim();
-      }
-      
       return {
         rowNumber: index + 2, // +2 because we skip header and arrays are 0-indexed
-        name: firstName, // Keep first name for backward compatibility
-        lastName: lastName, // Last name
-        fullName: fullName, // Full name (first + last)
-        addons: (row[11] || '').toString().trim(), // Column L - Addons (optional)
+        name: row[0] || '', // Column A - First name
+        addons: row[11] || '', // Column L - Addons (optional)
         sendConfirmation: (row[13] || '').toString().toLowerCase().trim(), // Column N - לשלוח אישורי הגעה
-        sender: (row[14] || '').toString().trim(), // Column O - Sender
+        sender: row[14] || '', // Column O - Sender
         phoneTo: findPhoneNumber(row), // Detect phone number from row
       };
     }).filter(guest => guest.name && guest.phoneTo); // Filter out empty rows
@@ -146,15 +253,13 @@ export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
  * Looks for columns that match phone number patterns
  */
 function findPhoneNumber(row) {
-  // Skip first 2 columns (A and B) which are name columns
-  // Start searching from column C (index 2) onwards
-  for (let i = 2; i < row.length; i++) {
+  // Common phone number columns might be in different positions
+  // Try to find a column that looks like a phone number
+  for (let i = 0; i < row.length; i++) {
     const cell = (row[i] || '').toString().trim();
     // Check if it looks like a phone number (contains digits, might have +, -, spaces, etc.)
     const phonePattern = /[\d\s\-\+\(\)]{8,}/;
-    const cleaned = cell.replace(/[\s\-\+\(\)]/g, '');
-    // Must have at least 8 digits and be mostly digits
-    if (phonePattern.test(cell) && cleaned.length >= 8 && /^\d+$/.test(cleaned)) {
+    if (phonePattern.test(cell) && cell.replace(/[\s\-\+\(\)]/g, '').length >= 8) {
       return cell;
     }
   }
