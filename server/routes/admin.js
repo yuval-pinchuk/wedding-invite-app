@@ -284,24 +284,49 @@ router.post('/init-whatsapp', async (req, res) => {
 router.get('/whatsapp-status/:sender', async (req, res) => {
   try {
     const { sender } = req.params;
-    const status = getStatus(sender);
+    let status = getStatus(sender);
 
-    // Also check the actual client status
+    console.log(`[whatsapp-status] Checking status for ${sender}: ready=${status.ready}, hasQR=${!!status.qrCode}`);
+
+    // Check the actual client status more thoroughly
+    // If client has info.wid, it's definitely ready regardless of status flag
     try {
-      const client = await waitForReady(sender, 1000); // Quick check
-      if (client && client.info && client.info.wid) {
-        status.ready = true;
+      const client = getClient(sender);
+      if (client) {
+        console.log(`[whatsapp-status] Client exists for ${sender}, checking info...`);
+        
+        // Check if client has info property (indicates it's ready)
+        if (client.info) {
+          console.log(`[whatsapp-status] Client has info property for ${sender}`);
+          if (client.info.wid) {
+            // Client is actually ready - override status
+            status.ready = true;
+            status.qrCode = null; // Clear QR code since we're ready
+            console.log(`[whatsapp-status] ✅ Client for ${sender} is ready (has info.wid: ${client.info.wid.user})`);
+          } else {
+            console.log(`[whatsapp-status] Client has info but no wid yet for ${sender}`);
+          }
+        } else {
+          console.log(`[whatsapp-status] Client exists but no info property yet for ${sender}`);
+        }
+      } else {
+        console.log(`[whatsapp-status] No client found for ${sender}`);
       }
     } catch (error) {
-      // Client not ready yet
+      // Client not ready yet or doesn't exist
+      console.log(`[whatsapp-status] Error checking client for ${sender}:`, error.message);
     }
+
+    const finalReady = status.ready || false;
+    console.log(`[whatsapp-status] Returning status for ${sender}: ready=${finalReady}, qr=${!!status.qrCode}`);
 
     res.json({
       success: true,
-      ready: status.ready || false,
+      ready: finalReady,
       qr: status.qrCode || null,
     });
   } catch (error) {
+    console.error('[whatsapp-status] Error:', error);
     res.json({
       success: true,
       ready: false,

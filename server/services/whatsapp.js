@@ -89,7 +89,30 @@ export async function initializeWhatsApp(senderName = 'default') {
       console.log(`✅ WhatsApp client for ${senderName} is ready!`);
       // Wait a bit more to ensure everything is fully initialized
       await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Update status - make sure to get fresh status and update it
+      const currentStatus = clientStatus.get(senderName);
+      if (currentStatus) {
+        currentStatus.isReady = true;
+        // Clear QR code since we're now ready
+        currentStatus.qrCode = null;
+        clientStatus.set(senderName, currentStatus);
+        console.log(`[WhatsApp] Status updated for ${senderName}: isReady=true, qrCode cleared`);
+      } else {
+        // Create status if it doesn't exist
+        clientStatus.set(senderName, { isReady: true, qrCode: null, qrCodeResolve: null });
+        console.log(`[WhatsApp] Created new status for ${senderName}: isReady=true`);
+      }
+      
+      // Update status variable for the promise resolve
       status.isReady = true;
+      status.qrCode = null;
+      
+      // Resolve the promise if it hasn't been resolved yet
+      if (status.qrCodeResolve) {
+        status.qrCodeResolve = null; // Clear the resolve function
+      }
+      
       resolve(whatsappClient);
     });
 
