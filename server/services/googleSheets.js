@@ -12,6 +12,7 @@ let serviceAccountEmail = null;
  */
 function getServiceAccountKey() {
   try {
+    //const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
     const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
     if (keyFromFile) {
       return keyFromFile;
