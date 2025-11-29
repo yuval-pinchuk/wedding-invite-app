@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wedding Invitation Manager</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -477,6 +476,7 @@
         });
 
         const result = await response.json();
+        console.log('[Frontend] init-whatsapp response:', result);
         
         if (result.success) {
           if (result.ready) {
@@ -496,6 +496,7 @@
             }, 1000);
           } else if (result.qrCode) {
             // Display QR code
+            console.log('[Frontend] QR code received, displaying...');
             displayQRCode(result.qrCode);
             document.getElementById('qrStatus').textContent = 'Scan the QR code with WhatsApp to continue...';
             
@@ -503,6 +504,7 @@
             pollWhatsAppStatus();
           } else {
             // No QR and not ready - wait a bit and poll
+            console.log('[Frontend] No QR code yet, starting to poll...');
             document.getElementById('qrStatus').textContent = 'Initializing WhatsApp...';
             pollWhatsAppStatus();
           }
@@ -515,36 +517,121 @@
     }
 
     function displayQRCode(qrCode) {
+      console.log('[Frontend] displayQRCode called with QR code length:', qrCode ? qrCode.length : 'null');
+      
       const qrContainer = document.getElementById('qrCode');
+      if (!qrContainer) {
+        console.error('[Frontend] QR container not found!');
+        return;
+      }
+      
       qrContainer.innerHTML = '';
       
-      // Use QRCode.js library to render QR code
-      QRCode.toCanvas(qrContainer, qrCode, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      }, function (error) {
-        if (error) {
-          console.error('Error generating QR code:', error);
-          // Fallback to text display
-          qrContainer.innerHTML = `<pre style="font-family: monospace; font-size: 8px; line-height: 1; white-space: pre-wrap;">${qrCode}</pre>`;
-        }
-      });
+      if (!qrCode) {
+        console.error('[Frontend] No QR code provided to displayQRCode');
+        qrContainer.innerHTML = '<p style="color: red;">Error: No QR code available</p>';
+        return;
+      }
       
-      const instruction = document.createElement('p');
-      instruction.style.marginTop = '10px';
-      instruction.textContent = 'Scan this QR code with WhatsApp (Settings > Linked Devices > Link a Device)';
-      qrContainer.appendChild(instruction);
+      // Function to actually render the QR code
+      function renderQR() {
+        // Check for QRCode library - try multiple possible names
+        let QRCodeLib = window.QRCode || window.qrcode || (typeof QRCode !== 'undefined' ? QRCode : null);
+        
+        if (!QRCodeLib) {
+          console.error('[Frontend] QRCode library not available');
+          console.log('[Frontend] Checking window properties:', Object.keys(window).filter(k => k.toLowerCase().includes('qr')));
+          qrContainer.innerHTML = '<p style="color: orange;">Waiting for QR code library to load...</p>';
+          // Retry after a short delay (max 5 seconds)
+          if (!renderQR.retryCount) renderQR.retryCount = 0;
+          renderQR.retryCount++;
+          if (renderQR.retryCount < 10) {
+            setTimeout(renderQR, 500);
+          } else {
+            qrContainer.innerHTML = '<p style="color: red;">QR code library failed to load. Please refresh the page.</p>';
+          }
+          return;
+        }
+        
+        try {
+          console.log('[Frontend] Generating QR code using QRCodeLib.toDataURL...');
+          console.log('[Frontend] QRCodeLib type:', typeof QRCodeLib);
+          console.log('[Frontend] QRCodeLib methods:', Object.keys(QRCodeLib || {}));
+          
+          // Use toDataURL to create an image URL, which is more reliable
+          QRCodeLib.toDataURL(qrCode, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          }, function (error, url) {
+            if (error) {
+              console.error('[Frontend] Error generating QR code:', error);
+              // Fallback: try toCanvas method
+              try {
+                const canvas = document.createElement('canvas');
+                QRCodeLib.toCanvas(canvas, qrCode, {
+                  width: 256,
+                  margin: 2,
+                  color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                  }
+                }, function (canvasError) {
+                  if (canvasError) {
+                    console.error('[Frontend] Canvas method also failed:', canvasError);
+                    qrContainer.innerHTML = `<p style="color: red;">Error generating QR code. Please try refreshing the page.</p><pre style="font-size: 10px; word-break: break-all;">${qrCode.substring(0, 100)}...</pre>`;
+                  } else {
+                    console.log('[Frontend] QR code canvas generated successfully');
+                    qrContainer.appendChild(canvas);
+                  }
+                });
+              } catch (e) {
+                console.error('[Frontend] Exception:', e);
+                qrContainer.innerHTML = `<p style="color: red;">Error: ${e.message}</p>`;
+              }
+            } else {
+              console.log('[Frontend] QR code image generated successfully');
+              const img = document.createElement('img');
+              img.src = url;
+              img.alt = 'WhatsApp QR Code';
+              img.style.display = 'block';
+              img.style.margin = '0 auto';
+              qrContainer.appendChild(img);
+            }
+          });
+          
+          const instruction = document.createElement('p');
+          instruction.style.marginTop = '10px';
+          instruction.textContent = 'Scan this QR code with WhatsApp (Settings > Linked Devices > Link a Device)';
+          qrContainer.appendChild(instruction);
+        } catch (error) {
+          console.error('[Frontend] Exception in displayQRCode:', error);
+          qrContainer.innerHTML = `<p style="color: red;">Error displaying QR code: ${error.message}</p>`;
+        }
+      }
+      
+      // Start rendering
+      renderQR();
     }
 
     async function pollWhatsAppStatus() {
+      let qrCodeDisplayed = false;
       const interval = setInterval(async () => {
         try {
           const response = await fetch(`/api/admin/whatsapp-status/${encodeURIComponent(currentSender)}`);
           const result = await response.json();
+          console.log('[Frontend] Status poll result:', result);
+          
+          // Check for QR code first (if not already displayed)
+          if (!qrCodeDisplayed && result.qr) {
+            console.log('[Frontend] QR code found in status, displaying...');
+            displayQRCode(result.qr);
+            document.getElementById('qrStatus').textContent = 'Scan the QR code with WhatsApp to continue...';
+            qrCodeDisplayed = true;
+          }
           
           if (result.ready) {
             clearInterval(interval);
@@ -630,6 +717,87 @@
     document.getElementById('senderSelect').addEventListener('change', function() {
       document.getElementById('loadGuestsBtn').disabled = !this.value;
     });
+  </script>
+  <!-- Load QRCode library - using qrcodejs which works reliably with script tags -->
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+  <script>
+    // Create adapter to match the API we're using (toDataURL and toCanvas)
+    (function() {
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          if (typeof QRCode !== 'undefined') {
+            console.log('[Frontend] QRCode library loaded');
+            // Store original QRCode constructor
+            const OriginalQRCode = window.QRCode;
+            
+            // Create adapter with toDataURL and toCanvas methods
+            window.QRCode = {
+              toDataURL: function(text, options, callback) {
+                const div = document.createElement('div');
+                div.style.display = 'none';
+                document.body.appendChild(div);
+                try {
+                  const qr = new OriginalQRCode(div, {
+                    text: text,
+                    width: options.width || 256,
+                    height: options.width || 256,
+                    colorDark: (options.color && options.color.dark) || '#000000',
+                    colorLight: (options.color && options.color.light) || '#FFFFFF',
+                    correctLevel: OriginalQRCode.CorrectLevel.M
+                  });
+                  setTimeout(function() {
+                    const canvas = div.querySelector('canvas');
+                    if (canvas) {
+                      callback(null, canvas.toDataURL());
+                    } else {
+                      callback(new Error('Failed to generate QR code canvas'));
+                    }
+                    document.body.removeChild(div);
+                  }, 50);
+                } catch (e) {
+                  document.body.removeChild(div);
+                  callback(e);
+                }
+              },
+              toCanvas: function(canvas, text, options, callback) {
+                const div = document.createElement('div');
+                div.style.display = 'none';
+                document.body.appendChild(div);
+                try {
+                  const qr = new OriginalQRCode(div, {
+                    text: text,
+                    width: options.width || 256,
+                    height: options.width || 256,
+                    colorDark: (options.color && options.color.dark) || '#000000',
+                    colorLight: (options.color && options.color.light) || '#FFFFFF',
+                    correctLevel: OriginalQRCode.CorrectLevel.M
+                  });
+                  setTimeout(function() {
+                    const srcCanvas = div.querySelector('canvas');
+                    if (srcCanvas && canvas) {
+                      const ctx = canvas.getContext('2d');
+                      canvas.width = options.width || 256;
+                      canvas.height = options.width || 256;
+                      ctx.drawImage(srcCanvas, 0, 0);
+                      callback(null);
+                    } else {
+                      callback(new Error('Failed to generate QR code canvas'));
+                    }
+                    document.body.removeChild(div);
+                  }, 50);
+                } catch (e) {
+                  document.body.removeChild(div);
+                  callback(e);
+                }
+              }
+            };
+            console.log('[Frontend] QRCode adapter created successfully');
+          } else {
+            console.error('[Frontend] QRCode library failed to load');
+          }
+        }, 100);
+      });
+    })();
   </script>
 </body>
 </html>

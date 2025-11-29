@@ -1,6 +1,5 @@
 import whatsappWeb, { Client } from 'whatsapp-web.js';
 const { LocalAuth } = whatsappWeb.default || whatsappWeb;
-import qrcodeTerminal from 'qrcode-terminal';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -71,18 +70,14 @@ export async function initializeWhatsApp(senderName = 'default') {
 
     // QR Code generation for first-time login (only fires if no saved session)
     whatsappClient.on('qr', (qr) => {
-      console.log(`\n[WhatsApp] 📱 QR Code event FIRED for ${senderName}`);
-      console.log(`📱 WhatsApp QR Code for ${senderName} - Scan this with your phone:`);
-      console.log('(Open WhatsApp > Settings > Linked Devices > Link a Device)\n');
-      qrcodeTerminal.generate(qr, { small: true });
-      console.log(`\nWaiting for QR code scan for ${senderName}...\n`);
+      console.log(`[WhatsApp] QR Code generated for ${senderName}`);
       
-      // Store QR code in status
+      // Store QR code in status (will be displayed in admin.html)
       status.qrCode = qr;
       status.isReady = false; // Make sure ready is false when QR is shown
       clientStatus.set(senderName, status);
       
-      console.log(`[WhatsApp] QR code stored for ${senderName}`);
+      console.log(`[WhatsApp] QR code stored for ${senderName} - available in admin panel`);
       
       if (status.qrCodeResolve) {
         status.qrCodeResolve(qr);

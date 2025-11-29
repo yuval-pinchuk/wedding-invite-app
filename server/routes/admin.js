@@ -260,6 +260,8 @@ router.post('/init-whatsapp', async (req, res) => {
     }
 
     console.log(`[init-whatsapp] QR code generated successfully for ${sender}`);
+    console.log(`[init-whatsapp] QR code length: ${qrCode ? qrCode.length : 'null'}`);
+    console.log(`[init-whatsapp] Sending response with QR code...`);
     res.json({
       success: true,
       qrCode,
