@@ -713,9 +713,36 @@
       }, 5000);
     }
 
-    // Enable load button when sender is selected
+    // Enable load button when sender is selected and hide previous sections
     document.getElementById('senderSelect').addEventListener('change', function() {
       document.getElementById('loadGuestsBtn').disabled = !this.value;
+      
+      // Hide all sections when sender changes (guests, QR code, and sending)
+      document.getElementById('guestsSection').classList.add('hidden');
+      document.getElementById('qrSection').classList.add('hidden');
+      document.getElementById('sendingSection').classList.add('hidden');
+      
+      // Clear QR code display
+      const qrContainer = document.getElementById('qrCode');
+      if (qrContainer) {
+        qrContainer.innerHTML = '';
+      }
+      
+      // Reset status messages
+      document.getElementById('qrStatus').textContent = 'Initializing WhatsApp...';
+      const qrMessage = document.getElementById('qrMessage');
+      if (qrMessage) {
+        qrMessage.classList.remove('show', 'success', 'error', 'info');
+        qrMessage.textContent = '';
+      }
+      
+      // Reset current sender and guests
+      if (this.value) {
+        currentSender = this.value;
+      } else {
+        currentSender = '';
+      }
+      guests = []; // Clear the guests array
     });
   </script>
   <!-- Load QRCode library - using qrcodejs which works reliably with script tags -->
