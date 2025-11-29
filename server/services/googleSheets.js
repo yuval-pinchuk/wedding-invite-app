@@ -12,7 +12,6 @@ let serviceAccountEmail = null;
  */
 function getServiceAccountKey() {
   try {
-    //const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
     const keyFromFile = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
     if (keyFromFile) {
       return keyFromFile;
@@ -21,6 +20,7 @@ function getServiceAccountKey() {
   } catch (error) {
     console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON');
     console.error('Error:', error.message);
+    const jsonString = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '';
     console.error('First 200 chars of value:', jsonString.substring(0, 200));
     throw new Error(`Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY: ${error.message}`);
   }
@@ -103,6 +103,7 @@ export async function configureSheets() {
 /**
  * Read guest list from Google Sheet with Hebrew columns
  * Column A: First name (Hebrew)
+ * Column B: Family name (Hebrew)
  * Column L: Addons (optional, Hebrew name)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
@@ -125,11 +126,16 @@ export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
       return [];
     }
 
-    // Map rows to objects (column indices: A=0, L=11, N=13, O=14)
+    // Map rows to objects (column indices: A=0, B=1, L=11, N=13, O=14)
     const guests = rows.slice(1).map((row, index) => {
+      const firstName = (row[0] || '').trim(); // Column A - First name
+      const familyName = (row[1] || '').trim(); // Column B - Family name
+      const fullName = [firstName, familyName].filter(n => n).join(' ').trim(); // Combine first and family name
+      
       return {
         rowNumber: index + 2, // +2 because we skip header and arrays are 0-indexed
-        name: row[0] || '', // Column A - First name
+        name: firstName, // Column A - First name (kept for backward compatibility)
+        fullName: fullName || firstName, // Full name (first name + family name)
         addons: row[11] || '', // Column L - Addons (optional)
         sendConfirmation: (row[13] || '').toString().toLowerCase().trim(), // Column N - לשלוח אישורי הגעה
         sender: row[14] || '', // Column O - Sender
