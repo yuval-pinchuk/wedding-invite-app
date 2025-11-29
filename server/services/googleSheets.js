@@ -1,12 +1,134 @@
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
 let sheets = null;
 let auth = null;
 let serviceAccountEmail = null;
+
+/**
+ * Read multi-line JSON from .env file
+ * Standard dotenv doesn't handle multi-line values well, so we read the file directly
+ */
+function readServiceAccountKeyFromEnv() {
+  try {
+    const envPath = path.resolve(process.cwd(), '.env');
+    if (!fs.existsSync(envPath)) {
+      return null;
+    }
+
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const lines = envContent.split('\n');
+    
+    let inKey = false;
+    let jsonLines = [];
+    let braceCount = 0;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Skip comments and empty lines
+      if (trimmedLine.startsWith('#') || trimmedLine === '') {
+        if (inKey) {
+          // If we're in the middle of JSON, include comment/empty lines
+          jsonLines.push(line);
+        }
+        continue;
+      }
+      
+      // Check if this line starts the GOOGLE_SERVICE_ACCOUNT_KEY
+      if (trimmedLine.startsWith('GOOGLE_SERVICE_ACCOUNT_KEY=')) {
+        inKey = true;
+        // Extract the part after the = sign
+        const afterEquals = line.substring(line.indexOf('=') + 1).trim();
+        if (afterEquals) {
+          jsonLines.push(afterEquals);
+          // Count braces to know when JSON is complete
+          braceCount += (afterEquals.match(/{/g) || []).length;
+          braceCount -= (afterEquals.match(/}/g) || []).length;
+        }
+        continue;
+      }
+      
+      // If we're inside the key and haven't closed all braces, continue collecting
+      if (inKey) {
+        jsonLines.push(line);
+        braceCount += (line.match(/{/g) || []).length;
+        braceCount -= (line.match(/}/g) || []).length;
+        
+        // If braces are balanced, we've reached the end
+        if (braceCount === 0) {
+          break;
+        }
+      }
+    }
+    
+    if (jsonLines.length === 0) {
+      return null;
+    }
+    
+    // Join all lines and parse as JSON
+    const jsonString = jsonLines.join('\n').trim();
+    
+    // Remove surrounding quotes if present
+    let cleanedJson = jsonString;
+    if ((cleanedJson.startsWith('"') && cleanedJson.endsWith('"')) || 
+        (cleanedJson.startsWith("'") && cleanedJson.endsWith("'"))) {
+      cleanedJson = cleanedJson.slice(1, -1);
+    }
+    
+    return JSON.parse(cleanedJson);
+  } catch (error) {
+    console.error('Failed to read GOOGLE_SERVICE_ACCOUNT_KEY from .env file:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get service account key from environment
+ * Tries to read from .env file first (for multi-line JSON), then falls back to process.env
+ */
+function getServiceAccountKey() {
+  // First try reading from .env file directly (handles multi-line JSON)
+  const keyFromFile = readServiceAccountKeyFromEnv();
+  if (keyFromFile) {
+    return keyFromFile;
+  }
+  
+  // Fallback to process.env (for single-line JSON)
+  const envValue = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!envValue) {
+    return null;
+  }
+
+  let jsonString = envValue.trim();
+  
+  // Remove surrounding quotes if present
+  if ((jsonString.startsWith('"') && jsonString.endsWith('"')) || 
+      (jsonString.startsWith("'") && jsonString.endsWith("'"))) {
+    jsonString = jsonString.slice(1, -1);
+  }
+  
+  // Replace escaped newlines with actual newlines
+  jsonString = jsonString.replace(/\\n/g, '\n');
+  jsonString = jsonString.replace(/\\r/g, '\r');
+  
+  // Unescape quotes
+  jsonString = jsonString.replace(/\\"/g, '"');
+  jsonString = jsonString.replace(/\\'/g, "'");
+  
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON');
+    console.error('Error:', error.message);
+    console.error('First 200 chars of value:', jsonString.substring(0, 200));
+    throw new Error(`Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY: ${error.message}`);
+  }
+}
 
 /**
  * Get the service account email for sharing sheets
@@ -17,10 +139,8 @@ export function getServiceAccountEmail() {
   }
 
   try {
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      // Service account authentication
-      const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-      const serviceAccountKey = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    const serviceAccountKey = getServiceAccountKey();
+    if (serviceAccountKey) {
       serviceAccountEmail = serviceAccountKey.client_email;
     } else if (process.env.GOOGLE_CLIENT_EMAIL) {
       serviceAccountEmail = process.env.GOOGLE_CLIENT_EMAIL;
@@ -54,10 +174,9 @@ function isPermissionError(error) {
 export async function configureSheets() {
   try {
     // Support both service account and OAuth2
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      // Service account authentication
-      const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-      const serviceAccountKey = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    const serviceAccountKey = getServiceAccountKey();
+    if (serviceAccountKey) {
+      // Service account authentication - read from .env file (supports multi-line JSON)
       serviceAccountEmail = serviceAccountKey.client_email;
       auth = new google.auth.GoogleAuth({
         credentials: serviceAccountKey,
