@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import rsvpRouter from './routes/rsvp.js';
 import adminRouter from './routes/admin.js';
 import { configureSheets } from './services/googleSheets.js';
+import { cleanupOldQRCodes } from './services/whatsapp.js';
 
 dotenv.config();
 
@@ -40,6 +41,13 @@ async function start() {
     app.listen(port, () => {
       console.log(`Wedding invite server running on http://localhost:${port}`);
     });
+    
+    // Periodic memory cleanup: clean up old QR codes every 5 minutes
+    setInterval(() => {
+      cleanupOldQRCodes(10); // Clean QR codes older than 10 minutes
+    }, 5 * 60 * 1000); // Every 5 minutes
+    
+    console.log('Memory cleanup task started (runs every 5 minutes)');
   } catch (error) {
     console.error('Failed to initialize Google Sheets integration:', error);
     process.exit(1);

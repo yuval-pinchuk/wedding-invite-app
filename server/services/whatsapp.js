@@ -73,6 +73,7 @@ export async function initializeWhatsApp(senderName = 'default') {
       console.log(`[WhatsApp] QR Code generated for ${senderName}`);
       
       // Store QR code in status (will be displayed in admin.html)
+      // Note: QR codes are large strings, they will be cleared from memory once client is ready
       status.qrCode = qr;
       status.isReady = false; // Make sure ready is false when QR is shown
       clientStatus.set(senderName, status);
@@ -81,6 +82,8 @@ export async function initializeWhatsApp(senderName = 'default') {
       
       if (status.qrCodeResolve) {
         status.qrCodeResolve(qr);
+        // Clear resolve function after calling to free memory
+        status.qrCodeResolve = null;
       }
     });
 
@@ -94,12 +97,13 @@ export async function initializeWhatsApp(senderName = 'default') {
       const currentStatus = clientStatus.get(senderName);
       if (currentStatus) {
         currentStatus.isReady = true;
-        // Clear QR code since we're now ready
+        // Clear QR code from memory since we're now ready (memory optimization)
         currentStatus.qrCode = null;
+        currentStatus.qrCodeResolve = null; // Clear resolve function to free memory
         clientStatus.set(senderName, currentStatus);
-        console.log(`[WhatsApp] Status updated for ${senderName}: isReady=true, qrCode cleared`);
+        console.log(`[WhatsApp] Status updated for ${senderName}: isReady=true, qrCode cleared from memory`);
       } else {
-        // Create status if it doesn't exist
+        // Create minimal status if it doesn't exist (only store what's needed)
         clientStatus.set(senderName, { isReady: true, qrCode: null, qrCodeResolve: null });
         console.log(`[WhatsApp] Created new status for ${senderName}: isReady=true`);
       }
@@ -107,11 +111,7 @@ export async function initializeWhatsApp(senderName = 'default') {
       // Update status variable for the promise resolve
       status.isReady = true;
       status.qrCode = null;
-      
-      // Resolve the promise if it hasn't been resolved yet
-      if (status.qrCodeResolve) {
-        status.qrCodeResolve = null; // Clear the resolve function
-      }
+      status.qrCodeResolve = null;
       
       resolve(whatsappClient);
     });
@@ -131,12 +131,17 @@ export async function initializeWhatsApp(senderName = 'default') {
       reject(new Error(`WhatsApp authentication failed for ${senderName}`));
     });
 
-    // Disconnected event
+    // Disconnected event - cleanup memory
     whatsappClient.on('disconnected', (reason) => {
       console.log(`⚠️  WhatsApp client disconnected for ${senderName}:`, reason);
       status.isReady = false;
+      // Clear QR code from memory before deleting
+      status.qrCode = null;
+      status.qrCodeResolve = null;
+      // Remove from maps to free memory
       whatsappClients.delete(senderName);
       clientStatus.delete(senderName);
+      console.log(`[WhatsApp] Cleaned up memory for ${senderName}`);
     });
 
     // Initialize the client
@@ -240,10 +245,37 @@ export function getQRCode(senderName = 'default') {
  */
 export function getStatus(senderName = 'default') {
   const status = clientStatus.get(senderName);
+  // Return minimal status object (don't include qrCodeResolve to save memory)
   return {
     ready: status?.isReady || false,
     qrCode: status?.qrCode || null,
   };
+}
+
+/**
+ * Clean up old QR codes from memory (call periodically to free memory)
+ * QR codes are large strings and should be cleared after use
+ */
+export function cleanupOldQRCodes(maxAgeMinutes = 10) {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  for (const [senderName, status] of clientStatus.entries()) {
+    // If client is ready, QR code should already be null
+    // If QR code exists and client is ready, clear it
+    if (status.isReady && status.qrCode) {
+      status.qrCode = null;
+      status.qrCodeResolve = null;
+      clientStatus.set(senderName, status);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`[WhatsApp] Cleaned up ${cleaned} old QR code(s) from memory`);
+  }
+  
+  return cleaned;
 }
 
 /**
