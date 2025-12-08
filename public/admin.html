@@ -301,10 +301,18 @@
   <script>
     let currentSender = '';
     let guests = [];
+    let pollingInterval = null; // Store interval reference for cleanup
 
     // Load senders on page load
     window.addEventListener('DOMContentLoaded', async () => {
       await loadSenders();
+    });
+    
+    // Cleanup on page unload to prevent memory leaks
+    window.addEventListener('beforeunload', () => {
+      stopPolling();
+      guests = []; // Clear guests array
+      currentSender = '';
     });
 
     async function loadSenders() {
@@ -618,12 +626,36 @@
     }
 
     async function pollWhatsAppStatus() {
+      // Clear any existing polling interval to prevent memory leaks
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+      
       let qrCodeDisplayed = false;
-      const interval = setInterval(async () => {
+      let pollCount = 0;
+      const maxPolls = 200; // Maximum 10 minutes (200 * 3 seconds) to prevent infinite polling
+      
+      pollingInterval = setInterval(async () => {
         try {
+          pollCount++;
+          
+          // Safety check: stop polling after max attempts
+          if (pollCount > maxPolls) {
+            console.warn('[Frontend] Polling timeout reached, stopping');
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+            document.getElementById('qrStatus').textContent = '⚠️ Polling timeout. Please refresh and try again.';
+            return;
+          }
+          
           const response = await fetch(`/api/admin/whatsapp-status/${encodeURIComponent(currentSender)}`);
           const result = await response.json();
-          console.log('[Frontend] Status poll result:', result);
+          
+          // Only log every 10th poll to reduce console spam
+          if (pollCount % 10 === 0) {
+            console.log('[Frontend] Status poll result:', result);
+          }
           
           // Check for QR code first (if not already displayed)
           if (!qrCodeDisplayed && result.qr) {
@@ -634,7 +666,8 @@
           }
           
           if (result.ready) {
-            clearInterval(interval);
+            clearInterval(pollingInterval);
+            pollingInterval = null;
             document.getElementById('qrStatus').textContent = '✅ WhatsApp connected!';
             document.getElementById('qrMessage').textContent = 'WhatsApp is ready. Starting to send invitations...';
             document.getElementById('qrMessage').classList.add('show', 'success');
@@ -648,6 +681,15 @@
           console.error('Error checking WhatsApp status:', error);
         }
       }, 3000);
+    }
+    
+    // Cleanup function to stop polling when sender changes or page unloads
+    function stopPolling() {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('[Frontend] Polling stopped');
+      }
     }
 
     async function sendInvitations() {
@@ -736,13 +778,16 @@
         qrMessage.textContent = '';
       }
       
+      // Stop any active polling to free memory
+      stopPolling();
+      
       // Reset current sender and guests
       if (this.value) {
         currentSender = this.value;
       } else {
         currentSender = '';
       }
-      guests = []; // Clear the guests array
+      guests = []; // Clear the guests array to free memory
     });
   </script>
   <!-- Load QRCode library - using qrcodejs which works reliably with script tags -->

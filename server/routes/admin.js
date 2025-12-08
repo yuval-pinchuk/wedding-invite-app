@@ -286,39 +286,24 @@ router.get('/whatsapp-status/:sender', async (req, res) => {
     const { sender } = req.params;
     let status = getStatus(sender);
 
-    console.log(`[whatsapp-status] Checking status for ${sender}: ready=${status.ready}, hasQR=${!!status.qrCode}`);
-
     // Check the actual client status more thoroughly
     // If client has info.wid, it's definitely ready regardless of status flag
     try {
       const client = getClient(sender);
-      if (client) {
-        console.log(`[whatsapp-status] Client exists for ${sender}, checking info...`);
-        
-        // Check if client has info property (indicates it's ready)
-        if (client.info) {
-          console.log(`[whatsapp-status] Client has info property for ${sender}`);
-          if (client.info.wid) {
-            // Client is actually ready - override status
-            status.ready = true;
-            status.qrCode = null; // Clear QR code since we're ready
-            console.log(`[whatsapp-status] ✅ Client for ${sender} is ready (has info.wid: ${client.info.wid.user})`);
-          } else {
-            console.log(`[whatsapp-status] Client has info but no wid yet for ${sender}`);
-          }
-        } else {
-          console.log(`[whatsapp-status] Client exists but no info property yet for ${sender}`);
+      if (client && client.info && client.info.wid) {
+        // Client is actually ready - override status
+        status.ready = true;
+        status.qrCode = null; // Clear QR code since we're ready (memory optimization)
+        // Only log when status changes to ready (not on every poll)
+        if (!status.ready) {
+          console.log(`[whatsapp-status] ✅ Client for ${sender} is ready (has info.wid: ${client.info.wid.user})`);
         }
-      } else {
-        console.log(`[whatsapp-status] No client found for ${sender}`);
       }
     } catch (error) {
-      // Client not ready yet or doesn't exist
-      console.log(`[whatsapp-status] Error checking client for ${sender}:`, error.message);
+      // Client not ready yet or doesn't exist - silent fail to reduce logging
     }
 
     const finalReady = status.ready || false;
-    console.log(`[whatsapp-status] Returning status for ${sender}: ready=${finalReady}, qr=${!!status.qrCode}`);
 
     res.json({
       success: true,
