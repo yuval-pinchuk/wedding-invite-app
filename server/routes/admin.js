@@ -262,18 +262,43 @@ router.post('/init-whatsapp', async (req, res) => {
     console.log(`[init-whatsapp] QR code generated successfully for ${sender}`);
     console.log(`[init-whatsapp] QR code length: ${qrCode ? qrCode.length : 'null'}`);
     console.log(`[init-whatsapp] Sending response with QR code...`);
-    res.json({
-      success: true,
-      qrCode,
-      ready: false,
-    });
+    
+    // Ensure we send a valid JSON response
+    try {
+      return res.json({
+        success: true,
+        qrCode,
+        ready: false,
+      });
+    } catch (jsonError) {
+      console.error('[init-whatsapp] Error sending JSON response:', jsonError);
+      // Fallback - try to send without QR code if it's too large
+      return res.json({
+        success: true,
+        qrCode: null,
+        ready: false,
+        error: 'QR code generated but too large to send. Check server logs.',
+      });
+    }
   } catch (error) {
     console.error('[init-whatsapp] Unexpected error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to initialize WhatsApp',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
+    console.error('[init-whatsapp] Error stack:', error.stack);
+    
+    // Ensure we always send a valid JSON response
+    try {
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to initialize WhatsApp',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      });
+    } catch (jsonError) {
+      // Last resort - send minimal response
+      console.error('[init-whatsapp] Critical: Cannot send JSON response:', jsonError);
+      res.status(500).send(JSON.stringify({
+        success: false,
+        error: 'Internal server error',
+      }));
+    }
   }
 });
 

@@ -23,23 +23,66 @@ export async function initializeWhatsApp(senderName = 'default') {
       console.log(`[WhatsApp] Client for ${senderName} is already ready`);
       return client;
     }
-    // If client exists but isn't ready, check if it has a QR code
+    // If client exists with QR code, return the existing client instead of destroying it
+    // This prevents ProtocolErrors and allows the user to scan the QR code
     if (status && status.qrCode) {
-      console.log(`[WhatsApp] Client for ${senderName} exists with QR code, waiting for scan...`);
-      // Return the existing client promise - it will resolve when ready
-      // But we still want to return a promise that resolves to the client
+      console.log(`[WhatsApp] Client for ${senderName} exists with QR code, returning existing client...`);
+      // Return a promise that waits for the existing client to become ready
+      return new Promise((resolve, reject) => {
+        // Set up a timeout to wait for ready event
+        const timeout = setTimeout(() => {
+          reject(new Error(`Client for ${senderName} did not become ready within timeout`));
+        }, 300000); // 5 minute timeout
+        
+        // Check if already ready
+        if (client && client.info && client.info.wid) {
+          clearTimeout(timeout);
+          resolve(client);
+          return;
+        }
+        
+        // Listen for ready event on existing client
+        const readyHandler = () => {
+          clearTimeout(timeout);
+          client.off('ready', readyHandler);
+          client.off('auth_failure', failureHandler);
+          resolve(client);
+        };
+        
+        const failureHandler = (msg) => {
+          clearTimeout(timeout);
+          client.off('ready', readyHandler);
+          client.off('auth_failure', failureHandler);
+          reject(new Error(`WhatsApp authentication failed for ${senderName}: ${msg}`));
+        };
+        
+        client.once('ready', readyHandler);
+        client.once('auth_failure', failureHandler);
+      });
     }
     
-    // If client exists but isn't ready, properly disconnect it first to avoid file locking issues
-    if (client) {
+    // If client exists but isn't ready and has no QR code, disconnect it to reinitialize
+    if (client && (!status || !status.qrCode)) {
       try {
-        console.log(`[WhatsApp] Disconnecting existing client for ${senderName} before reinitializing...`);
-        await client.destroy();
-        // Wait a bit for file handles to be released (especially important on Windows)
+        console.log(`[WhatsApp] Disconnecting existing non-ready client for ${senderName} before reinitializing...`);
+        // Safely destroy client - catch ProtocolErrors which can occur if target is already closed
+        try {
+          await client.destroy();
+        } catch (destroyError) {
+          // ProtocolError: Target closed is expected when browser is already closed
+          // These errors are harmless - the target is already closed
+          const errorMsg = destroyError.message || String(destroyError);
+          if (errorMsg.includes('Target closed') || errorMsg.includes('Protocol error')) {
+            console.log(`[WhatsApp] Client target already closed (expected), continuing...`);
+          } else {
+            console.warn(`[WhatsApp] Error disconnecting client:`, errorMsg);
+          }
+        }
+        // Wait a bit for cleanup
         await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (disconnectError) {
         console.warn(`[WhatsApp] Error disconnecting existing client (continuing anyway):`, disconnectError.message);
-        // Continue anyway - a small delay to allow file handles to release
+        // Continue anyway - a small delay to allow cleanup
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       // Clean up
@@ -384,12 +427,18 @@ export async function cleanupInactiveClients() {
       
       // If client exists but has no info and is not ready, it may be stuck
       // Clean it up if it's been disconnected or failed to initialize
-      if (client && !info && (!status || !status.isReady)) {
+      // BUT don't clean up clients that have QR codes (they're waiting to be scanned)
+      if (client && !info && (!status || (!status.isReady && !status.qrCode))) {
         console.log(`[WhatsApp] Cleaning up inactive client for ${senderName}...`);
         try {
+          // Safely destroy - catch ProtocolErrors
           await client.destroy();
         } catch (destroyError) {
-          console.warn(`[WhatsApp] Error destroying client for ${senderName}:`, destroyError.message);
+          // ProtocolError: Target closed is expected when browser is already closed
+          const errorMsg = destroyError.message || String(destroyError);
+          if (!errorMsg.includes('Target closed') && !errorMsg.includes('Protocol error')) {
+            console.warn(`[WhatsApp] Error destroying client for ${senderName}:`, errorMsg);
+          }
         }
         whatsappClients.delete(senderName);
         clientStatus.delete(senderName);
