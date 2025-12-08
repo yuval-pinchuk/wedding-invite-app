@@ -29,6 +29,23 @@ export async function initializeWhatsApp(senderName = 'default') {
       // Return the existing client promise - it will resolve when ready
       // But we still want to return a promise that resolves to the client
     }
+    
+    // If client exists but isn't ready, properly disconnect it first to avoid file locking issues
+    if (client) {
+      try {
+        console.log(`[WhatsApp] Disconnecting existing client for ${senderName} before reinitializing...`);
+        await client.destroy();
+        // Wait a bit for file handles to be released (especially important on Windows)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (disconnectError) {
+        console.warn(`[WhatsApp] Error disconnecting existing client (continuing anyway):`, disconnectError.message);
+        // Continue anyway - a small delay to allow file handles to release
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      // Clean up
+      whatsappClients.delete(senderName);
+      clientStatus.delete(senderName);
+    }
   }
 
   return new Promise((resolve, reject) => {
@@ -50,7 +67,14 @@ export async function initializeWhatsApp(senderName = 'default') {
       }),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage', // Overcome limited resource problems
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
       }
     });
 
@@ -130,6 +154,20 @@ export async function initializeWhatsApp(senderName = 'default') {
       console.error(`❌ WhatsApp authentication failed for ${senderName}:`, msg);
       reject(new Error(`WhatsApp authentication failed for ${senderName}`));
     });
+    
+    // Handle unhandled errors (including file locking errors)
+    whatsappClient.on('error', (err) => {
+      const errorMsg = err.message || String(err);
+      // Log EBUSY errors but don't necessarily fail - they're often harmless
+      if (errorMsg.includes('EBUSY') || errorMsg.includes('resource busy') || errorMsg.includes('locked')) {
+        console.warn(`[WhatsApp] File locking warning for ${senderName}:`, errorMsg);
+        console.warn(`[WhatsApp] This may be harmless - initialization may continue...`);
+        // Don't reject on EBUSY errors from event handler - let initialization continue
+        return;
+      }
+      // For other errors, log but don't reject here (let the initialization promise handle it)
+      console.error(`[WhatsApp] Client error for ${senderName}:`, err);
+    });
 
     // Disconnected event - cleanup memory
     whatsappClient.on('disconnected', (reason) => {
@@ -144,14 +182,38 @@ export async function initializeWhatsApp(senderName = 'default') {
       console.log(`[WhatsApp] Cleaned up memory for ${senderName}`);
     });
 
-    // Initialize the client
+    // Initialize the client with retry logic for Windows file locking issues
     console.log(`[WhatsApp] Calling initialize() for ${senderName}...`);
     console.log(`[WhatsApp] If you see 'authenticated' without 'qr', it means a saved session exists.`);
     console.log(`[WhatsApp] To force QR code, delete the folder: .wwebjs_auth_${encodeURIComponent(senderName)}`);
     
-    whatsappClient.initialize().catch((err) => {
-      console.error(`[WhatsApp] Initialization error for ${senderName}:`, err);
-      console.error(`[WhatsApp] Error details:`, err.message, err.stack);
+    // Helper function to attempt initialization with retry for file locking errors
+    const attemptInitialize = async (retryCount = 0) => {
+      try {
+        await whatsappClient.initialize();
+      } catch (err) {
+        const errorMsg = err.message || String(err);
+        
+        // Handle Windows file locking errors (EBUSY) - these are often harmless
+        // The file will be overwritten anyway when Chrome starts
+        if ((errorMsg.includes('EBUSY') || errorMsg.includes('resource busy') || errorMsg.includes('locked')) && retryCount < 2) {
+          console.warn(`[WhatsApp] File locking issue detected for ${senderName} (attempt ${retryCount + 1}/3):`, errorMsg);
+          console.warn(`[WhatsApp] This is often harmless on Windows. Retrying in 3 seconds...`);
+          
+          // Wait before retry to allow file handles to be released
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          return attemptInitialize(retryCount + 1);
+        }
+        
+        // For other errors or max retries reached, reject
+        console.error(`[WhatsApp] Initialization error for ${senderName}:`, err);
+        console.error(`[WhatsApp] Error details:`, err.message, err.stack);
+        throw err;
+      }
+    };
+    
+    // Start initialization attempt
+    attemptInitialize().catch((err) => {
       reject(err);
     });
     
