@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: wedding-invite-app
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: GOOGLE_GUEST_SHEET_ID
+        sync: false
+      - key: GOOGLE_RESPONSE_SHEET_ID
+        sync: false
+      - key: RSVP_BASE_URL
+        sync: false
+      - key: INVITATION_MESSAGE
+        sync: false
+        optional: true
+

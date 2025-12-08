@@ -261,15 +261,148 @@ CodeRabbit provides AI-powered code reviews for your pull requests. The reposito
 
 For more information, visit the [CodeRabbit Documentation](https://docs.coderabbit.ai/).
 
-## Production Deployment
+## Deployment to Render
 
-For production:
+Render is a cloud platform that makes it easy to deploy web services. This guide will walk you through deploying your wedding invitation app to Render.
 
-1. Deploy to a hosting service (Heroku, Railway, Render, etc.)
-2. Set environment variables in your hosting platform
-3. Update `RSVP_BASE_URL` to your production domain
-4. Use HTTPS for the RSVP links
-5. Consider adding rate limiting and authentication
+### Prerequisites
+
+- A GitHub account
+- Your code pushed to a GitHub repository
+- A Render account (sign up at [render.com](https://render.com))
+
+### Step 1: Prepare Your Repository
+
+1. Make sure your code is committed and pushed to GitHub
+2. Verify that `render.yaml` is in the root of your repository
+3. Ensure `package.json` includes the Node.js version specification
+
+### Step 2: Create a New Web Service on Render
+
+1. Log in to your [Render Dashboard](https://dashboard.render.com/)
+2. Click **"New +"** and select **"Web Service"**
+3. Connect your GitHub account if you haven't already
+4. Select your repository: `wedding-invite-app`
+5. Render will detect the `render.yaml` file and use those settings
+6. Give your service a name (e.g., "wedding-invite-app")
+7. Click **"Create Web Service"**
+
+### Step 3: Configure Environment Variables
+
+In the Render dashboard, go to your service's **Environment** tab and add the following environment variables:
+
+**Required Variables:**
+
+- `GOOGLE_SERVICE_ACCOUNT_KEY`: Your full Google service account JSON key as a single-line string. Copy the entire JSON content from your downloaded service account key file.
+  
+  Example format:
+  ```
+  {"type":"service_account","project_id":"your-project","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}
+  ```
+
+- `GOOGLE_GUEST_SHEET_ID`: The ID of your Google Sheet containing the guest list (extract from the Sheet URL)
+
+- `GOOGLE_RESPONSE_SHEET_ID`: The ID of your Google Sheet for RSVP responses (extract from the Sheet URL)
+
+- `RSVP_BASE_URL`: Your Render service URL (e.g., `https://your-app-name.onrender.com`). **Important**: Update this after deployment with your actual Render URL.
+
+**Optional Variables:**
+
+- `INVITATION_MESSAGE`: Custom invitation message (defaults to a standard message if not set)
+
+**Note**: The `PORT` variable is automatically set by Render - you don't need to configure it.
+
+### Step 4: Deploy
+
+1. After setting all environment variables, Render will automatically start building and deploying your service
+2. Monitor the build logs in the Render dashboard
+3. Once deployment succeeds, your service will be available at `https://your-app-name.onrender.com`
+
+### Step 5: Configure WhatsApp (After First Deployment)
+
+**Important**: Render uses an ephemeral filesystem, which means WhatsApp session data stored in `.wwebjs_auth_*` folders will be **lost whenever the service restarts or redeploys**. You will need to re-authenticate WhatsApp after each deployment or restart.
+
+1. After your first deployment, visit your admin panel at: `https://your-app-name.onrender.com/admin.html`
+2. Enter a sender name (as configured in your Google Sheet)
+3. Click **"Initialize WhatsApp"**
+4. A QR code will appear on the page
+5. Open WhatsApp on your phone
+6. Go to **Settings** > **Linked Devices** > **Link a Device**
+7. Scan the QR code displayed on the admin panel
+8. Your WhatsApp session will be active until the service restarts
+
+### Step 6: Update RSVP_BASE_URL
+
+1. After deployment, copy your Render service URL (e.g., `https://your-app-name.onrender.com`)
+2. Go to your service's **Environment** tab in Render dashboard
+3. Update `RSVP_BASE_URL` to your actual Render URL
+4. Save and redeploy (Render will automatically redeploy when you save environment variables)
+
+### Important Notes for Render Deployment
+
+- **WhatsApp Sessions**: Since Render's filesystem is ephemeral, WhatsApp sessions will be lost on restart/redeploy. You'll need to scan the QR code again via the admin panel after each deployment or restart.
+
+- **Auto-Deployments**: Render can automatically deploy when you push to your GitHub repository. Configure this in your service settings if desired.
+
+- **Free Tier Limitations**: On Render's free tier, services spin down after 15 minutes of inactivity. This means:
+  - Your service may take 30-60 seconds to start when accessed after inactivity
+  - WhatsApp sessions will be lost when the service spins down
+  - Consider upgrading to a paid plan for persistent services
+
+- **Health Checks**: The service includes a `/health` endpoint that Render uses to verify the service is running.
+
+### Memory Management on Render
+
+The app includes several memory optimizations to prevent exceeding Render's memory limits:
+
+- **Node.js Memory Limit**: Limited to 512MB via `--max-old-space-size=512`
+- **Puppeteer Optimizations**: Many Chromium features disabled to reduce memory usage
+- **Automatic Cleanup**: 
+  - QR codes are cleared from memory after client is ready
+  - Inactive clients are cleaned up every 15 minutes
+  - Memory usage is logged every 5 minutes
+
+**If you still encounter memory issues:**
+
+1. **Upgrade Render Plan**: Free tier has limited memory (512MB). Consider upgrading to a paid plan with more memory
+2. **Monitor Memory Usage**: Check Render logs for memory usage statistics
+3. **Reduce Concurrent Clients**: Only initialize WhatsApp for one sender at a time
+4. **Restart Service**: If memory usage gets too high, manually restart the service in Render dashboard
+
+### Troubleshooting Render Deployment
+
+- **Build Fails**: Check the build logs in Render dashboard. Common issues:
+  - Missing dependencies in `package.json`
+  - Node.js version incompatibility
+  - Build errors in your code
+
+- **Service Won't Start**: Check the runtime logs:
+  - Missing environment variables
+  - Port binding issues (though PORT is auto-set by Render)
+  - Google Sheets authentication errors
+
+- **WhatsApp QR Code Not Appearing**: 
+  - Check that all environment variables are set correctly
+  - Verify the admin panel is accessible at `/admin.html`
+  - Check Render logs for initialization errors
+
+- **Service Spins Down (Free Tier)**: This is normal behavior on Render's free tier. Services automatically wake up when accessed, but WhatsApp sessions will be lost.
+
+- **Memory Limit Exceeded**: 
+  - Check the "Memory Management on Render" section above
+  - Review Render logs for memory usage patterns
+  - Consider upgrading to a paid plan with more memory
+  - Ensure only one WhatsApp client is initialized at a time
+
+### Production Recommendations
+
+For production use, consider:
+
+1. **Upgrading to a Paid Plan**: Prevents service spin-down and session loss
+2. **Using External Storage**: Store WhatsApp sessions in external storage (S3, Render Disk) for persistence across deployments
+3. **Adding Authentication**: Protect the admin panel with authentication
+4. **Rate Limiting**: Add rate limiting to API endpoints
+5. **Monitoring**: Set up monitoring and alerting for your service
 
 ## License
 

@@ -73,7 +73,37 @@ export async function initializeWhatsApp(senderName = 'default') {
           '--disable-dev-shm-usage', // Overcome limited resource problems
           '--disable-accelerated-2d-canvas',
           '--disable-gpu',
-          '--disable-features=IsolateOrigins,site-per-process'
+          '--disable-features=IsolateOrigins,site-per-process',
+          // Memory optimization flags for Render deployment
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',
+          '--disable-client-side-phishing-detection',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-default-apps',
+          '--disable-hang-monitor',
+          '--disable-ipc-flooding-protection',
+          '--disable-notifications',
+          '--disable-popup-blocking',
+          '--disable-prompt-on-repost',
+          '--disable-renderer-backgrounding',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-web-resources',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain',
+          '--memory-pressure-off',
+          '--disable-software-rasterizer',
+          '--disable-features=TranslateUI',
+          // Reduce memory usage - limit V8 heap size
+          '--js-flags=--max-old-space-size=256'
         ]
       }
     });
@@ -335,6 +365,43 @@ export function cleanupOldQRCodes(maxAgeMinutes = 10) {
   
   if (cleaned > 0) {
     console.log(`[WhatsApp] Cleaned up ${cleaned} old QR code(s) from memory`);
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Clean up disconnected or inactive clients to free memory
+ * This is important for memory management on platforms like Render
+ */
+export async function cleanupInactiveClients() {
+  let cleaned = 0;
+  
+  for (const [senderName, client] of whatsappClients.entries()) {
+    try {
+      const status = clientStatus.get(senderName);
+      const info = client.info;
+      
+      // If client exists but has no info and is not ready, it may be stuck
+      // Clean it up if it's been disconnected or failed to initialize
+      if (client && !info && (!status || !status.isReady)) {
+        console.log(`[WhatsApp] Cleaning up inactive client for ${senderName}...`);
+        try {
+          await client.destroy();
+        } catch (destroyError) {
+          console.warn(`[WhatsApp] Error destroying client for ${senderName}:`, destroyError.message);
+        }
+        whatsappClients.delete(senderName);
+        clientStatus.delete(senderName);
+        cleaned++;
+      }
+    } catch (error) {
+      console.warn(`[WhatsApp] Error checking client for ${senderName}:`, error.message);
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`[WhatsApp] Cleaned up ${cleaned} inactive client(s)`);
   }
   
   return cleaned;
