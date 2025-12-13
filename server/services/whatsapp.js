@@ -78,12 +78,15 @@ export async function initializeWhatsApp(senderName = 'default') {
             console.warn(`[WhatsApp] Error disconnecting client:`, errorMsg);
           }
         }
-        // Wait a bit for cleanup
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait longer for cleanup on Windows to allow file handles to release (prevents EBUSY)
+        const cleanupWait = process.platform === 'win32' ? 3000 : 1000;
+        console.log(`[WhatsApp] Waiting ${cleanupWait/1000}s for cleanup (platform: ${process.platform})...`);
+        await new Promise(resolve => setTimeout(resolve, cleanupWait));
       } catch (disconnectError) {
         console.warn(`[WhatsApp] Error disconnecting existing client (continuing anyway):`, disconnectError.message);
-        // Continue anyway - a small delay to allow cleanup
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Continue anyway - wait longer on Windows to allow file handles to release
+        const cleanupWait = process.platform === 'win32' ? 3000 : 1000;
+        await new Promise(resolve => setTimeout(resolve, cleanupWait));
       }
       // Clean up
       whatsappClients.delete(senderName);
@@ -113,28 +116,22 @@ export async function initializeWhatsApp(senderName = 'default') {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Overcome limited resource problems
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          // Keep GPU enabled for better performance (memory impact is minimal)
+          // Removed: '--disable-accelerated-2d-canvas', '--disable-gpu'
+          // Removed: '--disable-software-rasterizer' - slows down rendering
           '--disable-features=IsolateOrigins,site-per-process',
-          // Memory optimization flags for Render deployment
+          // Essential memory-saving flags
           '--disable-extensions',
           '--disable-background-networking',
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',
           '--disable-client-side-phishing-detection',
           '--disable-component-extensions-with-background-pages',
           '--disable-default-apps',
-          '--disable-hang-monitor',
-          '--disable-ipc-flooding-protection',
           '--disable-notifications',
-          '--disable-popup-blocking',
-          '--disable-prompt-on-repost',
-          '--disable-renderer-backgrounding',
           '--disable-sync',
           '--disable-translate',
-          '--disable-web-resources',
           '--metrics-recording-only',
           '--no-first-run',
           '--no-default-browser-check',
@@ -142,11 +139,11 @@ export async function initializeWhatsApp(senderName = 'default') {
           '--enable-automation',
           '--password-store=basic',
           '--use-mock-keychain',
-          '--memory-pressure-off',
-          '--disable-software-rasterizer',
-          '--disable-features=TranslateUI',
-          // Reduce memory usage - limit V8 heap size
-          '--js-flags=--max-old-space-size=256'
+          // Performance optimizations
+          '--disable-ipc-flooding-protection',
+          '--disable-renderer-backgrounding',
+          // Increase V8 heap to 384MB for better performance (from 256MB)
+          '--js-flags=--max-old-space-size=384'
         ]
       }
     });
@@ -260,21 +257,85 @@ export async function initializeWhatsApp(senderName = 'default') {
     console.log(`[WhatsApp] If you see 'authenticated' without 'qr', it means a saved session exists.`);
     console.log(`[WhatsApp] To force QR code, delete the folder: .wwebjs_auth_${encodeURIComponent(senderName)}`);
     
-    // Helper function to attempt initialization with retry for file locking errors
+    // Helper function to attempt initialization with retry for file locking and protocol errors
     const attemptInitialize = async (retryCount = 0) => {
       try {
+        // Add a delay before initialization on Windows to let file handles release
+        // This helps prevent EBUSY errors from LocalAuth cleanup
+        if (process.platform === 'win32' && retryCount === 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
         await whatsappClient.initialize();
       } catch (err) {
         const errorMsg = err.message || String(err);
+        const errorStack = err.stack || String(err);
+        const errorName = err.name || '';
         
         // Handle Windows file locking errors (EBUSY) - these are often harmless
         // The file will be overwritten anyway when Chrome starts
-        if ((errorMsg.includes('EBUSY') || errorMsg.includes('resource busy') || errorMsg.includes('locked')) && retryCount < 2) {
-          console.warn(`[WhatsApp] File locking issue detected for ${senderName} (attempt ${retryCount + 1}/3):`, errorMsg);
-          console.warn(`[WhatsApp] This is often harmless on Windows. Retrying in 3 seconds...`);
+        // Check both message and stack trace for EBUSY
+        const isEBUSYError = errorMsg.includes('EBUSY') || 
+                            errorMsg.includes('resource busy') || 
+                            errorMsg.includes('locked') ||
+                            errorStack.includes('EBUSY') ||
+                            errorStack.includes('resource busy');
+        
+        // Handle ProtocolErrors - these can be transient (page context destroyed, target closed, etc.)
+        const isProtocolError = errorName === 'ProtocolError' ||
+                               errorMsg.includes('Protocol error') ||
+                               errorMsg.includes('Execution context was destroyed') ||
+                               errorMsg.includes('Target closed') ||
+                               errorMsg.includes('Session closed') ||
+                               errorMsg.includes('Connection closed');
+        
+        // Both EBUSY and ProtocolErrors are retriable
+        const isRetriableError = isEBUSYError || isProtocolError;
+        const maxRetries = isProtocolError ? 3 : 4; // Fewer retries for ProtocolErrors
+        
+        if (isRetriableError && retryCount < maxRetries) {
+          // Increase wait time with each retry (exponential backoff)
+          // ProtocolErrors get shorter waits since they're usually quicker to resolve
+          const baseWait = isProtocolError ? 2000 : 3000;
+          const waitTime = baseWait + (retryCount * (isProtocolError ? 1000 : 2000));
           
-          // Wait before retry to allow file handles to be released
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          const errorType = isEBUSYError ? 'File locking' : 'Protocol';
+          console.warn(`[WhatsApp] ${errorType} issue detected for ${senderName} (attempt ${retryCount + 1}/${maxRetries + 1}):`, errorMsg.substring(0, 200));
+          
+          if (isEBUSYError) {
+            console.warn(`[WhatsApp] This is often harmless on Windows. Waiting ${waitTime/1000}s before retry...`);
+          } else {
+            console.warn(`[WhatsApp] This may be a transient error. Waiting ${waitTime/1000}s before retry...`);
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // For ProtocolErrors, try to clean up any lingering browser processes
+          if (isProtocolError && retryCount >= 1) {
+            console.log(`[WhatsApp] ProtocolError detected, attempting cleanup before retry...`);
+            try {
+              // Try to destroy the client if it exists and is in a bad state
+              // But only if we're sure it's broken (don't destroy a working client)
+              if (whatsappClient) {
+                try {
+                  // Check if client has a page and if it's still connected
+                  // If not, destroy might help clean up
+                  await whatsappClient.destroy().catch(() => {
+                    // Ignore errors - client might already be destroyed
+                  });
+                } catch (destroyError) {
+                  // Ignore destroy errors - might already be cleaned up
+                }
+                
+                // Wait a bit for cleanup to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            } catch (cleanupError) {
+              console.warn(`[WhatsApp] Error during cleanup, continuing with retry anyway:`, cleanupError.message);
+            }
+          }
+          
           return attemptInitialize(retryCount + 1);
         }
         
@@ -287,6 +348,30 @@ export async function initializeWhatsApp(senderName = 'default') {
     
     // Start initialization attempt
     attemptInitialize().catch((err) => {
+      const errorMsg = err.message || String(err);
+      const errorStack = err.stack || String(err);
+      const errorName = err.name || '';
+      
+      // Last chance: if it's still a retriable error, log a helpful message
+      const isEBUSYError = errorMsg.includes('EBUSY') || 
+                          errorMsg.includes('resource busy') || 
+                          errorMsg.includes('locked') ||
+                          errorStack.includes('EBUSY') ||
+                          errorStack.includes('resource busy');
+      
+      const isProtocolError = errorName === 'ProtocolError' ||
+                             errorMsg.includes('Protocol error') ||
+                             errorMsg.includes('Execution context was destroyed') ||
+                             errorMsg.includes('Target closed');
+      
+      if (isEBUSYError) {
+        console.error(`[WhatsApp] Max retries reached for file locking issue. This may resolve on next attempt.`);
+        console.error(`[WhatsApp] Try closing any other Chrome/Chromium windows and restarting.`);
+      } else if (isProtocolError) {
+        console.error(`[WhatsApp] Max retries reached for ProtocolError. This often indicates a browser initialization issue.`);
+        console.error(`[WhatsApp] Try: 1) Restart the app, 2) Delete .wwebjs_auth_* folder and try again, 3) Check for Chrome processes in Task Manager`);
+      }
+      
       reject(err);
     });
     
@@ -345,11 +430,12 @@ export async function waitForReady(senderName = 'default', maxWaitTime = null) {
     
     if (status && status.isReady && client && client.info && client.info.wid) {
       console.log(`[waitForReady] Client is ready after ${checkCount} checks!`);
-      // Add a small delay to ensure everything is fully initialized
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Add a small delay to ensure everything is fully initialized (reduced from 2000ms to 1000ms)
+      await new Promise(resolve => setTimeout(resolve, 1000));
       return client;
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Reduced polling interval from 1000ms to 500ms for faster response
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   throw new Error(`WhatsApp client for ${senderName} did not become ready within ${maxWaitTime}ms`);
