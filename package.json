@@ -8,7 +8,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "start": "node --max-old-space-size=512 server/app.js",
+    "start": "node --max-old-space-size=300 server/app.js",
     "dev": "nodemon server/app.js",
     "debug": "node --inspect server/app.js",
     "debug-brk": "node --inspect-brk server/app.js",

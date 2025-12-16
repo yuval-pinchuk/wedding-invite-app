@@ -105,6 +105,9 @@ export async function initializeWhatsApp(senderName = 'default') {
     }
     clientStatus.set(senderName, status);
 
+    // Detect if running on Render
+    const isRender = process.env.RENDER || process.env.RENDER_SERVICE_NAME || false;
+
     // Create client with local auth to persist session per sender
     // Use sender name in data path to create separate sessions
     const whatsappClient = new Client({
@@ -117,33 +120,47 @@ export async function initializeWhatsApp(senderName = 'default') {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          // Keep GPU enabled for better performance (memory impact is minimal)
-          // Removed: '--disable-accelerated-2d-canvas', '--disable-gpu'
-          // Removed: '--disable-software-rasterizer' - slows down rendering
-          '--disable-features=IsolateOrigins,site-per-process',
-          // Essential memory-saving flags
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
+          
+          // Render-specific optimizations (512MB limit)
+          ...(isRender ? [
+            // Critical: Disable GPU on Render (saves memory, minimal performance impact on virtualized)
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            // Disable site isolation to reduce memory footprint
+            '--disable-features=SitePerProcess,IsolateOrigins',
+            // Reduce V8 heap to fit within 512MB total (Node 300MB + Chrome 150MB + overhead)
+            '--js-flags=--max-old-space-size=150',
+            // Memory-saving flags
+            '--disable-background-networking',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            // Faster startup (less initialization)
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
+            '--disable-extensions',
+            '--disable-component-extensions-with-background-pages',
+            // Disable features that consume memory
+            '--disable-web-security', // Saves memory (acceptable for WhatsApp Web automation)
+            '--disable-features=TranslateUI,VizDisplayCompositor'
+          ] : [
+            // Local development - more memory available
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--js-flags=--max-old-space-size=384'
+          ]),
+          
+          // Common flags for both environments
           '--disable-client-side-phishing-detection',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-default-apps',
           '--disable-notifications',
           '--disable-sync',
           '--disable-translate',
           '--metrics-recording-only',
-          '--no-first-run',
-          '--no-default-browser-check',
           '--safebrowsing-disable-auto-update',
           '--enable-automation',
           '--password-store=basic',
           '--use-mock-keychain',
-          // Performance optimizations
-          '--disable-ipc-flooding-protection',
-          '--disable-renderer-backgrounding',
-          // Increase V8 heap to 384MB for better performance (from 256MB)
-          '--js-flags=--max-old-space-size=384'
+          '--disable-ipc-flooding-protection'
         ]
       }
     });
@@ -151,7 +168,10 @@ export async function initializeWhatsApp(senderName = 'default') {
     // Store client (replace if exists)
     whatsappClients.set(senderName, whatsappClient);
     
+    // Track initialization time for performance monitoring
+    const initStartTime = Date.now();
     console.log(`[WhatsApp] Starting initialization for ${senderName}...`);
+    console.log(`[WhatsApp] Environment: ${isRender ? 'Render (512MB limit)' : 'Local'}`);
     console.log(`[WhatsApp] Event listeners will be registered before initialize()`);
 
     // Register ALL event listeners BEFORE calling initialize()
@@ -164,7 +184,8 @@ export async function initializeWhatsApp(senderName = 'default') {
 
     // QR Code generation for first-time login (only fires if no saved session)
     whatsappClient.on('qr', (qr) => {
-      console.log(`[WhatsApp] QR Code generated for ${senderName}`);
+      const qrTime = Date.now() - initStartTime;
+      console.log(`[WhatsApp] QR Code generated for ${senderName} (took ${(qrTime/1000).toFixed(1)}s)`);
       
       // Store QR code in status (will be displayed in admin.html)
       // Note: QR codes are large strings, they will be cleared from memory once client is ready
@@ -183,7 +204,8 @@ export async function initializeWhatsApp(senderName = 'default') {
 
     // Ready event - client is ready to send messages
     whatsappClient.on('ready', async () => {
-      console.log(`✅ WhatsApp client for ${senderName} is ready!`);
+      const readyTime = Date.now() - initStartTime;
+      console.log(`✅ WhatsApp client for ${senderName} is ready! (took ${(readyTime/1000).toFixed(1)}s)`);
       // Wait a bit more to ensure everything is fully initialized
       await new Promise(resolve => setTimeout(resolve, 3000));
       
