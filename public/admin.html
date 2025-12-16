@@ -357,6 +357,10 @@
           displayGuests();
           document.getElementById('guestsSection').classList.remove('hidden');
           updateStats();
+          
+          // Start WhatsApp initialization in the background after guests are loaded
+          // This ensures QR code is ready by the time user clicks "Confirm & Send"
+          initializeWhatsAppInBackground();
         } else {
           showMessage('Error loading guests: ' + result.error, 'error');
         }
@@ -460,6 +464,91 @@
       document.getElementById('confirmBtn').disabled = selectedCount === 0;
     }
 
+    let whatsappInitPromise = null; // Track background initialization
+    let whatsappStatus = { ready: false, qrCode: null, initializing: false };
+
+    // Initialize WhatsApp in the background after guests are loaded
+    async function initializeWhatsAppInBackground() {
+      if (!currentSender) return;
+      
+      // Don't initialize if already initializing or ready
+      if (whatsappStatus.initializing || whatsappStatus.ready) {
+        return;
+      }
+
+      whatsappStatus.initializing = true;
+      console.log('[Frontend] Starting background WhatsApp initialization for', currentSender);
+
+      try {
+        const response = await fetch('/api/admin/init-whatsapp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sender: currentSender }),
+        });
+
+        const result = await response.json();
+        console.log('[Frontend] Background init-whatsapp response:', result);
+        
+        if (result.success) {
+          if (result.ready) {
+            // Client is already ready (saved session exists)
+            console.log('[Frontend] WhatsApp is ready in background');
+            whatsappStatus.ready = true;
+            whatsappStatus.qrCode = null;
+          } else if (result.qrCode) {
+            // QR code generated - store it but don't show yet
+            console.log('[Frontend] QR code generated in background');
+            whatsappStatus.qrCode = result.qrCode;
+            // Start polling for ready status in background
+            pollWhatsAppStatusInBackground();
+          } else {
+            // No QR yet - start polling
+            console.log('[Frontend] Starting background polling for QR code...');
+            pollWhatsAppStatusInBackground();
+          }
+        } else {
+          console.error('[Frontend] Background WhatsApp initialization failed:', result.error);
+          whatsappStatus.initializing = false;
+        }
+      } catch (error) {
+        console.error('[Frontend] Error in background WhatsApp initialization:', error);
+        whatsappStatus.initializing = false;
+      }
+    }
+
+    // Poll WhatsApp status in background without showing UI
+    function pollWhatsAppStatusInBackground() {
+      if (whatsappStatus.ready || !currentSender) return;
+
+      fetch(`/api/admin/whatsapp-status/${encodeURIComponent(currentSender)}`)
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) {
+            if (result.ready) {
+              console.log('[Frontend] WhatsApp became ready in background');
+              whatsappStatus.ready = true;
+              whatsappStatus.initializing = false;
+            } else if (result.qr && !whatsappStatus.qrCode) {
+              console.log('[Frontend] QR code received in background polling');
+              whatsappStatus.qrCode = result.qr;
+              // Continue polling until ready
+              setTimeout(pollWhatsAppStatusInBackground, 2000);
+            } else {
+              // Keep polling
+              setTimeout(pollWhatsAppStatusInBackground, 2000);
+            }
+          } else {
+            // Retry after delay
+            setTimeout(pollWhatsAppStatusInBackground, 2000);
+          }
+        })
+        .catch(error => {
+          console.error('[Frontend] Error polling WhatsApp status in background:', error);
+          // Retry after delay
+          setTimeout(pollWhatsAppStatusInBackground, 2000);
+        });
+    }
+
     async function confirmAndSend() {
       const selectedGuests = guests.filter(g => g.sendConfirmation === 'v' || g.sendConfirmation === 'V');
       
@@ -472,10 +561,79 @@
         return;
       }
 
-      document.getElementById('qrSection').classList.remove('hidden');
       document.getElementById('confirmBtn').disabled = true;
 
-      // Initialize WhatsApp and show QR code
+      // Check if WhatsApp is already ready or has QR code from background initialization
+      if (whatsappStatus.ready) {
+        // WhatsApp is ready - proceed directly to sending
+        console.log('[Frontend] WhatsApp already ready, proceeding to send invitations...');
+        document.getElementById('qrStatus').textContent = '✅ WhatsApp is ready!';
+        document.getElementById('qrMessage').textContent = 'WhatsApp is ready. Starting to send invitations...';
+        document.getElementById('qrMessage').classList.add('show', 'success');
+        document.getElementById('qrSection').classList.remove('hidden');
+        document.getElementById('sendingSection').classList.remove('hidden');
+        
+        setTimeout(() => {
+          sendInvitations();
+        }, 500);
+        return;
+      }
+
+      // Show QR section if we have a QR code, otherwise wait for it
+      document.getElementById('qrSection').classList.remove('hidden');
+
+      if (whatsappStatus.qrCode) {
+        // QR code already available from background initialization
+        console.log('[Frontend] Displaying QR code from background initialization');
+        displayQRCode(whatsappStatus.qrCode);
+        document.getElementById('qrStatus').textContent = 'Scan the QR code with WhatsApp to continue...';
+        pollWhatsAppStatus();
+      } else {
+        // Still initializing - wait for QR code or ready status
+        console.log('[Frontend] WhatsApp still initializing, waiting for QR code...');
+        document.getElementById('qrStatus').textContent = 'Initializing WhatsApp...';
+        
+        // Wait a bit for background init, then check status
+        const checkStatus = async () => {
+          try {
+            const response = await fetch(`/api/admin/whatsapp-status/${encodeURIComponent(currentSender)}`);
+            const result = await response.json();
+            
+            if (result.success) {
+              if (result.ready) {
+                whatsappStatus.ready = true;
+                document.getElementById('qrStatus').textContent = '✅ WhatsApp is ready!';
+                document.getElementById('qrMessage').textContent = 'WhatsApp is ready. Starting to send invitations...';
+                document.getElementById('qrMessage').classList.add('show', 'success');
+                document.getElementById('sendingSection').classList.remove('hidden');
+                setTimeout(() => sendInvitations(), 500);
+              } else if (result.qr) {
+                whatsappStatus.qrCode = result.qr;
+                displayQRCode(result.qr);
+                document.getElementById('qrStatus').textContent = 'Scan the QR code with WhatsApp to continue...';
+                pollWhatsAppStatus();
+              } else {
+                // Still waiting - check again
+                setTimeout(checkStatus, 1000);
+              }
+            } else {
+              // Error - try initializing explicitly
+              initializeWhatsAppExplicitly();
+            }
+          } catch (error) {
+            console.error('[Frontend] Error checking WhatsApp status:', error);
+            // Fall back to explicit initialization
+            initializeWhatsAppExplicitly();
+          }
+        };
+        
+        // Start checking status
+        setTimeout(checkStatus, 500);
+      }
+    }
+
+    // Fallback: explicit initialization if background init didn't work
+    async function initializeWhatsAppExplicitly() {
       try {
         const response = await fetch('/api/admin/init-whatsapp', {
           method: 'POST',
@@ -484,35 +642,22 @@
         });
 
         const result = await response.json();
-        console.log('[Frontend] init-whatsapp response:', result);
+        console.log('[Frontend] Explicit init-whatsapp response:', result);
         
         if (result.success) {
           if (result.ready) {
-            // Client is already ready (saved session exists)
-            console.log('[Frontend] WhatsApp is ready, starting to send invitations...');
+            whatsappStatus.ready = true;
             document.getElementById('qrStatus').textContent = '✅ WhatsApp is ready!';
             document.getElementById('qrMessage').textContent = result.message || 'WhatsApp is ready using saved session. Starting to send invitations...';
             document.getElementById('qrMessage').classList.add('show', 'success');
-            
-            // Show sending section
             document.getElementById('sendingSection').classList.remove('hidden');
-            
-            // Start sending invitations immediately
-            setTimeout(() => {
-              console.log('[Frontend] Calling sendInvitations()...');
-              sendInvitations();
-            }, 1000);
+            setTimeout(() => sendInvitations(), 500);
           } else if (result.qrCode) {
-            // Display QR code
-            console.log('[Frontend] QR code received, displaying...');
+            whatsappStatus.qrCode = result.qrCode;
             displayQRCode(result.qrCode);
             document.getElementById('qrStatus').textContent = 'Scan the QR code with WhatsApp to continue...';
-            
-            // Poll for ready status
             pollWhatsAppStatus();
           } else {
-            // No QR and not ready - wait a bit and poll
-            console.log('[Frontend] No QR code yet, starting to poll...');
             document.getElementById('qrStatus').textContent = 'Initializing WhatsApp...';
             pollWhatsAppStatus();
           }
@@ -521,6 +666,7 @@
         }
       } catch (error) {
         showMessage('Error initializing WhatsApp: ' + error.message, 'error');
+        document.getElementById('confirmBtn').disabled = false;
       }
     }
 
@@ -780,6 +926,9 @@
       
       // Stop any active polling to free memory
       stopPolling();
+      
+      // Reset WhatsApp status when sender changes
+      whatsappStatus = { ready: false, qrCode: null, initializing: false };
       
       // Reset current sender and guests
       if (this.value) {
