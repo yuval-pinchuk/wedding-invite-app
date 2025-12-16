@@ -206,10 +206,8 @@ export async function initializeWhatsApp(senderName = 'default') {
     whatsappClient.on('ready', async () => {
       const readyTime = Date.now() - initStartTime;
       console.log(`✅ WhatsApp client for ${senderName} is ready! (took ${(readyTime/1000).toFixed(1)}s)`);
-      // Wait a bit more to ensure everything is fully initialized
-      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Update status - make sure to get fresh status and update it
+      // Update status immediately (don't wait)
       const currentStatus = clientStatus.get(senderName);
       if (currentStatus) {
         currentStatus.isReady = true;
@@ -228,6 +226,9 @@ export async function initializeWhatsApp(senderName = 'default') {
       status.isReady = true;
       status.qrCode = null;
       status.qrCodeResolve = null;
+      
+      // Reduced delay - just ensure info is available
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       resolve(whatsappClient);
     });
@@ -424,6 +425,21 @@ export async function waitForReady(senderName = 'default', maxWaitTime = null) {
     const client = whatsappClients.get(senderName);
     console.log(`[waitForReady] Client exists. Status ready: ${status?.isReady}, has client: ${!!client}, has info: ${!!client?.info}`);
     
+    // If client has info.wid, it's ready even if status flag says otherwise
+    if (client && client.info && client.info.wid) {
+      // Client is actually ready - update status and return
+      if (status) {
+        status.isReady = true;
+        status.qrCode = null; // Clear QR code to free memory
+        clientStatus.set(senderName, status);
+        console.log(`[waitForReady] Client is ready (had info.wid), updated status and returning`);
+      } else {
+        clientStatus.set(senderName, { isReady: true, qrCode: null, qrCodeResolve: null });
+        console.log(`[waitForReady] Client is ready (had info.wid), created status and returning`);
+      }
+      return client;
+    }
+    
     if (status && status.isReady && client) {
       // Double-check that client is actually ready
       if (client.info && client.info.wid) {
@@ -444,20 +460,42 @@ export async function waitForReady(senderName = 'default', maxWaitTime = null) {
   let checkCount = 0;
   while (maxWaitTime === null || Date.now() - startTime < maxWaitTime) {
     const status = clientStatus.get(senderName);
+    const currentClient = whatsappClients.get(senderName) || client;
     checkCount++;
     
-    if (checkCount % 5 === 0) {
-      console.log(`[waitForReady] Still waiting... (check ${checkCount}, status ready: ${status?.isReady}, has client: ${!!client}, has info: ${!!client?.info})`);
+    // Check if client is actually ready (has info.wid), even if status flag says otherwise
+    if (currentClient && currentClient.info && currentClient.info.wid) {
+      // Client is ready - update status flag if needed
+      if (!status || !status.isReady) {
+        if (status) {
+          status.isReady = true;
+          status.qrCode = null;
+          clientStatus.set(senderName, status);
+        } else {
+          clientStatus.set(senderName, { isReady: true, qrCode: null, qrCodeResolve: null });
+        }
+        console.log(`[waitForReady] Client is ready (detected via info.wid), updated status after ${checkCount} checks!`);
+      } else {
+        console.log(`[waitForReady] Client is ready after ${checkCount} checks!`);
+      }
+      // Small delay to ensure everything is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return currentClient;
     }
     
-    if (status && status.isReady && client && client.info && client.info.wid) {
+    // Also check the status flag (original check)
+    if (status && status.isReady && currentClient && currentClient.info && currentClient.info.wid) {
       console.log(`[waitForReady] Client is ready after ${checkCount} checks!`);
-      // Add a small delay to ensure everything is fully initialized (reduced from 2000ms to 1000ms)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return client;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return currentClient;
     }
-    // Reduced polling interval from 1000ms to 500ms for faster response
-    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    if (checkCount % 10 === 0) {
+      console.log(`[waitForReady] Still waiting... (check ${checkCount}, status ready: ${status?.isReady}, has client: ${!!currentClient}, has info: ${!!currentClient?.info})`);
+    }
+    
+    // Polling interval (increased slightly to reduce CPU/memory pressure)
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
   throw new Error(`WhatsApp client for ${senderName} did not become ready within ${maxWaitTime}ms`);
