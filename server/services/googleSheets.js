@@ -3,21 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// #region agent log
-function agentLog(payload) {
-  const body = JSON.stringify({
-    sessionId: '899e20',
-    timestamp: Date.now(),
-    ...payload,
-  });
-  fetch('http://127.0.0.1:7242/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '899e20' },
-    body,
-  }).catch(() => {});
-}
-// #endregion
-
 let sheets = null;
 let auth = null;
 let serviceAccountEmail = null;
@@ -164,7 +149,7 @@ function mapDataRowsToGuests(rows) {
  * Column O: Sender (Hebrew name - filter by selected sender)
  * Phone number: Will be detected from columns (typically in a phone column)
  */
-export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
+export async function getGuestList(spreadsheetId, range = 'חינה!A:O') {
   try {
     const rows = await fetchSheetRows(spreadsheetId, range);
     if (rows.length === 0) {
@@ -199,7 +184,7 @@ function findPhoneNumber(row) {
  * Unique senders from column O on every data row.
  * (Do not derive from getGuestList: that drops rows without name+phone, which would hide senders.)
  */
-export async function getSenders(spreadsheetId, range = 'חתונה!A:O') {
+export async function getSenders(spreadsheetId, range = 'חינה!A:O') {
   const rows = await fetchSheetRows(spreadsheetId, range);
   if (rows.length <= 1) {
     return [];
@@ -207,8 +192,6 @@ export async function getSenders(spreadsheetId, range = 'חתונה!A:O') {
 
   const seen = new Set();
   const ordered = [];
-  let rowsWithO = 0;
-  let sparseRowWithO = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
@@ -217,10 +200,6 @@ export async function getSenders(spreadsheetId, range = 'חתונה!A:O') {
     if (!s) {
       continue;
     }
-    rowsWithO += 1;
-    if (row.length < 15) {
-      sparseRowWithO += 1;
-    }
     if (seen.has(s)) {
       continue;
     }
@@ -228,35 +207,13 @@ export async function getSenders(spreadsheetId, range = 'חתונה!A:O') {
     ordered.push(s);
   }
 
-  const mapped = mapDataRowsToGuests(rows);
-  const guestsFiltered = mapped.filter((g) => g.name && g.phoneTo);
-  const uniqueFromFilteredGuests = new Set(
-    guestsFiltered.map((g) => g.sender).filter((x) => x && String(x).trim()),
-  );
-
-  // #region agent log
-  agentLog({
-    hypothesisId: 'H1',
-    location: 'googleSheets.js:getSenders',
-    message: 'sender list sources',
-    data: {
-      dataRowCount: rows.length - 1,
-      rowsWithNonEmptyColO: rowsWithO,
-      sparseDataRowsWithColO: sparseRowWithO,
-      uniqueSendersFromColO: ordered.length,
-      uniqueSendersAfterGuestFilter: uniqueFromFilteredGuests.size,
-      mismatch: ordered.length !== uniqueFromFilteredGuests.size,
-    },
-  });
-  // #endregion
-
   return ordered;
 }
 
 /**
  * Get guest information by phone number
  */
-export async function getGuestByPhone(spreadsheetId, phone, range = 'חתונה!A:O') {
+export async function getGuestByPhone(spreadsheetId, phone, range = 'חינה!A:O') {
   if (!sheets) {
     await configureSheets();
   }
@@ -281,7 +238,7 @@ export async function getGuestByPhone(spreadsheetId, phone, range = 'חתונה!
 /**
  * Update send confirmation status for a guest (remove from send list)
  */
-export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = 'חתונה!A:O') {
+export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = 'חינה!A:O') {
   if (!sheets) {
     await configureSheets();
   }
@@ -328,7 +285,7 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
     // Update the cell
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `חתונה!N${rowNumber}`,
+      range: `חינה!N${rowNumber}`,
       valueInputOption: 'RAW',
       resource: {
         values: [[shouldSend ? 'v' : '']],
@@ -368,7 +325,7 @@ export async function saveRSVPResponse(
   phone,
   isAttending,
   numberOfGuests,
-  range = 'חתונה!A:E'
+  range = 'חינה!A:E'
 ) {
   if (!sheets) {
     await configureSheets();
@@ -397,7 +354,7 @@ export async function saveRSVPResponse(
       const rowNumber = existingRowIndex + 1;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `חתונה!A${rowNumber}:E${rowNumber}`,
+        range: `חינה!A${rowNumber}:E${rowNumber}`,
         valueInputOption: 'RAW',
         resource: {
           values,
@@ -441,7 +398,7 @@ export async function saveRSVPResponse(
 /**
  * Initialize headers in the responses sheet if they don't exist
  */
-export async function initializeResponseSheet(spreadsheetId, range = 'חתונה!A1:E1') {
+export async function initializeResponseSheet(spreadsheetId, range = 'חינה!A1:E1') {
   if (!sheets) {
     await configureSheets();
   }
@@ -449,14 +406,14 @@ export async function initializeResponseSheet(spreadsheetId, range = 'חתונה
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'חתונה!A1:E1',
+      range: 'חינה!A1:E1',
     });
 
     if (!response.data.values || response.data.values.length === 0) {
       // Add headers
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'חתונה!A1:E1',
+        range: 'חינה!A1:E1',
         valueInputOption: 'RAW',
         resource: {
           values: [['Name', 'Phone', 'RSVP Status', 'Number of Guests', 'Timestamp']],
