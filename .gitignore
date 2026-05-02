@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .env
 .env.*
 .DS_Store
@@ -9,3 +9,4 @@ dist/
 .wwebjs_auth/
 .wwebjs_auth_*/
 .wwebjs_cache/
+.baileys_auth_*/
