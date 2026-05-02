@@ -298,7 +298,59 @@ router.delete('/clear-session/:sender', async (req, res) => {
 });
 
 /**
+ * @param {string} sender
+ * @param {Array<{ name?: string, phone: string, addons?: string }>} guests
+ * @param {string} rsvpBaseUrl
+ * @param {(completed: number, guest: { name?: string, phone: string }, summary: { total: number, successful: number, failed: number, details: unknown[] }) => void} [afterEach]
+ */
+async function sendInvitationsSequential(sender, guests, rsvpBaseUrl, afterEach) {
+  await waitForReady(sender, null);
+  const summary = {
+    total: guests.length,
+    successful: 0,
+    failed: 0,
+    details: [],
+  };
+
+  for (let i = 0; i < guests.length; i++) {
+    const guest = guests[i];
+    const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phone)}`;
+    try {
+      const result = await sendWhatsAppInvitation({
+        to: guest.phone,
+        senderName: sender,
+        name: guest.name,
+        addons: guest.addons,
+        rsvpLink,
+      });
+      if (result.success) {
+        summary.successful++;
+      } else {
+        summary.failed++;
+      }
+      summary.details.push({
+        name: guest.name,
+        phone: guest.phone,
+        ...result,
+      });
+    } catch (error) {
+      summary.failed++;
+      summary.details.push({
+        name: guest.name,
+        phone: guest.phone,
+        success: false,
+        error: error.message,
+      });
+    }
+    afterEach?.(i + 1, guest, summary);
+  }
+
+  return summary;
+}
+
+/**
  * POST /api/admin/send-invitations — sequential sends (one Baileys client per sender).
+ * With `Accept: application/x-ndjson`, streams one JSON line per guest plus a final `done` or `error` line.
  */
 router.post('/send-invitations', async (req, res) => {
   try {
@@ -314,47 +366,43 @@ router.post('/send-invitations', async (req, res) => {
 
     console.log(`[send-invitations] sender=${sender} guests=${guests.length}`);
 
-    await waitForReady(sender, null);
+    const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
 
-    const summary = {
-      total: guests.length,
-      successful: 0,
-      failed: 0,
-      details: [],
-    };
-
-    for (let i = 0; i < guests.length; i++) {
-      const guest = guests[i];
-      const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phone)}`;
+    if (wantsNdjson) {
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('X-Accel-Buffering', 'no');
       try {
-        const result = await sendWhatsAppInvitation({
-          to: guest.phone,
-          senderName: sender,
-          name: guest.name,
-          addons: guest.addons,
-          rsvpLink,
+        const summary = await sendInvitationsSequential(sender, guests, rsvpBaseUrl, (completed, guest, s) => {
+          res.write(
+            `${JSON.stringify({
+              type: 'progress',
+              completed,
+              total: s.total,
+              successful: s.successful,
+              failed: s.failed,
+              lastPhone: guest.phone,
+            })}\n`,
+          );
         });
-        if (result.success) {
-          summary.successful++;
-        } else {
-          summary.failed++;
-        }
-        summary.details.push({
-          name: guest.name,
-          phone: guest.phone,
-          ...result,
-        });
+        console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
+        res.write(`${JSON.stringify({ type: 'done', success: true, ...summary })}\n`);
+        res.end();
       } catch (error) {
-        summary.failed++;
-        summary.details.push({
-          name: guest.name,
-          phone: guest.phone,
-          success: false,
-          error: error.message,
-        });
+        console.error('Error sending invitations (stream):', error);
+        res.write(
+          `${JSON.stringify({
+            type: 'error',
+            success: false,
+            error: error.message || 'Failed to send invitations',
+          })}\n`,
+        );
+        res.end();
       }
+      return;
     }
 
+    const summary = await sendInvitationsSequential(sender, guests, rsvpBaseUrl);
     console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
 
     res.json({

@@ -136,6 +136,23 @@
     }
     #qrCanvasHost { margin: 12px auto; min-height: 120px; }
     .qr-hint { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+    .qr-status-line { font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }
+    .wa-connected-notice {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--ok);
+      margin: 0 0 12px;
+      padding: 6px 12px;
+      display: inline-block;
+      border-radius: 8px;
+      background: rgba(34, 197, 94, 0.14);
+    }
+    .send-progress {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+    }
     #toast {
       position: fixed;
       bottom: 24px;
@@ -165,7 +182,7 @@
       <h2>1. Sender</h2>
       <div class="row">
         <div class="grow">
-          <label for="senderSelect">Sender (column O)</label>
+
           <select id="senderSelect"><option value="">Loading…</option></select>
         </div>
         <button type="button" class="btn-primary" id="loadGuestsBtn" disabled>Load guests</button>
@@ -174,12 +191,16 @@
 
     <div class="card hidden" id="stepQr">
       <h2>2. WhatsApp session</h2>
-      <p class="qr-hint">Scan once with WhatsApp (linked device). Session is stored on the server. Optional: set <code>WHATSAPP_WARM_SENDERS</code> in <code>.env</code> to connect at boot.</p>
-      <p id="qrStatus" class="qr-hint">Waiting…</p>
-      <div class="qr-wrap">
-        <div id="qrCanvasHost"></div>
+      <div id="waPairingUi">
+        <p id="qrStatus" class="qr-status-line">Waiting…</p>
+        <div class="qr-wrap">
+          <div id="qrCanvasHost"></div>
+        </div>
       </div>
-      <button type="button" class="btn-ghost" id="clearSessionBtn" style="margin-top:12px;">Clear session &amp; new QR</button>
+      <div id="waConnectedUi" class="hidden">
+        <p class="wa-connected-notice">WhatsApp connected</p>
+      </div>
+      <button type="button" class="btn-ghost" id="clearSessionBtn" style="margin-top:4px;">Clear session &amp; new QR</button>
     </div>
 
     <div class="card hidden" id="stepGuests">
@@ -194,6 +215,7 @@
       </div>
       <div class="guest-list" id="guestList"></div>
       <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>Send invitations</button>
+      <p id="sendProgress" class="send-progress hidden" aria-live="polite"></p>
       <div class="banner" id="sendBanner" role="status"></div>
     </div>
   </div>
@@ -219,6 +241,13 @@
       if (host) host.innerHTML = '';
     }
 
+    function setWaConnectedUi(connected) {
+      const pairing = document.getElementById('waPairingUi');
+      const connectedBox = document.getElementById('waConnectedUi');
+      if (pairing) pairing.classList.toggle('hidden', !!connected);
+      if (connectedBox) connectedBox.classList.toggle('hidden', !connected);
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       loadSenders();
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
@@ -240,6 +269,7 @@
       stopPolling();
       resetQrCanvas();
       wa = { ready: false, qr: null };
+      setWaConnectedUi(false);
       currentSender = v || '';
       guests = [];
     }
@@ -303,14 +333,16 @@
         });
         const data = await res.json();
         if (!data.success) {
+          setWaConnectedUi(false);
           document.getElementById('qrStatus').textContent = data.error || 'Init failed';
           return;
         }
         if (data.ready) {
           wa.ready = true;
-          document.getElementById('qrStatus').textContent = 'WhatsApp connected.';
+          setWaConnectedUi(true);
           return;
         }
+        setWaConnectedUi(false);
         if (data.qrCode) {
           wa.qr = data.qrCode;
           displayQR(data.qrCode, data.qrDataUrl);
@@ -331,11 +363,12 @@
           if (data.ready) {
             wa.ready = true;
             stopPolling();
-            document.getElementById('qrStatus').textContent = 'WhatsApp connected.';
+            setWaConnectedUi(true);
             resetQrCanvas();
             return;
           }
           if (data.qr) {
+            setWaConnectedUi(false);
             wa.qr = data.qr;
             const changed = displayQR(data.qr, data.qrDataUrl);
             if (changed) {
@@ -415,6 +448,7 @@
         const data = await res.json();
         toast(data.message || 'Cleared');
         wa = { ready: false, qr: null };
+        setWaConnectedUi(false);
         resetQrCanvas();
         document.getElementById('qrStatus').textContent = 'Session cleared. Reconnecting…';
         await initWaBackground();
@@ -506,6 +540,59 @@
       document.getElementById('sendBtn').disabled = n === 0;
     }
 
+    function formatSendProgressLine(ev) {
+      let s = ev.successful + ' / ' + ev.total + ' invitations delivered';
+      if (ev.failed > 0) {
+        s += ' (' + ev.failed + ' failed)';
+      }
+      if (ev.completed < ev.total) {
+        s += '…';
+      }
+      return s;
+    }
+
+    async function readSendInvitationsNdjson(res) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let lastDone = null;
+
+      function handleEvent(ev) {
+        if (ev.type === 'progress') {
+          const prog = document.getElementById('sendProgress');
+          prog.classList.remove('hidden');
+          prog.textContent = formatSendProgressLine(ev);
+        } else if (ev.type === 'done') {
+          lastDone = ev;
+        } else if (ev.type === 'error') {
+          throw new Error(ev.error || 'Send failed');
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          handleEvent(JSON.parse(line));
+        }
+        if (done) {
+          if (buffer.trim()) {
+            handleEvent(JSON.parse(buffer.trim()));
+          }
+          break;
+        }
+      }
+
+      if (!lastDone || !lastDone.success) {
+        throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
+      }
+      return lastDone;
+    }
+
     async function confirmAndSend() {
       const selected = guests.filter((g) => g.sendConfirmation === 'v' || g.sendConfirmation === 'V');
       if (!selected.length) {
@@ -516,6 +603,9 @@
 
       document.getElementById('sendBtn').disabled = true;
       const banner = document.getElementById('sendBanner');
+      const sendProgress = document.getElementById('sendProgress');
+      sendProgress.classList.add('hidden');
+      sendProgress.textContent = '';
       banner.className = 'banner show info';
       banner.textContent = 'Checking WhatsApp…';
 
@@ -527,22 +617,36 @@
           document.getElementById('sendBtn').disabled = false;
           return;
         }
-        banner.textContent = 'Sending…';
+        banner.className = 'banner show info';
+        banner.textContent = 'Sending invitations…';
+        sendProgress.classList.remove('hidden');
+        sendProgress.textContent = '0 / ' + selected.length + ' invitations delivered…';
+
         const res = await fetch('/api/admin/send-invitations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/x-ndjson',
+          },
           body: JSON.stringify({
             sender: currentSender,
             guests: selected.map((g) => ({ name: g.name, phone: g.phoneTo, addons: g.addons })),
           }),
         });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Send failed');
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || res.statusText || 'Send failed');
+        }
+
+        const data = await readSendInvitationsNdjson(res);
+        sendProgress.classList.add('hidden');
         banner.className = 'banner show success';
         banner.textContent =
-          'Done: ' + data.successful + ' sent' + (data.failed ? ', ' + data.failed + ' failed.' : '.');
+          'Done: ' + data.successful + ' delivered' + (data.failed ? ', ' + data.failed + ' failed.' : '.');
         toast('Finished');
       } catch (e) {
+        sendProgress.classList.add('hidden');
         banner.className = 'banner show error';
         banner.textContent = e.message;
         toast(e.message, true);
