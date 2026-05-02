@@ -3,6 +3,21 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// #region agent log
+function agentLog(payload) {
+  const body = JSON.stringify({
+    sessionId: '899e20',
+    timestamp: Date.now(),
+    ...payload,
+  });
+  fetch('http://127.0.0.1:7242/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '899e20' },
+    body,
+  }).catch(() => {});
+}
+// #endregion
+
 let sheets = null;
 let auth = null;
 let serviceAccountEmail = null;
@@ -101,6 +116,46 @@ export async function configureSheets() {
 }
 
 /**
+ * @param {string} spreadsheetId
+ * @param {string} range
+ * @returns {Promise<string[][]>}
+ */
+async function fetchSheetRows(spreadsheetId, range) {
+  if (!sheets) {
+    await configureSheets();
+  }
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+  return response.data.values || [];
+}
+
+/**
+ * Map data rows (excluding header) to guest objects; does not filter by name/phone.
+ * @param {string[][]} rows full sheet including row 0 = header
+ */
+function mapDataRowsToGuests(rows) {
+  if (rows.length <= 1) {
+    return [];
+  }
+  return rows.slice(1).map((row, index) => {
+    const firstName = (row[0] || '').trim();
+    const familyName = (row[1] || '').trim();
+    const fullName = [firstName, familyName].filter((n) => n).join(' ').trim();
+    return {
+      rowNumber: index + 2,
+      name: firstName,
+      fullName: fullName || firstName,
+      addons: row[11] || '',
+      sendConfirmation: (row[13] || '').toString().toLowerCase().trim(),
+      sender: row[14] || '',
+      phoneTo: findPhoneNumber(row),
+    };
+  });
+}
+
+/**
  * Read guest list from Google Sheet with Hebrew columns
  * Column A: First name (Hebrew)
  * Column B: Family name (Hebrew)
@@ -110,40 +165,12 @@ export async function configureSheets() {
  * Phone number: Will be detected from columns (typically in a phone column)
  */
 export async function getGuestList(spreadsheetId, range = 'חתונה!A:O') {
-  if (!sheets) {
-    await configureSheets();
-  }
-
   try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const rows = response.data.values || [];
-    
+    const rows = await fetchSheetRows(spreadsheetId, range);
     if (rows.length === 0) {
       return [];
     }
-
-    // Map rows to objects (column indices: A=0, B=1, L=11, N=13, O=14)
-    const guests = rows.slice(1).map((row, index) => {
-      const firstName = (row[0] || '').trim(); // Column A - First name
-      const familyName = (row[1] || '').trim(); // Column B - Family name
-      const fullName = [firstName, familyName].filter(n => n).join(' ').trim(); // Combine first and family name
-      
-      return {
-        rowNumber: index + 2, // +2 because we skip header and arrays are 0-indexed
-        name: firstName, // Column A - First name (kept for backward compatibility)
-        fullName: fullName || firstName, // Full name (first name + family name)
-        addons: row[11] || '', // Column L - Addons (optional)
-        sendConfirmation: (row[13] || '').toString().toLowerCase().trim(), // Column N - לשלוח אישורי הגעה
-        sender: row[14] || '', // Column O - Sender
-        phoneTo: findPhoneNumber(row), // Detect phone number from row
-      };
-    }).filter(guest => guest.name && guest.phoneTo); // Filter out empty rows
-
-    return guests;
+    return mapDataRowsToGuests(rows).filter((guest) => guest.name && guest.phoneTo);
   } catch (error) {
     console.error('Error reading guest list:', error);
     throw error;
@@ -169,12 +196,61 @@ function findPhoneNumber(row) {
 }
 
 /**
- * Get unique senders from the guest list (Column O)
+ * Unique senders from column O on every data row.
+ * (Do not derive from getGuestList: that drops rows without name+phone, which would hide senders.)
  */
 export async function getSenders(spreadsheetId, range = 'חתונה!A:O') {
-  const guests = await getGuestList(spreadsheetId, range);
-  const senders = [...new Set(guests.map(g => g.sender).filter(s => s && s.trim()))];
-  return senders;
+  const rows = await fetchSheetRows(spreadsheetId, range);
+  if (rows.length <= 1) {
+    return [];
+  }
+
+  const seen = new Set();
+  const ordered = [];
+  let rowsWithO = 0;
+  let sparseRowWithO = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const raw = row[14];
+    const s = (raw !== undefined && raw !== null ? String(raw) : '').trim();
+    if (!s) {
+      continue;
+    }
+    rowsWithO += 1;
+    if (row.length < 15) {
+      sparseRowWithO += 1;
+    }
+    if (seen.has(s)) {
+      continue;
+    }
+    seen.add(s);
+    ordered.push(s);
+  }
+
+  const mapped = mapDataRowsToGuests(rows);
+  const guestsFiltered = mapped.filter((g) => g.name && g.phoneTo);
+  const uniqueFromFilteredGuests = new Set(
+    guestsFiltered.map((g) => g.sender).filter((x) => x && String(x).trim()),
+  );
+
+  // #region agent log
+  agentLog({
+    hypothesisId: 'H1',
+    location: 'googleSheets.js:getSenders',
+    message: 'sender list sources',
+    data: {
+      dataRowCount: rows.length - 1,
+      rowsWithNonEmptyColO: rowsWithO,
+      sparseDataRowsWithColO: sparseRowWithO,
+      uniqueSendersFromColO: ordered.length,
+      uniqueSendersAfterGuestFilter: uniqueFromFilteredGuests.size,
+      mismatch: ordered.length !== uniqueFromFilteredGuests.size,
+    },
+  });
+  // #endregion
+
+  return ordered;
 }
 
 /**
