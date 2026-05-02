@@ -4,6 +4,8 @@
  * Environment (optional):
  * - WHATSAPP_SEND_DELAY_MS — pause after each successful send (default 600). Lower = faster, higher ban risk.
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
+ * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite text as caption.
+ *   If unset, looks for `henna_pic.jpg` in the project root (not cwd). If the file is missing, sends text only.
  *
  * Auth data per sender: `.baileys_auth_<urlencoded_sender>/` under server/ (see authDirForSender).
  * Unofficial clients may violate WhatsApp ToS; use at your own risk.
@@ -12,16 +14,15 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 import makeWASocket, { DisconnectReason, fetchLatestWaWebVersion, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import QRCode from 'qrcode';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+/** Project root (this file lives in server/services/). */
+const repoRoot = path.join(__dirname, '..', '..');
 
 /** @typedef {{ sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean }} SenderSession */
 
@@ -29,6 +30,8 @@ const __dirname = path.dirname(__filename);
 const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
+
+const DEFAULT_INVITE_IMAGE_NAME = 'henna_pic.jpg';
 
 function sessionKey(senderName) {
   return (senderName || '').trim();
@@ -56,6 +59,27 @@ export function authDirForSender(senderName) {
 function getSendDelayMs() {
   const n = parseInt(process.env.WHATSAPP_SEND_DELAY_MS || '600', 10);
   return Number.isFinite(n) && n >= 0 ? n : 600;
+}
+
+/** Resolved path to optional invite image (JPEG/PNG). */
+function resolveInviteImagePath() {
+  const raw = (process.env.WHATSAPP_INVITE_IMAGE_PATH || DEFAULT_INVITE_IMAGE_NAME).trim();
+  if (!raw) {
+    return path.join(repoRoot, DEFAULT_INVITE_IMAGE_NAME);
+  }
+  return path.isAbsolute(raw) ? raw : path.join(repoRoot, raw);
+}
+
+function readInviteImageBuffer() {
+  const imagePath = resolveInviteImagePath();
+  if (!fs.existsSync(imagePath)) {
+    return null;
+  }
+  try {
+    return fs.readFileSync(imagePath);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -255,26 +279,56 @@ export async function destroySession(senderName) {
   sessions.delete(key);
 }
 
-function composeMessageText(name, addons, rsvpLink) {
-  let message = `שלום ${name}, הינכם מוזמנים לחתונה של דניאל ויובל! לאישור הגעה לחצו על הקישור:`;
-  if (addons && String(addons).trim()) {
-    message = `שלום ${name} ו${addons}, הינכם מוזמנים לחתונה של דניאל ויובל! לאישור הגעה לחצו על הקישור:`;
-  }
-  return `${message}\n\n${rsvpLink}`;
+/**
+ * Normalize add-ons cell text (strip bidi marks Google Sheets sometimes inserts).
+ */
+function normalizeAddonsCell(addonsStr) {
+  return String(addonsStr || '')
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .trim();
 }
 
 /**
- * @param {{ to: string, senderName: string, name: string, addons?: string, rsvpLink: string }} payload
+ * Sheet shapes:
+ * - One add-on: "מתן" → שלום {name} ומתן
+ * - Two in one cell: "עמרי ומתן" (space before conjunctive ו) → שלום {name}, עמרי ומתן
+ * - Several with commas: "יובל, עמרי ומתן" / "דניאל, יובל, עמרי ומתן" → שלום {name}, <full cell>
+ */
+function openingLineWithAddons(name, addonsRaw) {
+  const s = normalizeAddonsCell(addonsRaw);
+  if (!s) {
+    return `שלום ${name},`;
+  }
+  const hasComma = /,/.test(s);
+  // Conjunctive ו: whitespace before it, then the next name (with or without space after ו).
+  // Not ו inside a word (e.g. "יובל" has no space before ו).
+  const hasConjunctiveVav = /[\s\u00A0\u2009\u202F]+\u05D5\s*\S/.test(s);
+  if (hasComma || hasConjunctiveVav) {
+    return `שלום ${name}, ${s}`;
+  }
+  return `שלום ${name} ו${s}`;
+}
+
+function composeMessageText(name, addons) {
+  const opener = openingLineWithAddons(name, addons);
+  return `${opener}
+הנכם מוזמנים למסיבת החינה של דניאל אביטל ויובל פינצ׳וק🪬
+פרטים נוספים ישלחו בהמשך,
+מחכים לחגוג איתכם❤️`;
+}
+
+/**
+ * @param {{ to: string, senderName: string, name: string, addons?: string }} payload
  */
 export async function sendWhatsAppInvitation(payload) {
-  const { to, senderName, name, addons, rsvpLink } = payload;
-  if (!to || !senderName || !rsvpLink) {
-    return { success: false, error: 'Missing to, senderName, or rsvpLink', to: to || '' };
+  const { to, senderName, name, addons } = payload;
+  if (!to || !senderName) {
+    return { success: false, error: 'Missing to or senderName', to: to || '' };
   }
 
   const digits = formatPhoneNumber(to);
   const jid = `${digits}@s.whatsapp.net`;
-  const text = composeMessageText(name || 'אורח', addons, rsvpLink);
+  const text = composeMessageText(name || 'אורח', addons);
 
   try {
     const sock = await waitForReady(senderName, null);
@@ -282,7 +336,12 @@ export async function sendWhatsAppInvitation(payload) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
 
-    await sock.sendMessage(jid, { text });
+    const imageBuf = readInviteImageBuffer();
+    if (imageBuf) {
+      await sock.sendMessage(jid, { image: imageBuf, caption: text });
+    } else {
+      await sock.sendMessage(jid, { text });
+    }
     const delayMs = getSendDelayMs();
     if (delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));

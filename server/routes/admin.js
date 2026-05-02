@@ -1,4 +1,5 @@
 import express from 'express';
+import { envGuestSheetId } from '../config/loadEnv.js';
 import { getSenders, getGuestList, updateSendConfirmation } from '../services/googleSheets.js';
 import {
   initializeWhatsApp,
@@ -10,11 +11,12 @@ import {
   destroySession,
   baileysPairingToQrDataUrl,
 } from '../services/whatsapp.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 const router = express.Router();
+
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
 
 /** @type {Map<string, string>} raw pairing string → PNG data URL */
 const qrPngByPairing = new Map();
@@ -50,7 +52,7 @@ async function safeQrDataUrl(raw) {
 
 router.get('/senders', async (req, res) => {
   try {
-    const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
+    const guestSheetId = envGuestSheetId();
     if (!guestSheetId) {
       return res.status(500).json({
         success: false,
@@ -75,7 +77,7 @@ router.get('/senders', async (req, res) => {
 router.get('/guests/:sender', async (req, res) => {
   try {
     const { sender } = req.params;
-    const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
+    const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
       return res.status(500).json({
@@ -106,7 +108,7 @@ router.get('/guests/:sender', async (req, res) => {
 router.post('/update-send-status', async (req, res) => {
   try {
     const { phone, shouldSend } = req.body;
-    const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
+    const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
       return res.status(500).json({
@@ -300,10 +302,9 @@ router.delete('/clear-session/:sender', async (req, res) => {
 /**
  * @param {string} sender
  * @param {Array<{ name?: string, phone: string, addons?: string }>} guests
- * @param {string} rsvpBaseUrl
  * @param {(completed: number, guest: { name?: string, phone: string }, summary: { total: number, successful: number, failed: number, details: unknown[] }) => void} [afterEach]
  */
-async function sendInvitationsSequential(sender, guests, rsvpBaseUrl, afterEach) {
+async function sendInvitationsSequential(sender, guests, afterEach) {
   await waitForReady(sender, null);
   const summary = {
     total: guests.length,
@@ -314,14 +315,12 @@ async function sendInvitationsSequential(sender, guests, rsvpBaseUrl, afterEach)
 
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
-    const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phone)}`;
     try {
       const result = await sendWhatsAppInvitation({
         to: guest.phone,
         senderName: sender,
         name: guest.name,
         addons: guest.addons,
-        rsvpLink,
       });
       if (result.success) {
         summary.successful++;
@@ -355,7 +354,6 @@ async function sendInvitationsSequential(sender, guests, rsvpBaseUrl, afterEach)
 router.post('/send-invitations', async (req, res) => {
   try {
     const { sender, guests } = req.body;
-    const rsvpBaseUrl = process.env.RSVP_BASE_URL || 'http://localhost:8080';
 
     if (!sender || !guests || !Array.isArray(guests)) {
       return res.status(400).json({
@@ -373,7 +371,7 @@ router.post('/send-invitations', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('X-Accel-Buffering', 'no');
       try {
-        const summary = await sendInvitationsSequential(sender, guests, rsvpBaseUrl, (completed, guest, s) => {
+        const summary = await sendInvitationsSequential(sender, guests, (completed, guest, s) => {
           res.write(
             `${JSON.stringify({
               type: 'progress',
@@ -402,7 +400,7 @@ router.post('/send-invitations', async (req, res) => {
       return;
     }
 
-    const summary = await sendInvitationsSequential(sender, guests, rsvpBaseUrl);
+    const summary = await sendInvitationsSequential(sender, guests);
     console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
 
     res.json({
