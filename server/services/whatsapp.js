@@ -279,14 +279,41 @@ export async function destroySession(senderName) {
   sessions.delete(key);
 }
 
+/**
+ * Normalize add-ons cell text (strip bidi marks Google Sheets sometimes inserts).
+ */
+function normalizeAddonsCell(addonsStr) {
+  return String(addonsStr || '')
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .trim();
+}
+
+/**
+ * Sheet shapes:
+ * - One add-on: "מתן" → שלום {name} ומתן
+ * - Two in one cell: "עמרי ומתן" (space before conjunctive ו) → שלום {name}, עמרי ומתן
+ * - Several with commas: "יובל, עמרי ומתן" / "דניאל, יובל, עמרי ומתן" → שלום {name}, <full cell>
+ */
+function openingLineWithAddons(name, addonsRaw) {
+  const s = normalizeAddonsCell(addonsRaw);
+  if (!s) {
+    return `שלום ${name},`;
+  }
+  const hasComma = /,/.test(s);
+  // Conjunctive ו: whitespace before it, then the next name (with or without space after ו).
+  // Not ו inside a word (e.g. "יובל" has no space before ו).
+  const hasConjunctiveVav = /[\s\u00A0\u2009\u202F]+\u05D5\s*\S/.test(s);
+  if (hasComma || hasConjunctiveVav) {
+    return `שלום ${name}, ${s}`;
+  }
+  return `שלום ${name} ו${s}`;
+}
+
 function composeMessageText(name, addons) {
-  const opener =
-    addons && String(addons).trim()
-      ? `שלום ${name} ו${addons},`
-      : `שלום ${name},`;
+  const opener = openingLineWithAddons(name, addons);
   return `${opener}
 הנכם מוזמנים למסיבת החינה של דניאל אביטל ויובל פינצ׳וק🪬
-הזמנה תישלח בהמשך,
+פרטים נוספים ישלחו בהמשך,
 מחכים לחגוג איתכם❤️`;
 }
 
