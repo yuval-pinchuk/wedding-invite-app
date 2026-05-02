@@ -212,6 +212,7 @@
       <div class="toolbar">
         <button type="button" class="btn-ghost" id="selectAllBtn">Select all</button>
         <button type="button" class="btn-ghost" id="deselectAllBtn">Deselect all</button>
+        <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
       <div class="guest-list" id="guestList"></div>
       <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>Send invitations</button>
@@ -254,6 +255,7 @@
       document.getElementById('senderSelect').addEventListener('change', onSenderChange);
       document.getElementById('selectAllBtn').addEventListener('click', selectAll);
       document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+      document.getElementById('refreshSheetBtn').addEventListener('click', refreshGuestsFromSheet);
       document.getElementById('sendBtn').addEventListener('click', confirmAndSend);
       document.getElementById('clearSessionBtn').addEventListener('click', clearSession);
     });
@@ -300,6 +302,18 @@
       }
     }
 
+    async function fetchGuestsForSender(sender) {
+      const bust = '_=' + Date.now();
+      const res = await noStoreFetch(
+        '/api/admin/guests/' + encodeURIComponent(sender) + '?' + bust
+      );
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to load guests');
+      }
+      return data.guests;
+    }
+
     async function loadGuests() {
       const sender = document.getElementById('senderSelect').value;
       if (!sender) {
@@ -309,13 +323,7 @@
       currentSender = sender;
       toast('Loading guests…');
       try {
-        const res = await noStoreFetch('/api/admin/guests/' + encodeURIComponent(sender));
-        const data = await res.json();
-        if (!data.success) {
-          toast(data.error || 'Failed', true);
-          return;
-        }
-        guests = data.guests;
+        guests = await fetchGuestsForSender(sender);
         document.getElementById('stepGuests').classList.remove('hidden');
         document.getElementById('stepQr').classList.remove('hidden');
         displayGuests();
@@ -325,6 +333,29 @@
         toast('Guests loaded');
       } catch (e) {
         toast(e.message, true);
+      }
+    }
+
+    /** Re-read the Google Sheet without restarting WhatsApp (use after editing the sheet). */
+    async function refreshGuestsFromSheet() {
+      const sender = document.getElementById('senderSelect').value;
+      if (!sender) {
+        toast('Select a sender first', true);
+        return;
+      }
+      const btn = document.getElementById('refreshSheetBtn');
+      btn.disabled = true;
+      toast('Refreshing from sheet…');
+      try {
+        guests = await fetchGuestsForSender(sender);
+        currentSender = sender;
+        displayGuests();
+        updateStats();
+        toast('Sheet data updated');
+      } catch (e) {
+        toast(e.message, true);
+      } finally {
+        btn.disabled = false;
       }
     }
 
