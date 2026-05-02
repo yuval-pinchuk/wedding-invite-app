@@ -1,5 +1,6 @@
-import dotenv from 'dotenv';
+import '../server/config/loadEnv.js';
 import readline from 'readline';
+import { envGuestSheetId } from '../server/config/loadEnv.js';
 import { configureSheets, getGuestList, getSenders, filterGuestsBySender } from '../server/services/googleSheets.js';
 import {
   initializeWhatsApp,
@@ -7,12 +8,10 @@ import {
   sendWhatsAppInvitation,
 } from '../server/services/whatsapp.js';
 
-dotenv.config();
-
 /**
  * Usage: npm run send:invitations
  *
- * Requires Google env vars + RSVP_BASE_URL.
+ * Requires Google env vars.
  * WhatsApp: Baileys (personal). First run: scan QR in admin or run init once.
  */
 
@@ -49,8 +48,7 @@ function askForSender(senders) {
 
 async function sendInvitations() {
   try {
-    const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
-    const rsvpBaseUrl = process.env.RSVP_BASE_URL || 'http://localhost:8080';
+    const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
       console.error('Error: GOOGLE_GUEST_SHEET_ID is not set');
@@ -96,13 +94,11 @@ async function sendInvitations() {
         results.failed++;
         continue;
       }
-      const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phoneTo)}`;
       const res = await sendWhatsAppInvitation({
         to: guest.phoneTo,
         senderName: selectedSender,
         name: guest.name,
         addons: guest.addons,
-        rsvpLink,
       });
       if (res.success) {
         results.successful++;

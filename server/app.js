@@ -1,15 +1,13 @@
+import './config/loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 
 import rsvpRouter from './routes/rsvp.js';
 import adminRouter from './routes/admin.js';
 import { configureSheets } from './services/googleSheets.js';
 import { warmWhatsAppSessions } from './services/whatsapp.js';
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8080;

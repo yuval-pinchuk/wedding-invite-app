@@ -1,7 +1,4 @@
 import { google } from 'googleapis';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 let sheets = null;
 let auth = null;

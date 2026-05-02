@@ -260,6 +260,10 @@
 
     window.addEventListener('beforeunload', () => stopPolling());
 
+    function noStoreFetch(input, init) {
+      return fetch(input, { cache: 'no-store', ...(init || {}) });
+    }
+
     function onSenderChange() {
       const v = document.getElementById('senderSelect').value;
       document.getElementById('loadGuestsBtn').disabled = !v;
@@ -276,7 +280,7 @@
 
     async function loadSenders() {
       try {
-        const res = await fetch('/api/admin/senders');
+        const res = await noStoreFetch('/api/admin/senders');
         const data = await res.json();
         const sel = document.getElementById('senderSelect');
         if (!data.success) {
@@ -305,7 +309,7 @@
       currentSender = sender;
       toast('Loading guests…');
       try {
-        const res = await fetch('/api/admin/guests/' + encodeURIComponent(sender));
+        const res = await noStoreFetch('/api/admin/guests/' + encodeURIComponent(sender));
         const data = await res.json();
         if (!data.success) {
           toast(data.error || 'Failed', true);
@@ -326,7 +330,7 @@
 
     async function initWaBackground() {
       try {
-        const res = await fetch('/api/admin/init-whatsapp', {
+        const res = await noStoreFetch('/api/admin/init-whatsapp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sender: currentSender }),
@@ -358,7 +362,7 @@
       stopPolling();
       pollingInterval = setInterval(async () => {
         try {
-          const res = await fetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender));
+          const res = await noStoreFetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender));
           const data = await res.json();
           if (data.ready) {
             wa.ready = true;
@@ -444,7 +448,7 @@
       if (!confirm('Clear WhatsApp session for this sender? You will need to scan QR again.')) return;
       stopPolling();
       try {
-        const res = await fetch('/api/admin/clear-session/' + encodeURIComponent(currentSender), { method: 'DELETE' });
+        const res = await noStoreFetch('/api/admin/clear-session/' + encodeURIComponent(currentSender), { method: 'DELETE' });
         const data = await res.json();
         toast(data.message || 'Cleared');
         wa = { ready: false, qr: null };
@@ -500,7 +504,7 @@
     }
 
     async function updateSendStatus(phone, shouldSend) {
-      const res = await fetch('/api/admin/update-send-status', {
+      const res = await noStoreFetch('/api/admin/update-send-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, shouldSend }),
@@ -610,7 +614,7 @@
       banner.textContent = 'Checking WhatsApp…';
 
       try {
-        const st = await fetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender)).then((r) => r.json());
+        const st = await noStoreFetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender)).then((r) => r.json());
         if (!st.ready) {
           banner.className = 'banner show error';
           banner.textContent = 'WhatsApp not connected. Scan QR in step 2.';
@@ -622,7 +626,7 @@
         sendProgress.classList.remove('hidden');
         sendProgress.textContent = '0 / ' + selected.length + ' invitations delivered…';
 
-        const res = await fetch('/api/admin/send-invitations', {
+        const res = await noStoreFetch('/api/admin/send-invitations', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

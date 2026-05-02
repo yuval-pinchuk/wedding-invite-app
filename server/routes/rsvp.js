@@ -1,4 +1,5 @@
 import express from 'express';
+import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
 import { saveRSVPResponse, initializeResponseSheet } from '../services/googleSheets.js';
 
 const router = express.Router();
@@ -35,8 +36,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Get spreadsheet ID from environment
-    const responseSheetId = process.env.GOOGLE_RESPONSE_SHEET_ID;
+    const responseSheetId = envResponseSheetId();
     if (!responseSheetId) {
       return res.status(500).json({
         success: false,
@@ -71,7 +71,7 @@ router.post('/', async (req, res) => {
         error: error.message || 'Permission denied. Please ensure the service account has access to the response sheet.',
         details: serviceAccountEmail ? {
           serviceAccountEmail,
-          instructions: `To fix this:\n1. Open your Google Sheet (ID: ${process.env.GOOGLE_RESPONSE_SHEET_ID})\n2. Click the "Share" button\n3. Add this email: ${serviceAccountEmail}\n4. Give it "Editor" permissions\n5. Click "Send"`
+          instructions: `To fix this:\n1. Open your Google Sheet (ID: ${envResponseSheetId()})\n2. Click the "Share" button\n3. Add this email: ${serviceAccountEmail}\n4. Give it "Editor" permissions\n5. Click "Send"`
         } : null
       });
     }
@@ -91,7 +91,7 @@ router.post('/', async (req, res) => {
 router.get('/guest/:phone', async (req, res) => {
   try {
     const { phone } = req.params;
-    const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
+    const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
       return res.status(500).json({
