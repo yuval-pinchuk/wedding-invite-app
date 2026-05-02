@@ -1,24 +1,53 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { getSenders, getGuestList, filterGuestsBySender, updateSendConfirmation } from '../services/googleSheets.js';
-import { initializeWhatsApp, waitForReady, sendWhatsAppInvitation, getQRCode, getStatus, getClient } from '../services/whatsapp.js';
+import { getSenders, getGuestList, updateSendConfirmation } from '../services/googleSheets.js';
+import {
+  initializeWhatsApp,
+  waitForReady,
+  sendWhatsAppInvitation,
+  getQRCode,
+  getStatus,
+  getClient,
+  destroySession,
+  baileysPairingToQrDataUrl,
+} from '../services/whatsapp.js';
 import dotenv from 'dotenv';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
 const router = express.Router();
 
-// QR codes and status are now stored in whatsapp.js service
+/** @type {Map<string, string>} raw pairing string → PNG data URL */
+const qrPngByPairing = new Map();
+const QR_PNG_CACHE_MAX = 12;
 
-/**
- * GET /api/admin/senders
- * Get list of all senders
- */
+async function qrDataUrlForPairing(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return null;
+  }
+  const cached = qrPngByPairing.get(raw);
+  if (cached) {
+    return cached;
+  }
+  const dataUrl = await baileysPairingToQrDataUrl(raw);
+  if (qrPngByPairing.size >= QR_PNG_CACHE_MAX) {
+    const oldest = qrPngByPairing.keys().next().value;
+    if (oldest !== undefined) {
+      qrPngByPairing.delete(oldest);
+    }
+  }
+  qrPngByPairing.set(raw, dataUrl);
+  return dataUrl;
+}
+
+async function safeQrDataUrl(raw) {
+  try {
+    return await qrDataUrlForPairing(raw);
+  } catch (e) {
+    console.error('[admin] QR PNG encode failed', e);
+    return null;
+  }
+}
+
 router.get('/senders', async (req, res) => {
   try {
     const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
@@ -43,15 +72,11 @@ router.get('/senders', async (req, res) => {
   }
 });
 
-/**
- * GET /api/admin/guests/:sender
- * Get guests for a specific sender (all guests, not just those marked to send)
- */
 router.get('/guests/:sender', async (req, res) => {
   try {
     const { sender } = req.params;
     const guestSheetId = process.env.GOOGLE_GUEST_SHEET_ID;
-    
+
     if (!guestSheetId) {
       return res.status(500).json({
         success: false,
@@ -60,8 +85,7 @@ router.get('/guests/:sender', async (req, res) => {
     }
 
     const allGuests = await getGuestList(guestSheetId);
-    // Filter by sender only (not by sendConfirmation)
-    const senderGuests = allGuests.filter(guest => {
+    const senderGuests = allGuests.filter((guest) => {
       const matchesSender = guest.sender && guest.sender.trim() === sender.trim();
       return matchesSender;
     });
@@ -79,10 +103,6 @@ router.get('/guests/:sender', async (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/update-send-status
- * Update send confirmation status for a guest
- */
 router.post('/update-send-status', async (req, res) => {
   try {
     const { phone, shouldSend } = req.body;
@@ -117,8 +137,7 @@ router.post('/update-send-status', async (req, res) => {
 });
 
 /**
- * POST /api/admin/init-whatsapp
- * Initialize WhatsApp and return QR code
+ * POST /api/admin/init-whatsapp — start Baileys; poll until QR or open.
  */
 router.post('/init-whatsapp', async (req, res) => {
   try {
@@ -131,223 +150,155 @@ router.post('/init-whatsapp', async (req, res) => {
       });
     }
 
-    console.log(`[init-whatsapp] Request for sender: ${sender}`);
-
-    // Check if QR code already exists
     let qrCode = getQRCode(sender);
     const status = getStatus(sender);
 
-    console.log(`[init-whatsapp] Current status - ready: ${status.ready}, hasQR: ${!!qrCode}`);
-
-    // If already ready, return immediately
     if (status.ready) {
       return res.json({
         success: true,
-        qrCode: status.qrCode,
+        qrCode: null,
         ready: true,
       });
     }
 
-    // If QR code exists but not ready, return it
     if (qrCode) {
+      const qrDataUrl = await safeQrDataUrl(qrCode);
       return res.json({
         success: true,
         qrCode,
+        qrDataUrl,
         ready: false,
       });
     }
 
-    // Check if there's a saved session that might prevent QR generation
-    const sessionPath = path.resolve(__dirname, `../.wwebjs_auth_${encodeURIComponent(sender)}`);
-    const hasSession = fs.existsSync(sessionPath);
-    
-    if (hasSession) {
-      console.log(`[init-whatsapp] Found existing session for ${sender} at ${sessionPath}`);
-      console.log(`[init-whatsapp] QR code may not be generated if session is valid`);
-    }
-
-    // Initialize WhatsApp (this will trigger QR code generation)
-    // Don't wait for ready, just start initialization
     let initError = null;
-    let initPromise = null;
-    
-    console.log(`[init-whatsapp] Starting WhatsApp initialization for ${sender}...`);
-    
-    try {
-      initPromise = initializeWhatsApp(sender);
-      // Set up error handler
-      initPromise.catch(err => {
-        console.error('[init-whatsapp] Error initializing WhatsApp:', err);
-        initError = err;
-      });
-    } catch (err) {
-      console.error('[init-whatsapp] Exception during initializeWhatsApp call:', err);
+    const initPromise = initializeWhatsApp(sender).catch((err) => {
+      console.error('[init-whatsapp]', err);
       initError = err;
-    }
+    });
 
-    // Wait for either QR code OR client to become ready (unlimited time)
-    // If session exists, client will go straight to ready without QR
-    console.log(`[init-whatsapp] Waiting for QR code or ready status...`);
     let attempts = 0;
-    
     while (!qrCode && !initError) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Check for QR code
-      qrCode = getQRCode(sender);
-      
-      // Check if client became ready (from saved session)
-      const currentStatus = getStatus(sender);
-      if (currentStatus.ready) {
-        console.log(`[init-whatsapp] Client is ready (saved session used, no QR needed)`);
+      await new Promise((r) => setTimeout(r, 400));
+      attempts += 1;
+      if (getStatus(sender).ready) {
         return res.json({
           success: true,
           qrCode: null,
           ready: true,
-          message: 'WhatsApp is ready using saved session. No QR code needed.',
         });
       }
-      
-      attempts++;
-      
-      if (attempts % 10 === 0) {
-        console.log(`[init-whatsapp] Still waiting... (${attempts * 0.5}s elapsed)`);
+      qrCode = getQRCode(sender);
+      const cur = getStatus(sender);
+      if (cur.ready) {
+        return res.json({
+          success: true,
+          qrCode: null,
+          ready: true,
+        });
       }
-      
-      // Check if initialization promise rejected (non-blocking check)
-      if (initPromise && initError === null) {
+      if (attempts % 25 === 0) {
         try {
           await Promise.race([
-            Promise.resolve(initPromise).then(() => {}).catch(e => { throw e; }),
-            new Promise(resolve => setTimeout(resolve, 50))
+            initPromise,
+            new Promise((r) => setTimeout(r, 50)),
           ]);
-        } catch (err) {
-          if (!initError) {
-            console.error('[init-whatsapp] Detected initialization error:', err);
-            initError = err;
-          }
+        } catch (e) {
+          initError = e;
         }
       }
     }
 
-    // Check if there was an initialization error
     if (initError) {
-      console.error('[init-whatsapp] Initialization failed:', initError);
       return res.status(500).json({
         success: false,
-        error: `Failed to initialize WhatsApp: ${initError.message || String(initError)}. Check server logs for details.`,
+        error: initError.message || String(initError),
       });
     }
 
-    // If we get here, we have a QR code
-    if (!qrCode) {
-      // This shouldn't happen due to the while loop, but just in case
-      const finalStatus = getStatus(sender);
-      if (finalStatus.ready) {
-        return res.json({
-          success: true,
-          qrCode: null,
-          ready: true,
-          message: 'WhatsApp is ready using saved session.',
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        error: 'QR code not generated and client not ready. Check server logs for errors.',
-        hasSession: hasSession || false,
-      });
-    }
-
-    console.log(`[init-whatsapp] QR code generated successfully for ${sender}`);
-    console.log(`[init-whatsapp] QR code length: ${qrCode ? qrCode.length : 'null'}`);
-    console.log(`[init-whatsapp] Sending response with QR code...`);
-    
-    // Ensure we send a valid JSON response
-    try {
-      return res.json({
-        success: true,
-        qrCode,
-        ready: false,
-      });
-    } catch (jsonError) {
-      console.error('[init-whatsapp] Error sending JSON response:', jsonError);
-      // Fallback - try to send without QR code if it's too large
+    if (getStatus(sender).ready) {
       return res.json({
         success: true,
         qrCode: null,
-        ready: false,
-        error: 'QR code generated but too large to send. Check server logs.',
+        ready: true,
       });
     }
+
+    const qrDataUrl = qrCode ? await safeQrDataUrl(qrCode) : null;
+    return res.json({
+      success: true,
+      qrCode,
+      qrDataUrl,
+      ready: false,
+    });
   } catch (error) {
-    console.error('[init-whatsapp] Unexpected error:', error);
-    console.error('[init-whatsapp] Error stack:', error.stack);
-    
-    // Ensure we always send a valid JSON response
-    try {
-      return res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to initialize WhatsApp',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      });
-    } catch (jsonError) {
-      // Last resort - send minimal response
-      console.error('[init-whatsapp] Critical: Cannot send JSON response:', jsonError);
-      res.status(500).send(JSON.stringify({
-        success: false,
-        error: 'Internal server error',
-      }));
-    }
+    console.error('[init-whatsapp]', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to initialize WhatsApp',
+    });
   }
 });
 
 /**
  * GET /api/admin/whatsapp-status/:sender
- * Check WhatsApp connection status
  */
 router.get('/whatsapp-status/:sender', async (req, res) => {
   try {
     const { sender } = req.params;
     let status = getStatus(sender);
 
-    // Check the actual client status more thoroughly
-    // If client has info.wid, it's definitely ready regardless of status flag
     try {
       const client = getClient(sender);
-      if (client && client.info && client.info.wid) {
-        // Client is actually ready - override status
-        status.ready = true;
-        status.qrCode = null; // Clear QR code since we're ready (memory optimization)
-        // Only log when status changes to ready (not on every poll)
-        if (!status.ready) {
-          console.log(`[whatsapp-status] ✅ Client for ${sender} is ready (has info.wid: ${client.info.wid.user})`);
-        }
+      if (client?.user?.id) {
+        status = { ready: true, qrCode: null };
       }
-    } catch (error) {
-      // Client not ready yet or doesn't exist - silent fail to reduce logging
+    } catch {
+      /* ignore */
     }
 
-    const finalReady = status.ready || false;
-
+    const raw = status.qrCode || null;
+    const qrDataUrl = raw ? await safeQrDataUrl(raw) : null;
     res.json({
       success: true,
-      ready: finalReady,
-      qr: status.qrCode || null,
+      ready: status.ready || false,
+      qr: raw,
+      qrDataUrl,
     });
   } catch (error) {
-    console.error('[whatsapp-status] Error:', error);
+    console.error('[whatsapp-status]', error);
     res.json({
       success: true,
       ready: false,
       qr: null,
+      qrDataUrl: null,
     });
   }
 });
 
 /**
- * POST /api/admin/send-invitations
- * Send invitations to a list of guests
+ * DELETE /api/admin/clear-session/:sender — logout Baileys and delete auth folder.
+ */
+router.delete('/clear-session/:sender', async (req, res) => {
+  try {
+    const { sender } = req.params;
+    await destroySession(sender);
+
+    res.json({
+      success: true,
+      message: `Session cleared for ${sender}. Next connect will show a new QR code.`,
+    });
+  } catch (error) {
+    console.error('Error clearing session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to clear session',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/send-invitations — sequential sends (one Baileys client per sender).
  */
 router.post('/send-invitations', async (req, res) => {
   try {
@@ -361,70 +312,41 @@ router.post('/send-invitations', async (req, res) => {
       });
     }
 
-    // Ensure WhatsApp is ready (wait indefinitely)
-    console.log(`[send-invitations] Request received for sender: ${sender}, guests: ${guests.length}`);
-    console.log(`[send-invitations] Waiting for WhatsApp to be ready for ${sender}...`);
-    const client = await waitForReady(sender, null); // null = unlimited wait time
-    console.log(`[send-invitations] WhatsApp is ready, client info:`, client?.info ? 'has info' : 'no info');
-    console.log(`[send-invitations] Starting to send ${guests.length} invitations...`);
+    console.log(`[send-invitations] sender=${sender} guests=${guests.length}`);
 
-    const results = {
+    await waitForReady(sender, null);
+
+    const summary = {
       total: guests.length,
       successful: 0,
       failed: 0,
       details: [],
     };
 
-    // Compose Hebrew message function
-    function composeHebrewMessage(name, addons, rsvpLink) {
-      let message = `שלום ${name}, הינכם מוזמנים לחתונה של דניאל ויובל! לאישור הגעה לחצו על הקישור:`;
-      
-      if (addons && addons.trim()) {
-        message = `שלום ${name} ו${addons}, הינכם מוזמנים לחתונה של דניאל ויובל! לאישור הגעה לחצו על הקישור:`;
-      }
-      
-      return message;
-    }
-
-    // Send invitations
-    console.log(`[send-invitations] Starting to send to ${guests.length} guests...`);
     for (let i = 0; i < guests.length; i++) {
       const guest = guests[i];
+      const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phone)}`;
       try {
-        console.log(`[send-invitations] Sending to guest ${i + 1}/${guests.length}: ${guest.name} (${guest.phone})`);
-        const rsvpLink = `${rsvpBaseUrl}?phone=${encodeURIComponent(guest.phone)}`;
-        const message = composeHebrewMessage(guest.name, guest.addons, rsvpLink);
-
-        const result = await sendWhatsAppInvitation(
-          guest.phone,
-          sender,
-          message,
-          rsvpLink
-        );
-
-        console.log(`[send-invitations] Result for ${guest.name}:`, result.success ? 'SUCCESS' : 'FAILED', result.error || '');
-
+        const result = await sendWhatsAppInvitation({
+          to: guest.phone,
+          senderName: sender,
+          name: guest.name,
+          addons: guest.addons,
+          rsvpLink,
+        });
         if (result.success) {
-          results.successful++;
+          summary.successful++;
         } else {
-          results.failed++;
+          summary.failed++;
         }
-
-        results.details.push({
+        summary.details.push({
           name: guest.name,
           phone: guest.phone,
           ...result,
         });
-
-        // Delay between messages
-        if (i < guests.length - 1) {
-          console.log(`[send-invitations] Waiting 3 seconds before next message...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
       } catch (error) {
-        console.error(`[send-invitations] Exception sending to ${guest.name}:`, error);
-        results.failed++;
-        results.details.push({
+        summary.failed++;
+        summary.details.push({
           name: guest.name,
           phone: guest.phone,
           success: false,
@@ -432,12 +354,12 @@ router.post('/send-invitations', async (req, res) => {
         });
       }
     }
-    
-    console.log(`[send-invitations] Finished sending. Success: ${results.successful}, Failed: ${results.failed}`);
+
+    console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
 
     res.json({
       success: true,
-      ...results,
+      ...summary,
     });
   } catch (error) {
     console.error('Error sending invitations:', error);
@@ -448,48 +370,4 @@ router.post('/send-invitations', async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/admin/clear-session/:sender
- * Clear WhatsApp session to force QR code generation
- */
-router.delete('/clear-session/:sender', async (req, res) => {
-  try {
-    const { sender } = req.params;
-    
-    const sessionPath = path.resolve(__dirname, `../.wwebjs_auth_${encodeURIComponent(sender)}`);
-    
-    if (fs.existsSync(sessionPath)) {
-      fs.rmSync(sessionPath, { recursive: true, force: true });
-      console.log(`[clear-session] Deleted session for ${sender} at ${sessionPath}`);
-      
-      // Also clear from memory
-      const client = getClient(sender);
-      if (client) {
-        try {
-          await client.destroy();
-        } catch (err) {
-          console.warn(`[clear-session] Error destroying client:`, err.message);
-        }
-      }
-      
-      res.json({
-        success: true,
-        message: `Session cleared for ${sender}. Next initialization will require QR code.`,
-      });
-    } else {
-      res.json({
-        success: true,
-        message: `No session found for ${sender}.`,
-      });
-    }
-  } catch (error) {
-    console.error('Error clearing session:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to clear session',
-    });
-  }
-});
-
 export default router;
-
