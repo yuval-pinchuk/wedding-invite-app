@@ -137,6 +137,9 @@ function mapDataRowsToGuests(rows) {
   });
 }
 
+/** Read wide enough for phone cells placed after column O (API omits trailing empties only). */
+const GUEST_SHEET_READ_RANGE = 'חינה!A:Z';
+
 /**
  * Read guest list from Google Sheet with Hebrew columns
  * Column A: First name (Hebrew)
@@ -144,15 +147,16 @@ function mapDataRowsToGuests(rows) {
  * Column L: Addons (optional, Hebrew name)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
- * Phone number: Will be detected from columns (typically in a phone column)
+ * Phone number: detected by scanning the row (often in a column after O)
  */
-export async function getGuestList(spreadsheetId, range = 'חינה!A:O') {
+export async function getGuestList(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
   try {
     const rows = await fetchSheetRows(spreadsheetId, range);
     if (rows.length === 0) {
       return [];
     }
-    return mapDataRowsToGuests(rows).filter((guest) => guest.name && guest.phoneTo);
+    const mapped = mapDataRowsToGuests(rows);
+    return mapped.filter((guest) => guest.name && guest.phoneTo);
   } catch (error) {
     console.error('Error reading guest list:', error);
     throw error;
@@ -160,17 +164,27 @@ export async function getGuestList(spreadsheetId, range = 'חינה!A:O') {
 }
 
 /**
+ * Normalize pasted phone cells: bidi marks, soft hyphen, and Unicode dashes
+ * (U+2010–U+2015, minus sign, fullwidth hyphen, etc.) → ASCII hyphen for /[\d\s\-\+\(\)]{8,}/.
+ */
+function normalizePhoneCell(raw) {
+  return String(raw ?? '')
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/\u00AD/g, '')
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+    .trim();
+}
+
+/**
  * Find phone number in a row (typically in columns with phone-like patterns)
  * Looks for columns that match phone number patterns
  */
 function findPhoneNumber(row) {
-  // Common phone number columns might be in different positions
-  // Try to find a column that looks like a phone number
+  const phonePattern = /[\d\s\-\+\(\)]{8,}/;
   for (let i = 0; i < row.length; i++) {
-    const cell = (row[i] || '').toString().trim();
-    // Check if it looks like a phone number (contains digits, might have +, -, spaces, etc.)
-    const phonePattern = /[\d\s\-\+\(\)]{8,}/;
-    if (phonePattern.test(cell) && cell.replace(/[\s\-\+\(\)]/g, '').length >= 8) {
+    const cell = normalizePhoneCell((row[i] || '').toString());
+    const digitsOnlyLen = cell.replace(/\D/g, '').length;
+    if (digitsOnlyLen >= 8 && phonePattern.test(cell)) {
       return cell;
     }
   }
@@ -181,7 +195,7 @@ function findPhoneNumber(row) {
  * Unique senders from column O on every data row.
  * (Do not derive from getGuestList: that drops rows without name+phone, which would hide senders.)
  */
-export async function getSenders(spreadsheetId, range = 'חינה!A:O') {
+export async function getSenders(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
   const rows = await fetchSheetRows(spreadsheetId, range);
   if (rows.length <= 1) {
     return [];
@@ -210,19 +224,22 @@ export async function getSenders(spreadsheetId, range = 'חינה!A:O') {
 /**
  * Get guest information by phone number
  */
-export async function getGuestByPhone(spreadsheetId, phone, range = 'חינה!A:O') {
+export async function getGuestByPhone(spreadsheetId, phone, range = GUEST_SHEET_READ_RANGE) {
   if (!sheets) {
     await configureSheets();
   }
 
   try {
     const guests = await getGuestList(spreadsheetId, range);
-    // Normalize phone for comparison (remove spaces, dashes, etc.)
-    const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, '');
-    
-    const guest = guests.find(g => {
-      const guestPhone = (g.phoneTo || '').replace(/[\s\-\+\(\)]/g, '');
-      return guestPhone === normalizedPhone || guestPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(guestPhone);
+    const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
+
+    const guest = guests.find((g) => {
+      const guestPhone = normalizePhoneCell(g.phoneTo || '').replace(/\D/g, '');
+      return (
+        guestPhone === normalizedPhone ||
+        guestPhone.endsWith(normalizedPhone) ||
+        normalizedPhone.endsWith(guestPhone)
+      );
     });
 
     return guest || null;
@@ -235,7 +252,7 @@ export async function getGuestByPhone(spreadsheetId, phone, range = 'חינה!A:
 /**
  * Update send confirmation status for a guest (remove from send list)
  */
-export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = 'חינה!A:O') {
+export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = GUEST_SHEET_READ_RANGE) {
   if (!sheets) {
     await configureSheets();
   }
@@ -253,15 +270,15 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
     }
 
     // Find the row with matching phone number
-    const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, '');
+    const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
     let rowIndex = -1;
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       // Check all columns for phone number
       for (let j = 0; j < row.length; j++) {
-        const cell = (row[j] || '').toString().trim();
-        const cellPhone = cell.replace(/[\s\-\+\(\)]/g, '');
+        const cell = normalizePhoneCell((row[j] || '').toString());
+        const cellPhone = cell.replace(/\D/g, '');
         if (cellPhone === normalizedPhone || cellPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(cellPhone)) {
           rowIndex = i;
           break;
