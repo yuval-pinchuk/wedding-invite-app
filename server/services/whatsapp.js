@@ -31,7 +31,7 @@ const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
 
-const DEFAULT_INVITE_IMAGE_NAME = 'wedding.png';
+const DEFAULT_INVITE_IMAGE_NAME = 'wedding.jpg';
 
 function sessionKey(senderName) {
   return (senderName || '').trim();
