@@ -312,8 +312,8 @@ function openingLineWithAddons(name, addonsRaw) {
 function composeMessageText(name, addons) {
   const opener = openingLineWithAddons(name, addons);
   return `${opener}
-הנכם מוזמנים למסיבת החינה של דניאל אביטל ויובל פינצ׳וק🪬
-פרטים נוספים ישלחו בהמשך,
+מתרגשים להזמינכם לחתונה של דניאל אביטל ויובל פינצ׳וק!
+שריינו את התאריך- פרטים נוספים יישלחו בהמשך
 מחכים לחגוג איתכם❤️`;
 }
 
