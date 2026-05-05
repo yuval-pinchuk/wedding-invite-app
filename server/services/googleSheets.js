@@ -137,8 +137,11 @@ function mapDataRowsToGuests(rows) {
   });
 }
 
+/** Guest list worksheet name (must match the Google Sheet tab exactly). */
+const GUEST_SHEET_TAB = 'חתונה';
+
 /** Read wide enough for phone cells placed after column O (API omits trailing empties only). */
-const GUEST_SHEET_READ_RANGE = 'חינה!A:Z';
+const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
 
 /**
  * Read guest list from Google Sheet with Hebrew columns
@@ -299,7 +302,7 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
     // Update the cell
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `חינה!N${rowNumber}`,
+      range: `${GUEST_SHEET_TAB}!N${rowNumber}`,
       valueInputOption: 'RAW',
       resource: {
         values: [[shouldSend ? 'v' : '']],
@@ -339,7 +342,7 @@ export async function saveRSVPResponse(
   phone,
   isAttending,
   numberOfGuests,
-  range = 'חינה!A:E'
+  range = `${GUEST_SHEET_TAB}!A:E`
 ) {
   if (!sheets) {
     await configureSheets();
@@ -368,7 +371,7 @@ export async function saveRSVPResponse(
       const rowNumber = existingRowIndex + 1;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `חינה!A${rowNumber}:E${rowNumber}`,
+        range: `${GUEST_SHEET_TAB}!A${rowNumber}:E${rowNumber}`,
         valueInputOption: 'RAW',
         resource: {
           values,
@@ -412,7 +415,7 @@ export async function saveRSVPResponse(
 /**
  * Initialize headers in the responses sheet if they don't exist
  */
-export async function initializeResponseSheet(spreadsheetId, range = 'חינה!A1:E1') {
+export async function initializeResponseSheet(spreadsheetId, range = `${GUEST_SHEET_TAB}!A1:E1`) {
   if (!sheets) {
     await configureSheets();
   }
@@ -420,14 +423,14 @@ export async function initializeResponseSheet(spreadsheetId, range = 'חינה!A
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'חינה!A1:E1',
+      range: `${GUEST_SHEET_TAB}!A1:E1`,
     });
 
     if (!response.data.values || response.data.values.length === 0) {
       // Add headers
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'חינה!A1:E1',
+        range: `${GUEST_SHEET_TAB}!A1:E1`,
         valueInputOption: 'RAW',
         resource: {
           values: [['Name', 'Phone', 'RSVP Status', 'Number of Guests', 'Timestamp']],
