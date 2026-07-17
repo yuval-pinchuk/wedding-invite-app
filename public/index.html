@@ -595,6 +595,185 @@
       gap: 32px;
     }
 
+    /* ── Gift / Bit pay ── */
+    .gift-section {
+      width: 100%;
+      text-align: center;
+    }
+
+    .gift-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+
+    .gift-amount-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .gift-currency {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    #giftAmount {
+      width: 140px;
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding: 14px 12px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    #giftAmount:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .gift-note {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+
+    .gift-faq-link {
+      display: inline-block;
+      margin-top: 14px;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--accent-dark);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+
+    .gift-faq-link:hover {
+      color: var(--text);
+    }
+
+    .gift-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .gift-modal.hidden {
+      display: none;
+    }
+
+    .gift-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(61, 54, 48, 0.45);
+    }
+
+    .gift-modal-card {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      max-height: calc(100dvh - 40px);
+      overflow-y: auto;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 28px 24px 24px;
+      box-shadow: 0 20px 50px rgba(61, 54, 48, 0.2);
+      text-align: center;
+    }
+
+    .gift-modal-body {
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .gift-modal-body p + p {
+      margin-top: 14px;
+    }
+
+    .gift-modal-heart {
+      margin-top: 24px;
+      font-size: 1.75rem;
+      line-height: 1;
+    }
+
+    #giftFaqClose {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #giftFaqClose:hover {
+      background: var(--accent-dark);
+    }
+
+    #giftFaqClose:active {
+      transform: scale(0.98);
+    }
+
+    .gift-error {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: var(--error-text);
+      display: none;
+    }
+
+    .gift-error.show {
+      display: block;
+    }
+
+    #giftPayBtn {
+      width: 100%;
+      max-width: 280px;
+      padding: 16px 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #giftPayBtn:hover {
+      background: var(--accent-dark);
+    }
+
+    #giftPayBtn:active {
+      transform: scale(0.98);
+    }
+
     .section-dots {
       position: fixed;
       left: 50%;
@@ -717,12 +896,12 @@
                 </div>
 
                 <div class="form-group">
-                  <label for="numberOfBabies">כמה תינוקות (עד גיל 6)?</label>
+                  <label for="numberOfBabies">כמה ילדים (עד גיל 6)?</label>
                   <input type="number" id="numberOfBabies" name="numberOfBabies" min="0" value="0">
                 </div>
 
                 <div class="form-group">
-                  <label>יש טבעונים/צמחונים?</label>
+                  <label>טבעונים/צמחונים?</label>
                   <div class="vegan-toggle radio-group">
                     <div class="radio-option">
                       <input type="radio" id="veganYes" name="hasVegan" value="true">
@@ -746,7 +925,7 @@
                 </div>
               </div>
 
-              <button type="submit" id="submitBtn">שליחת אישור הגעה</button>
+              <button type="submit" id="submitBtn">שליחת תשובה</button>
             </form>
 
             <div class="message" id="message"></div>
@@ -754,7 +933,28 @@
         </div>
       </section>
 
-      <section class="page-section" data-section="2" aria-label="ניווט לאולם">
+      <section class="page-section" data-section="2" aria-label="שליחת מתנה">
+        <div class="section-inner no-scroll">
+          <div class="gift-section">
+            <h2 class="section-title">שליחת מתנה</h2>
+            <p class="gift-subtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לפתיחת ביט</p>
+            <div class="form-group">
+              <label for="giftAmount">סכום בש״ח</label>
+              <div class="gift-amount-wrap">
+                <span class="gift-currency">₪</span>
+                <input type="text" id="giftAmount" name="giftAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="5" placeholder="0">
+              </div>
+            </div>
+            <button type="button" id="giftPayBtn">שליחת מתנה ב-Bit</button>
+            <p class="gift-note">הקישור יפתח את אפליקציית ביט בנייד.</p>
+            <p class="gift-note">לאחר הפתיחה, הזינו את הסכום הרצוי שנית.</p>
+            <button type="button" class="gift-faq-link" id="giftFaqTrigger">למה אני צריך להזין את הסכום פעמיים?</button>
+            <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section" data-section="3" aria-label="ניווט לאולם">
         <div class="section-inner no-scroll">
           <div class="directions-section">
             <h2 class="section-title">איך מגיעים</h2>
@@ -782,8 +982,22 @@
     <nav class="section-dots" id="sectionDots" aria-label="ניווט בין חלקי הדף">
       <button type="button" class="section-dot is-active" data-goto="0" aria-label="הזמנה"></button>
       <button type="button" class="section-dot" data-goto="1" aria-label="אישור הגעה"></button>
-      <button type="button" class="section-dot" data-goto="2" aria-label="ניווט"></button>
+      <button type="button" class="section-dot" data-goto="2" aria-label="מתנה"></button>
+      <button type="button" class="section-dot" data-goto="3" aria-label="ניווט"></button>
     </nav>
+
+    <div class="gift-modal hidden" id="giftFaqModal" role="dialog" aria-modal="true" aria-labelledby="giftFaqTitle">
+      <div class="gift-modal-backdrop" id="giftFaqBackdrop"></div>
+      <div class="gift-modal-card">
+        <div class="gift-modal-body" id="giftFaqTitle">
+          <p>אתר האינטרנט ואפליקציות התשלום עובדות בנפרד.</p>
+          <p>ההזנה באתר מתבצעת על מנת לקשר בין האורח לבין המתנה שנשלחה.</p>
+          <p>תודה על ההבנה!</p>
+        </div>
+        <p class="gift-modal-heart" aria-hidden="true">❤️</p>
+        <button type="button" id="giftFaqClose">הבנתי תודה!</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -807,6 +1021,17 @@
     const charCount = document.getElementById('charCount');
     const submitBtn = document.getElementById('submitBtn');
     const messageDiv = document.getElementById('message');
+    const giftAmountInput = document.getElementById('giftAmount');
+    const giftPayBtn = document.getElementById('giftPayBtn');
+    const giftError = document.getElementById('giftError');
+    const giftFaqTrigger = document.getElementById('giftFaqTrigger');
+    const giftFaqModal = document.getElementById('giftFaqModal');
+    const giftFaqBackdrop = document.getElementById('giftFaqBackdrop');
+    const giftFaqClose = document.getElementById('giftFaqClose');
+
+    const BIT_PAY_URL = 'https://www.bitpay.co.il/app/me/8583B20C-F2B6-1E4E-0480-7EAEBE6D88D33F2A';
+    const GIFT_MIN_AMOUNT = 1;
+    const GIFT_MAX_AMOUNT = 15000;
 
     function showGateError(text) {
       gateErrorText.textContent = text;
@@ -969,6 +1194,7 @@
       }, { passive: true });
 
       window.addEventListener('keydown', (e) => {
+        if (!giftFaqModal.classList.contains('hidden')) return;
         if (wheelLocked || animating) return;
         if (e.key === 'ArrowDown' || e.key === 'PageDown') {
           e.preventDefault();
@@ -988,6 +1214,76 @@
 
       scrollHint.addEventListener('click', () => goTo(1));
     }
+
+    function sanitizeGiftAmount(value) {
+      const digits = value.replace(/\D/g, '');
+      if (!digits) return '';
+      const num = parseInt(digits, 10);
+      if (num > GIFT_MAX_AMOUNT) return String(GIFT_MAX_AMOUNT);
+      return digits;
+    }
+
+    function showGiftError(message) {
+      giftError.textContent = message;
+      giftError.classList.add('show');
+    }
+
+    giftPayBtn.addEventListener('click', () => {
+      const amount = parseInt(giftAmountInput.value, 10);
+      if (isNaN(amount) || amount < GIFT_MIN_AMOUNT) {
+        showGiftError(`אנא הזינו סכום בין ₪${GIFT_MIN_AMOUNT} ל-₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
+        giftAmountInput.focus();
+        return;
+      }
+      if (amount > GIFT_MAX_AMOUNT) {
+        showGiftError(`הסכום המקסימלי הוא ₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
+        giftAmountInput.focus();
+        return;
+      }
+      giftError.classList.remove('show');
+      window.location.href = BIT_PAY_URL;
+    });
+
+    giftAmountInput.addEventListener('input', () => {
+      giftError.classList.remove('show');
+      const sanitized = sanitizeGiftAmount(giftAmountInput.value);
+      if (giftAmountInput.value !== sanitized) {
+        giftAmountInput.value = sanitized;
+      }
+    });
+
+    giftAmountInput.addEventListener('keydown', (e) => {
+      if (['e', 'E', '+', '-', '.', ','].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    giftAmountInput.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      giftAmountInput.value = sanitizeGiftAmount(pasted);
+      giftError.classList.remove('show');
+    });
+
+    function openGiftFaqModal() {
+      giftFaqModal.classList.remove('hidden');
+      giftFaqClose.focus();
+    }
+
+    function closeGiftFaqModal() {
+      giftFaqModal.classList.add('hidden');
+      giftFaqTrigger.focus();
+    }
+
+    giftFaqTrigger.addEventListener('click', openGiftFaqModal);
+    giftFaqClose.addEventListener('click', closeGiftFaqModal);
+    giftFaqBackdrop.addEventListener('click', closeGiftFaqModal);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !giftFaqModal.classList.contains('hidden')) {
+        closeGiftFaqModal();
+      }
+    });
 
     function toggleAttendingDetails() {
       if (yesRadio.checked) {
