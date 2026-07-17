@@ -1,10 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wedding RSVP</title>
+  <title>אישור הגעה לחתונה</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --cream: #FAF7F2;
+      --cream-dark: #F0EBE3;
+      --text: #3D3630;
+      --text-muted: #7A7168;
+      --accent: #C4A574;
+      --accent-dark: #A88B5E;
+      --envelope: #E8DFD0;
+      --envelope-flap: #DDD4C4;
+      --error-bg: #FDF0EE;
+      --error-text: #8B3A32;
+      --success-bg: #EEF5EE;
+      --success-text: #2D5A32;
+      --radius: 14px;
+      --font: 'Heebo', system-ui, sans-serif;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -12,81 +32,400 @@
     }
 
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
+      font-family: var(--font);
+      background: var(--cream);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    body.scroll-locked {
+      overflow: hidden;
+      height: 100dvh;
+    }
+
+    .sections-viewport {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .page-section {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page-section.is-active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      z-index: 2;
+    }
+
+    .page-section.is-animating {
+      z-index: 3;
+      pointer-events: none;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .page-section.is-exiting {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .page-section.exit-down {
+      opacity: 0;
+      transform: translateY(-48px);
+    }
+
+    .page-section.exit-up {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    .page-section.enter-from-below {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    .page-section.enter-from-above {
+      opacity: 0;
+      transform: translateY(-48px);
+    }
+
+    .page-section.enter-from-below.is-visible,
+    .page-section.enter-from-above.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .section-inner {
+      width: 100%;
+      max-width: 480px;
+      max-height: calc(100dvh - 80px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+
+    .section-inner.no-scroll {
+      overflow: visible;
+    }
+
+    .page-section[data-section="0"] {
+      padding-bottom: 32px;
+    }
+
+    .page-section[data-section="0"] .section-inner {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      height: calc(100dvh - 48px);
+      max-height: none;
+      position: relative;
     }
 
-    .container {
-      background: white;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      max-width: 500px;
+    .page-section[data-section="0"] .envelope-scene {
+      transform: translateY(-56px);
+    }
+
+    /* ── Hero / Envelope ── */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: visible;
       width: 100%;
-      padding: 40px;
-      animation: fadeIn 0.5s ease-in;
     }
 
-    @keyframes fadeIn {
+    .envelope-scene {
+      position: relative;
+      width: min(260px, 72vw);
+      height: 420px;
+      perspective: 800px;
+      overflow: visible;
+    }
+
+    .envelope {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      height: 160px;
+      opacity: 0;
+      z-index: 1;
+      animation:
+        floatUpFade 1.2s ease-out forwards,
+        envelopeFadeOut 0.9s ease-out 2.5s forwards;
+    }
+
+    @keyframes floatUpFade {
       from {
         opacity: 0;
-        transform: translateY(-20px);
+        transform: translateX(-50%) translateY(80px);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateX(-50%) translateY(0);
       }
     }
 
-    h1 {
-      color: #667eea;
-      text-align: center;
-      margin-bottom: 10px;
-      font-size: 2.5em;
+    @keyframes envelopeFadeOut {
+      to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+      }
     }
 
-    .subtitle {
+    .envelope-body {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 120px;
+      background: var(--envelope);
+      border-radius: 4px 4px 8px 8px;
+      box-shadow: 0 8px 30px rgba(61, 54, 48, 0.12);
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .envelope-body::before,
+    .envelope-body::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      background: var(--envelope-flap);
+    }
+
+    .envelope-body::before {
+      left: 0;
+      clip-path: polygon(0 0, 100% 50%, 0 100%);
+    }
+
+    .envelope-body::after {
+      right: 0;
+      clip-path: polygon(100% 0, 0 50%, 100% 100%);
+    }
+
+    .envelope-flap {
+      position: absolute;
+      top: 40px;
+      left: 0;
+      width: 100%;
+      height: 80px;
+      background: var(--envelope-flap);
+      clip-path: polygon(0 0, 50% 100%, 100% 0);
+      transform-origin: top center;
+      z-index: 3;
+      animation: flapOpen 0.6s ease-in-out 1.2s forwards;
+    }
+
+    @keyframes flapOpen {
+      from { transform: rotateX(0deg); }
+      to { transform: rotateX(180deg); }
+    }
+
+    .invite-card {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(40px) scale(0.92);
+      width: 78%;
+      z-index: 10;
+      opacity: 0;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(61, 54, 48, 0.15);
+      animation:
+        cardSlideOut 0.7s ease-out 1.8s forwards,
+        cardFloatBob 3.5s ease-in-out 2.5s infinite;
+    }
+
+    @keyframes cardSlideOut {
+      0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40px) scale(0.92);
+      }
+      40% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-10px) scale(1);
+      }
+    }
+
+    @keyframes cardFloatBob {
+      0%, 100% {
+        transform: translateX(-50%) translateY(-10px) scale(1);
+      }
+      50% {
+        transform: translateX(-50%) translateY(-26px) scale(1);
+      }
+    }
+
+    .invite-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .scroll-hint {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      background: none;
+      border: none;
+      font-family: inherit;
+      cursor: pointer;
+      opacity: 0;
+      animation: hintFade 0.6s ease-out 2.6s forwards;
+      z-index: 5;
+    }
+
+    @keyframes hintFade {
+      to { opacity: 1; }
+    }
+
+    .scroll-hint svg {
+      animation: bounce 2s ease-in-out 3s infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(6px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .envelope {
+        opacity: 0;
+        animation: none;
+        transform: translateX(-50%);
+      }
+      .envelope-flap {
+        animation: none;
+        transform: rotateX(180deg);
+        opacity: 0.3;
+      }
+      .invite-card {
+        opacity: 1;
+        animation: none;
+        transform: translateX(-50%) translateY(-10px) scale(1);
+      }
+      .scroll-hint {
+        animation: none;
+        opacity: 1;
+      }
+      .scroll-hint svg {
+        animation: none;
+      }
+    }
+
+    /* ── Error state ── */
+    .gate-error {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
       text-align: center;
-      color: #666;
-      margin-bottom: 30px;
-      font-size: 1.1em;
+    }
+
+    .gate-error p {
+      font-size: 1.15rem;
+      color: var(--error-text);
+      background: var(--error-bg);
+      padding: 24px 28px;
+      border-radius: var(--radius);
+      max-width: 360px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* ── RSVP section ── */
+    .rsvp-section {
+      width: 100%;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 28px;
+      color: var(--text);
     }
 
     .form-group {
-      margin-bottom: 25px;
+      margin-bottom: 22px;
     }
 
     label {
       display: block;
       margin-bottom: 8px;
-      color: #333;
-      font-weight: 600;
+      font-weight: 500;
+      font-size: 0.95rem;
+      color: var(--text);
     }
 
-    input[type="text"],
-    input[type="tel"],
-    input[type="number"] {
+    input[type="number"],
+    textarea {
       width: 100%;
-      padding: 12px 15px;
-      border: 2px solid #e0e0e0;
-      border-radius: 10px;
+      padding: 14px 16px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
+      font-family: inherit;
       font-size: 16px;
-      transition: border-color 0.3s;
+      background: #fff;
+      color: var(--text);
+      transition: border-color 0.2s;
     }
 
-    input:focus {
+    input[type="number"]:focus,
+    textarea:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .char-counter {
+      text-align: left;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
     }
 
     .radio-group {
       display: flex;
-      gap: 20px;
-      margin-top: 10px;
+      gap: 12px;
     }
 
     .radio-option {
@@ -97,274 +436,683 @@
     .radio-option input[type="radio"] {
       position: absolute;
       opacity: 0;
+      width: 100%;
+      height: 100%;
       cursor: pointer;
+      z-index: 1;
     }
 
     .radio-label {
       display: block;
-      padding: 15px;
-      border: 2px solid #e0e0e0;
-      border-radius: 10px;
+      padding: 16px 12px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
       text-align: center;
-      cursor: pointer;
-      transition: all 0.3s;
       font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fff;
     }
 
     .radio-option input[type="radio"]:checked + .radio-label {
-      background: #667eea;
-      color: white;
-      border-color: #667eea;
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
     }
 
     .radio-option:hover .radio-label {
-      border-color: #667eea;
+      border-color: var(--accent);
     }
 
-    .guests-input {
-      display: none;
-      margin-top: 15px;
+    .attending-details {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease;
+      margin-bottom: 0;
     }
 
-    .guests-input.show {
-      display: block;
+    .attending-details.show {
+      max-height: 600px;
+      opacity: 1;
+      margin-bottom: 22px;
     }
 
-    button {
+    .vegan-toggle {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .vegan-count {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+    }
+
+    .vegan-count.show {
+      max-height: 100px;
+      opacity: 1;
+    }
+
+    button[type="submit"] {
       width: 100%;
-      padding: 15px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      padding: 16px;
+      background: var(--accent);
+      color: #fff;
       border: none;
-      border-radius: 10px;
-      font-size: 18px;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.05rem;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
-      margin-top: 10px;
+      transition: background 0.2s, transform 0.1s;
+      margin-top: 8px;
     }
 
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    button[type="submit"]:hover:not(:disabled) {
+      background: var(--accent-dark);
     }
 
-    button:active {
-      transform: translateY(0);
+    button[type="submit"]:active:not(:disabled) {
+      transform: scale(0.98);
     }
 
-    button:disabled {
+    button[type="submit"]:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      transform: none;
-    }
-
-    .message {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 10px;
-      text-align: center;
-      display: none;
-    }
-
-    .message.show {
-      display: block;
-      animation: slideIn 0.3s ease-out;
-    }
-
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .message.success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-
-    .message.error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
     }
 
     .loading {
       display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(255, 255, 255, 0.3);
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 50%;
-      border-top-color: white;
-      animation: spin 1s ease-in-out infinite;
-      margin-right: 10px;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
       vertical-align: middle;
+      margin-left: 8px;
     }
 
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    .heart {
-      color: #e91e63;
-      font-size: 1.2em;
+    .message {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: var(--radius);
+      text-align: center;
+      display: none;
+      font-size: 0.95rem;
+    }
+
+    .message.show {
+      display: block;
+      animation: msgIn 0.3s ease-out;
+    }
+
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.success {
+      background: var(--success-bg);
+      color: var(--success-text);
+    }
+
+    .message.error {
+      background: var(--error-bg);
+      color: var(--error-text);
+    }
+
+    /* ── Venue links ── */
+    .directions-section {
+      width: 100%;
+      text-align: center;
+    }
+
+    .directions-address {
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .directions-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 36px;
+    }
+
+    .venue-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+    }
+
+    .section-dots {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .section-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      background: var(--cream-dark);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .section-dot.is-active {
+      background: var(--accent);
+      transform: scale(1.2);
+    }
+
+    .venue-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      transition: color 0.2s, transform 0.15s;
+    }
+
+    .venue-link:hover {
+      color: var(--text);
+      transform: translateY(-2px);
+    }
+
+    .venue-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--cream-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .venue-link:hover .venue-icon {
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(196, 165, 116, 0.25);
+    }
+
+    .venue-icon img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Wedding RSVP <span class="heart">💕</span></h1>
-    <p class="subtitle">We'd love to celebrate with you!</p>
+  <div id="gateError" class="gate-error hidden">
+    <p id="gateErrorText"></p>
+  </div>
 
-    <form id="rsvpForm">
-      <div class="form-group">
-        <label for="name">Your Name *</label>
-        <input type="text" id="name" name="name" required placeholder="Enter your full name">
-      </div>
-
-      <div class="form-group">
-        <label for="phone">Phone Number *</label>
-        <input type="tel" id="phone" name="phone" required placeholder="+1234567890">
-      </div>
-
-      <div class="form-group">
-        <label>Will you be attending? *</label>
-        <div class="radio-group">
-          <div class="radio-option">
-            <input type="radio" id="yes" name="isAttending" value="true" required>
-            <label for="yes" class="radio-label">Yes! 🎉</label>
+  <div id="mainContent" class="hidden">
+    <div id="sectionsViewport" class="sections-viewport">
+      <section class="page-section is-active" data-section="0" aria-label="הזמנה">
+        <div class="section-inner no-scroll">
+          <div class="hero">
+            <div class="envelope-scene">
+              <div class="envelope">
+                <div class="envelope-body"></div>
+                <div class="envelope-flap"></div>
+              </div>
+              <div class="invite-card">
+                <img src="/wedding.jpg" alt="הזמנה לחתונה">
+              </div>
+            </div>
           </div>
-          <div class="radio-option">
-            <input type="radio" id="no" name="isAttending" value="false" required>
-            <label for="no" class="radio-label">Sorry, can't make it</label>
+          <button type="button" class="scroll-hint" id="scrollHint" aria-label="גללו למטה לאישור הגעה">
+            <span>גללו למטה לאישור הגעה</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <section class="page-section" data-section="1" aria-label="אישור הגעה">
+        <div class="section-inner" id="rsvpScroll">
+          <div class="rsvp-section">
+            <h2 class="section-title">אישור הגעה</h2>
+
+            <form id="rsvpForm">
+              <div class="form-group">
+                <label>האם תגיעו?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="yes" name="isAttending" value="true" required>
+                    <label for="yes" class="radio-label">מגיעים</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="no" name="isAttending" value="false" required>
+                    <label for="no" class="radio-label">לא מגיעים</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="attending-details" id="attendingDetails">
+                <div class="form-group">
+                  <label for="numberOfGuests">כמה אנשים?</label>
+                  <input type="number" id="numberOfGuests" name="numberOfGuests" min="1" value="1">
+                </div>
+
+                <div class="form-group">
+                  <label for="numberOfBabies">כמה תינוקות (עד גיל 6)?</label>
+                  <input type="number" id="numberOfBabies" name="numberOfBabies" min="0" value="0">
+                </div>
+
+                <div class="form-group">
+                  <label>יש טבעונים/צמחונים?</label>
+                  <div class="vegan-toggle radio-group">
+                    <div class="radio-option">
+                      <input type="radio" id="veganYes" name="hasVegan" value="true">
+                      <label for="veganYes" class="radio-label">כן</label>
+                    </div>
+                    <div class="radio-option">
+                      <input type="radio" id="veganNo" name="hasVegan" value="false" checked>
+                      <label for="veganNo" class="radio-label">לא</label>
+                    </div>
+                  </div>
+                  <div class="vegan-count" id="veganCountGroup">
+                    <label for="numberOfVegan">כמה?</label>
+                    <input type="number" id="numberOfVegan" name="numberOfVegan" min="1" value="1">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="additionalNotes">מידע נוסף חשוב</label>
+                  <textarea id="additionalNotes" name="additionalNotes" maxlength="60" placeholder="עד 60 תווים"></textarea>
+                  <div class="char-counter"><span id="charCount">0</span>/60</div>
+                </div>
+              </div>
+
+              <button type="submit" id="submitBtn">שליחת אישור הגעה</button>
+            </form>
+
+            <div class="message" id="message"></div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="form-group guests-input" id="guestsGroup">
-        <label for="numberOfGuests">Number of Guests *</label>
-        <input type="number" id="numberOfGuests" name="numberOfGuests" min="1" value="1" placeholder="Including yourself">
-      </div>
+      <section class="page-section" data-section="2" aria-label="ניווט לאולם">
+        <div class="section-inner no-scroll">
+          <div class="directions-section">
+            <h2 class="section-title">איך מגיעים</h2>
+            <p class="directions-address">קאי ריזורט - רחוב השיטה 5, חרב לאת</p>
+            <p class="directions-subtitle">בחרו אפליקציית ניווט לפתיחת המסלול לאולם</p>
+            <div class="venue-links">
+              <a class="venue-link" href="https://waze.com/ul/hsvbb619mk" target="_blank" rel="noopener noreferrer" aria-label="ניווט ב-Waze">
+                <div class="venue-icon">
+                  <img src="/waze.png" alt="">
+                </div>
+                <span>Waze</span>
+              </a>
+              <a class="venue-link" href="https://maps.app.goo.gl/TUjcHRnDVxTVAYha8?g_st=aw" target="_blank" rel="noopener noreferrer" aria-label="מיקום ב-Google Maps">
+                <div class="venue-icon">
+                  <img src="/google%20maps.png" alt="">
+                </div>
+                <span>Google Maps</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
-      <button type="submit" id="submitBtn">
-        Submit RSVP
-      </button>
-    </form>
-
-    <div class="message" id="message"></div>
+    <nav class="section-dots" id="sectionDots" aria-label="ניווט בין חלקי הדף">
+      <button type="button" class="section-dot is-active" data-goto="0" aria-label="הזמנה"></button>
+      <button type="button" class="section-dot" data-goto="1" aria-label="אישור הגעה"></button>
+      <button type="button" class="section-dot" data-goto="2" aria-label="ניווט"></button>
+    </nav>
   </div>
 
   <script>
+    let guestName = '';
+    let guestPhone = '';
+
+    const gateError = document.getElementById('gateError');
+    const gateErrorText = document.getElementById('gateErrorText');
+    const mainContent = document.getElementById('mainContent');
     const form = document.getElementById('rsvpForm');
     const yesRadio = document.getElementById('yes');
     const noRadio = document.getElementById('no');
-    const guestsGroup = document.getElementById('guestsGroup');
+    const attendingDetails = document.getElementById('attendingDetails');
     const guestsInput = document.getElementById('numberOfGuests');
+    const babiesInput = document.getElementById('numberOfBabies');
+    const veganYes = document.getElementById('veganYes');
+    const veganNo = document.getElementById('veganNo');
+    const veganCountGroup = document.getElementById('veganCountGroup');
+    const veganInput = document.getElementById('numberOfVegan');
+    const notesInput = document.getElementById('additionalNotes');
+    const charCount = document.getElementById('charCount');
     const submitBtn = document.getElementById('submitBtn');
     const messageDiv = document.getElementById('message');
 
-    // Show/hide guests input based on RSVP selection
-    function toggleGuestsInput() {
+    function showGateError(text) {
+      gateErrorText.textContent = text;
+      gateError.classList.remove('hidden');
+      mainContent.classList.add('hidden');
+    }
+
+    function showMain() {
+      gateError.classList.add('hidden');
+      mainContent.classList.remove('hidden');
+      document.body.classList.add('scroll-locked');
+      initSectionScroller();
+    }
+
+    function initSectionScroller() {
+      const viewport = document.getElementById('sectionsViewport');
+      const sections = [...viewport.querySelectorAll('.page-section')];
+      const dots = [...document.querySelectorAll('.section-dot')];
+      const rsvpScroll = document.getElementById('rsvpScroll');
+      const scrollHint = document.getElementById('scrollHint');
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const TRANSITION_MS = prefersReducedMotion ? 0 : 500;
+
+      let current = 0;
+      let animating = false;
+      let wheelLocked = false;
+      let touchStartY = 0;
+
+      function updateDots(index) {
+        dots.forEach((dot, i) => {
+          dot.classList.toggle('is-active', i === index);
+        });
+      }
+
+      function resetSectionClasses(section) {
+        section.classList.remove(
+          'is-active',
+          'is-animating',
+          'is-exiting',
+          'exit-down',
+          'exit-up',
+          'enter-from-below',
+          'enter-from-above',
+          'is-visible'
+        );
+      }
+
+      function goTo(index) {
+        if (animating || index === current || index < 0 || index >= sections.length) return;
+
+        const goingDown = index > current;
+        const from = sections[current];
+        const to = sections[index];
+
+        animating = true;
+        wheelLocked = true;
+
+        if (current === 1) rsvpScroll.scrollTop = 0;
+
+        resetSectionClasses(from);
+        resetSectionClasses(to);
+
+        from.style.visibility = 'visible';
+        from.classList.add('is-animating', 'is-exiting');
+
+        to.style.visibility = 'visible';
+        to.classList.add('is-animating', goingDown ? 'enter-from-below' : 'enter-from-above');
+
+        if (prefersReducedMotion) {
+          from.style.visibility = 'hidden';
+          resetSectionClasses(from);
+          resetSectionClasses(to);
+          to.classList.add('is-active');
+          current = index;
+          updateDots(index);
+          animating = false;
+          setTimeout(() => { wheelLocked = false; }, 300);
+          return;
+        }
+
+        requestAnimationFrame(() => {
+          from.classList.add(goingDown ? 'exit-down' : 'exit-up');
+          to.classList.add('is-visible');
+        });
+
+        const finish = () => {
+          from.style.visibility = 'hidden';
+          resetSectionClasses(from);
+          resetSectionClasses(to);
+          to.classList.add('is-active');
+          current = index;
+          updateDots(index);
+          animating = false;
+          setTimeout(() => { wheelLocked = false; }, 350);
+        };
+
+        setTimeout(finish, TRANSITION_MS);
+      }
+
+      function goNext() {
+        goTo(current + 1);
+      }
+
+      function goPrev() {
+        goTo(current - 1);
+      }
+
+      function canScrollInner(el, deltaY) {
+        if (!el || el.scrollHeight <= el.clientHeight) return false;
+        if (deltaY > 0) return el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+        return el.scrollTop > 1;
+      }
+
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (wheelLocked || animating) return;
+
+        const deltaY = e.deltaY;
+        if (current === 1 && canScrollInner(rsvpScroll, deltaY)) {
+          rsvpScroll.scrollTop += deltaY;
+          return;
+        }
+
+        if (deltaY > 30) goNext();
+        else if (deltaY < -30) goPrev();
+      }, { passive: false });
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.target.closest('#rsvpScroll')) return;
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      viewport.addEventListener('touchend', (e) => {
+        if (e.target.closest('#rsvpScroll')) return;
+        if (wheelLocked || animating) return;
+
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaY = touchStartY - touchEndY;
+
+        if (Math.abs(deltaY) < 50) return;
+
+        if (deltaY > 0) goNext();
+        else goPrev();
+      }, { passive: true });
+
+      rsvpScroll.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      rsvpScroll.addEventListener('touchend', (e) => {
+        if (wheelLocked || animating || current !== 1) return;
+
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaY = touchStartY - touchEndY;
+
+        if (Math.abs(deltaY) < 50) return;
+
+        if (deltaY > 0 && !canScrollInner(rsvpScroll, deltaY)) goNext();
+        else if (deltaY < 0 && !canScrollInner(rsvpScroll, deltaY)) goPrev();
+      }, { passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (wheelLocked || animating) return;
+        if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+          e.preventDefault();
+          goNext();
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault();
+          goPrev();
+        }
+      });
+
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => {
+          const target = parseInt(dot.dataset.goto, 10);
+          if (!Number.isNaN(target)) goTo(target);
+        });
+      });
+
+      scrollHint.addEventListener('click', () => goTo(1));
+    }
+
+    function toggleAttendingDetails() {
       if (yesRadio.checked) {
-        guestsGroup.classList.add('show');
+        attendingDetails.classList.add('show');
         guestsInput.required = true;
       } else {
-        guestsGroup.classList.remove('show');
+        attendingDetails.classList.remove('show');
         guestsInput.required = false;
       }
     }
 
-    yesRadio.addEventListener('change', toggleGuestsInput);
-    noRadio.addEventListener('change', toggleGuestsInput);
+    function toggleVeganCount() {
+      if (veganYes.checked) {
+        veganCountGroup.classList.add('show');
+        veganInput.required = true;
+      } else {
+        veganCountGroup.classList.remove('show');
+        veganInput.required = false;
+      }
+    }
 
-    // Handle form submission
+    yesRadio.addEventListener('change', toggleAttendingDetails);
+    noRadio.addEventListener('change', toggleAttendingDetails);
+    veganYes.addEventListener('change', toggleVeganCount);
+    veganNo.addEventListener('change', toggleVeganCount);
+
+    notesInput.addEventListener('input', () => {
+      charCount.textContent = notesInput.value.length;
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      const formData = new FormData(form);
+      const isAttending = yesRadio.checked;
+      const numberOfGuests = isAttending ? parseInt(guestsInput.value, 10) : 0;
+      const numberOfBabies = isAttending ? parseInt(babiesInput.value, 10) || 0 : 0;
+      const numberOfVegan = isAttending && veganYes.checked ? parseInt(veganInput.value, 10) || 0 : 0;
+      const additionalNotes = isAttending ? notesInput.value.trim().slice(0, 60) : '';
+
+      if (isAttending && (isNaN(numberOfGuests) || numberOfGuests < 1)) {
+        messageDiv.textContent = 'אנא הזינו מספר אנשים תקין (לפחות 1).';
+        messageDiv.className = 'message show error';
+        return;
+      }
+
       const data = {
-        name: formData.get('name'),
-        phone: formData.get('phone'),
-        isAttending: formData.get('isAttending') === 'true',
-        numberOfGuests: yesRadio.checked ? parseInt(formData.get('numberOfGuests'), 10) : 0,
+        name: guestName,
+        phone: guestPhone,
+        isAttending,
+        numberOfGuests,
+        numberOfBabies,
+        numberOfVegan,
+        additionalNotes,
       };
 
-      // Disable submit button and show loading
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="loading"></span> Submitting...';
+      submitBtn.innerHTML = 'שולח<span class="loading"></span>';
       messageDiv.classList.remove('show', 'success', 'error');
 
       try {
         const response = await fetch('/api/rsvp', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
 
         const result = await response.json();
 
         if (result.success) {
-          messageDiv.textContent = 'Thank you! Your RSVP has been submitted successfully. We look forward to celebrating with you! 🎉';
+          messageDiv.textContent = 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉';
           messageDiv.classList.add('show', 'success');
           form.reset();
-          guestsGroup.classList.remove('show');
+          attendingDetails.classList.remove('show');
+          veganCountGroup.classList.remove('show');
+          charCount.textContent = '0';
         } else {
-          // Handle permission errors with detailed instructions
           if (result.details && result.details.serviceAccountEmail) {
-            let errorMessage = result.error || 'Permission denied.';
-            errorMessage += '\n\nTo fix this, please share the response sheet with:';
+            let errorMessage = result.error || 'שגיאת הרשאות.';
+            errorMessage += '\n\nיש לשתף את גיליון התשובות עם:';
             errorMessage += `\n${result.details.serviceAccountEmail}`;
-            errorMessage += '\n\nGive it "Editor" permissions.';
+            errorMessage += '\n\nעם הרשאות "עורך".';
             messageDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
           } else {
-            messageDiv.textContent = result.error || 'Failed to submit RSVP. Please try again or contact us directly.';
+            messageDiv.textContent = result.error || 'שליחת אישור ההגעה נכשלה. אנא נסו שוב.';
           }
           messageDiv.classList.add('show', 'error');
         }
       } catch (error) {
-        messageDiv.textContent = `Error: ${error.message || 'An unexpected error occurred'}. Please try again or contact us directly.`;
+        messageDiv.textContent = `שגיאה: ${error.message || 'אירעה שגיאה בלתי צפויה'}. אנא נסו שוב.`;
         messageDiv.classList.add('show', 'error');
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit RSVP';
+        submitBtn.textContent = 'שליחת אישור הגעה';
       }
     });
 
-    // Extract phone number from URL and auto-fill form
-    const urlParams = new URLSearchParams(window.location.search);
-    const phoneParam = urlParams.get('phone');
-    if (phoneParam) {
-      document.getElementById('phone').value = phoneParam;
-      document.getElementById('phone').readOnly = true;
-      
-      // Fetch guest info from server
-      fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`)
-        .then(response => response.json())
-        .then(result => {
-          if (result.success && result.guest) {
-            document.getElementById('name').value = result.guest.name || '';
-            if (result.guest.addons) {
-              // If there are addons, show them in the name field or add a note
-              const nameField = document.getElementById('name');
-              nameField.value = result.guest.name;
-              nameField.readOnly = true;
-            }
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching guest info:', error);
-          // Continue with form as-is if fetch fails
-        });
+    async function init() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const phoneParam = urlParams.get('phone');
+
+      if (!phoneParam) {
+        showGateError('הקישור אינו תקין. אנא השתמשו בקישור האישי שנשלח אליכם.');
+        return;
+      }
+
+      guestPhone = phoneParam;
+
+      try {
+        const response = await fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`);
+        const result = await response.json();
+
+        if (!result.success || !result.guest) {
+          showGateError('לא מצאנו את פרטיכם ברשימה. אנא פנו אלינו ישירות.');
+          return;
+        }
+
+        guestName = result.guest.name || '';
+        showMain();
+      } catch (error) {
+        console.error('Error fetching guest info:', error);
+        showGateError('שגיאה בטעינת הפרטים. אנא נסו שוב מאוחר יותר.');
+      }
     }
+
+    init();
   </script>
 </body>
 </html>
-
