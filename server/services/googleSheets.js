@@ -332,9 +332,20 @@ export function filterGuestsBySender(guests, senderName) {
   });
 }
 
+const RESPONSE_SHEET_HEADERS = [
+  'Name',
+  'Phone',
+  'RSVP Status',
+  'Number of Guests',
+  'Babies (0-2)',
+  'Vegan/Vegetarian',
+  'Additional Notes',
+  'Timestamp',
+];
+
 /**
  * Write RSVP response to Google Sheet
- * Expected columns: Name, Phone, RSVP Status, Number of Guests, Timestamp
+ * Expected columns: Name, Phone, RSVP Status, Number of Guests, Babies, Vegan/Vegetarian, Additional Notes, Timestamp
  */
 export async function saveRSVPResponse(
   spreadsheetId,
@@ -342,7 +353,10 @@ export async function saveRSVPResponse(
   phone,
   isAttending,
   numberOfGuests,
-  range = `${GUEST_SHEET_TAB}!A:E`
+  numberOfBabies = 0,
+  numberOfVegan = 0,
+  additionalNotes = '',
+  range = `${GUEST_SHEET_TAB}!A:H`
 ) {
   if (!sheets) {
     await configureSheets();
@@ -364,14 +378,23 @@ export async function saveRSVPResponse(
 
     const timestamp = new Date().toISOString();
     const rsvpStatus = isAttending ? 'Yes' : 'No';
-    const values = [[name, phone, rsvpStatus, numberOfGuests.toString(), timestamp]];
+    const values = [[
+      name,
+      phone,
+      rsvpStatus,
+      numberOfGuests.toString(),
+      numberOfBabies.toString(),
+      numberOfVegan.toString(),
+      additionalNotes,
+      timestamp,
+    ]];
 
     if (existingRowIndex > 0) {
       // Update existing row
       const rowNumber = existingRowIndex + 1;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${GUEST_SHEET_TAB}!A${rowNumber}:E${rowNumber}`,
+        range: `${GUEST_SHEET_TAB}!A${rowNumber}:H${rowNumber}`,
         valueInputOption: 'RAW',
         resource: {
           values,
@@ -415,7 +438,7 @@ export async function saveRSVPResponse(
 /**
  * Initialize headers in the responses sheet if they don't exist
  */
-export async function initializeResponseSheet(spreadsheetId, range = `${GUEST_SHEET_TAB}!A1:E1`) {
+export async function initializeResponseSheet(spreadsheetId) {
   if (!sheets) {
     await configureSheets();
   }
@@ -423,20 +446,31 @@ export async function initializeResponseSheet(spreadsheetId, range = `${GUEST_SH
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${GUEST_SHEET_TAB}!A1:E1`,
+      range: `${GUEST_SHEET_TAB}!A1:H1`,
     });
 
-    if (!response.data.values || response.data.values.length === 0) {
-      // Add headers
+    const existingHeaders = response.data.values?.[0] || [];
+
+    if (existingHeaders.length === 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${GUEST_SHEET_TAB}!A1:E1`,
+        range: `${GUEST_SHEET_TAB}!A1:H1`,
         valueInputOption: 'RAW',
         resource: {
-          values: [['Name', 'Phone', 'RSVP Status', 'Number of Guests', 'Timestamp']],
+          values: [RESPONSE_SHEET_HEADERS],
         },
       });
       console.log('Initialized response sheet headers');
+    } else if (existingHeaders.length < RESPONSE_SHEET_HEADERS.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${GUEST_SHEET_TAB}!A1:H1`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [RESPONSE_SHEET_HEADERS],
+        },
+      });
+      console.log('Migrated response sheet headers to include new columns');
     }
   } catch (error) {
     console.error('Error initializing response sheet:', error);

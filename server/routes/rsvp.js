@@ -7,11 +7,19 @@ const router = express.Router();
 /**
  * POST /api/rsvp
  * Handle RSVP submission
- * Body: { name, phone, isAttending, numberOfGuests }
+ * Body: { name, phone, isAttending, numberOfGuests, numberOfBabies?, numberOfVegan?, additionalNotes? }
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, phone, isAttending, numberOfGuests } = req.body;
+    const {
+      name,
+      phone,
+      isAttending,
+      numberOfGuests,
+      numberOfBabies,
+      numberOfVegan,
+      additionalNotes,
+    } = req.body;
 
     // Validation
     if (!name || !phone) {
@@ -28,13 +36,40 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const guests = parseInt(numberOfGuests, 10);
+    const guests = isAttending ? parseInt(numberOfGuests, 10) : 0;
     if (isNaN(guests) || guests < 0) {
       return res.status(400).json({
         success: false,
         error: 'Number of guests must be a non-negative integer',
       });
     }
+
+    if (isAttending && guests < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of guests must be at least 1 when attending',
+      });
+    }
+
+    const babies = isAttending ? parseInt(numberOfBabies, 10) || 0 : 0;
+    if (isNaN(babies) || babies < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of babies must be a non-negative integer',
+      });
+    }
+
+    const vegan = isAttending ? parseInt(numberOfVegan, 10) || 0 : 0;
+    if (isNaN(vegan) || vegan < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of vegan/vegetarian guests must be a non-negative integer',
+      });
+    }
+
+    let notes = isAttending && typeof additionalNotes === 'string'
+      ? additionalNotes.trim().slice(0, 60)
+      : '';
 
     const responseSheetId = envResponseSheetId();
     if (!responseSheetId) {
@@ -53,7 +88,10 @@ router.post('/', async (req, res) => {
       name,
       phone,
       isAttending,
-      guests
+      guests,
+      babies,
+      vegan,
+      notes
     );
 
     res.json({
