@@ -168,7 +168,7 @@
       z-index: 1;
       animation:
         floatUpFade 1.2s ease-out forwards,
-        envelopeFadeOut 0.9s ease-out 2.5s forwards;
+        envelopeFadeOut 0.9s ease-out 3.4s forwards;
     }
 
     @keyframes floatUpFade {
@@ -252,8 +252,8 @@
       overflow: hidden;
       box-shadow: 0 4px 20px rgba(61, 54, 48, 0.15);
       animation:
-        cardSlideOut 0.7s ease-out 1.8s forwards,
-        cardFloatBob 3.5s ease-in-out 2.5s infinite;
+        cardSlideOut 1.6s ease-out 1.8s forwards,
+        cardFloatBob 3.5s ease-in-out 3.4s infinite;
     }
 
     @keyframes cardSlideOut {
@@ -301,7 +301,7 @@
       font-family: inherit;
       cursor: pointer;
       opacity: 0;
-      animation: hintFade 0.6s ease-out 2.6s forwards;
+      animation: hintFade 0.6s ease-out 3.5s forwards;
       z-index: 5;
     }
 
@@ -937,7 +937,7 @@
         <div class="section-inner no-scroll">
           <div class="gift-section">
             <h2 class="section-title">שליחת מתנה</h2>
-            <p class="gift-subtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לפתיחת ביט</p>
+            <p class="gift-subtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לפתיחת אפליקציית התשלום</p>
             <div class="form-group">
               <label for="giftAmount">סכום בש״ח</label>
               <div class="gift-amount-wrap">
@@ -945,8 +945,8 @@
                 <input type="text" id="giftAmount" name="giftAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="5" placeholder="0">
               </div>
             </div>
-            <button type="button" id="giftPayBtn">שליחת מתנה ב-Bit</button>
-            <p class="gift-note">הקישור יפתח את אפליקציית ביט בנייד.</p>
+            <button type="button" id="giftPayBtn">שליחת מתנה</button>
+            <p class="gift-note">הקישור יפתח את אפליקציית ביט או פייבוקס בנייד.</p>
             <p class="gift-note">לאחר הפתיחה, הזינו את הסכום הרצוי שנית.</p>
             <button type="button" class="gift-faq-link" id="giftFaqTrigger">למה אני צריך להזין את הסכום פעמיים?</button>
             <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
@@ -1029,7 +1029,6 @@
     const giftFaqBackdrop = document.getElementById('giftFaqBackdrop');
     const giftFaqClose = document.getElementById('giftFaqClose');
 
-    const BIT_PAY_URL = 'https://www.bitpay.co.il/app/me/8583B20C-F2B6-1E4E-0480-7EAEBE6D88D33F2A';
     const GIFT_MIN_AMOUNT = 1;
     const GIFT_MAX_AMOUNT = 15000;
 
@@ -1059,6 +1058,20 @@
       let animating = false;
       let wheelLocked = false;
       let touchStartY = 0;
+      let rsvpTouchCanAdvance = false;
+      let rsvpTouchCanAdvancePrev = false;
+      let rsvpWheelGestureActive = false;
+      let rsvpWheelGestureCanAdvance = false;
+      let rsvpWheelGestureCanGoPrev = false;
+      let rsvpWheelOverscroll = 0;
+      let rsvpArmTimer = null;
+      let rsvpWheelIdleTimer = null;
+      const RSVP_NEXT_SWIPE_PX = 80;
+      const RSVP_NEXT_WHEEL_PX = 120;
+      const RSVP_ARM_DELAY_MS = 220;
+      const RSVP_WHEEL_IDLE_MS = 280;
+      const DEFAULT_SWIPE_PX = 50;
+      const DEFAULT_WHEEL_PX = 30;
 
       function updateDots(index) {
         dots.forEach((dot, i) => {
@@ -1089,7 +1102,10 @@
         animating = true;
         wheelLocked = true;
 
-        if (current === 1) rsvpScroll.scrollTop = 0;
+        if (current === 1) {
+          rsvpScroll.scrollTop = 0;
+          clearRsvpArmed();
+        }
 
         resetSectionClasses(from);
         resetSectionClasses(to);
@@ -1125,6 +1141,9 @@
           current = index;
           updateDots(index);
           animating = false;
+          if (current === 1) {
+            clearRsvpArmed();
+          }
           setTimeout(() => { wheelLocked = false; }, 350);
         };
 
@@ -1140,23 +1159,126 @@
       }
 
       function canScrollInner(el, deltaY) {
-        if (!el || el.scrollHeight <= el.clientHeight) return false;
-        if (deltaY > 0) return el.scrollTop + el.clientHeight < el.scrollHeight - 1;
-        return el.scrollTop > 1;
+        if (!el || el.scrollHeight <= el.clientHeight + 1) return false;
+        if (deltaY > 0) return el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+        return el.scrollTop > 2;
       }
+
+      function isRsvpAtBottom() {
+        return !canScrollInner(rsvpScroll, 1);
+      }
+
+      function isRsvpAtTop() {
+        return !canScrollInner(rsvpScroll, -1);
+      }
+
+      function isRsvpDetailsOpen() {
+        return Boolean(yesRadio?.checked && attendingDetails?.classList.contains('show'));
+      }
+
+      function scheduleArmRsvpAdvance() {
+        if (!isRsvpDetailsOpen()) return;
+        clearTimeout(rsvpArmTimer);
+        rsvpArmTimer = setTimeout(() => {
+          if (current !== 1 || !isRsvpDetailsOpen()) return;
+          if (isRsvpAtBottom()) rsvpScroll.dataset.armedNext = '1';
+          if (isRsvpAtTop()) rsvpScroll.dataset.armedPrev = '1';
+        }, RSVP_ARM_DELAY_MS);
+      }
+
+      function clearRsvpArmed() {
+        rsvpScroll.dataset.armedNext = '0';
+        rsvpScroll.dataset.armedPrev = '0';
+        clearTimeout(rsvpArmTimer);
+        rsvpArmTimer = null;
+      }
+
+      rsvpScroll.addEventListener('scroll', () => {
+        if (current !== 1 || !isRsvpDetailsOpen()) return;
+        // Any scroll movement disarms until the user settles at the edge again
+        rsvpScroll.dataset.armedNext = '0';
+        rsvpScroll.dataset.armedPrev = '0';
+        if (isRsvpAtBottom() || isRsvpAtTop()) {
+          scheduleArmRsvpAdvance();
+        } else {
+          clearTimeout(rsvpArmTimer);
+        }
+      }, { passive: true });
 
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (wheelLocked || animating) return;
 
         const deltaY = e.deltaY;
+
+        if (current === 1 && isRsvpDetailsOpen()) {
+          clearTimeout(rsvpWheelIdleTimer);
+          rsvpWheelIdleTimer = setTimeout(() => {
+            rsvpWheelGestureActive = false;
+            rsvpWheelOverscroll = 0;
+            if (isRsvpAtBottom() || isRsvpAtTop()) {
+              scheduleArmRsvpAdvance();
+            }
+          }, RSVP_WHEEL_IDLE_MS);
+
+          if (!rsvpWheelGestureActive) {
+            rsvpWheelGestureActive = true;
+            rsvpWheelGestureCanAdvance = rsvpScroll.dataset.armedNext === '1';
+            rsvpWheelGestureCanGoPrev = rsvpScroll.dataset.armedPrev === '1';
+            rsvpWheelOverscroll = 0;
+          }
+
+          if (canScrollInner(rsvpScroll, deltaY)) {
+            rsvpScroll.scrollTop += deltaY;
+            rsvpScroll.dataset.armedNext = '0';
+            rsvpScroll.dataset.armedPrev = '0';
+            rsvpWheelGestureCanAdvance = false;
+            rsvpWheelGestureCanGoPrev = false;
+            rsvpWheelOverscroll = 0;
+            return;
+          }
+
+          // Stuck at edge: only leave if this NEW gesture began while already armed
+          if (deltaY > 0) {
+            if (!rsvpWheelGestureCanAdvance) {
+              rsvpWheelOverscroll = 0;
+              return;
+            }
+            rsvpWheelOverscroll += deltaY;
+            if (rsvpWheelOverscroll >= RSVP_NEXT_WHEEL_PX) {
+              rsvpWheelGestureActive = false;
+              rsvpWheelOverscroll = 0;
+              clearRsvpArmed();
+              goNext();
+            }
+            return;
+          }
+
+          if (deltaY < 0) {
+            if (!rsvpWheelGestureCanGoPrev) {
+              rsvpWheelOverscroll = 0;
+              return;
+            }
+            rsvpWheelOverscroll += deltaY;
+            if (rsvpWheelOverscroll <= -RSVP_NEXT_WHEEL_PX) {
+              rsvpWheelGestureActive = false;
+              rsvpWheelOverscroll = 0;
+              clearRsvpArmed();
+              goPrev();
+            }
+            return;
+          }
+        }
+
+        // RSVP without expanded details (or other sections): normal one-gesture jumps
         if (current === 1 && canScrollInner(rsvpScroll, deltaY)) {
           rsvpScroll.scrollTop += deltaY;
           return;
         }
 
-        if (deltaY > 30) goNext();
-        else if (deltaY < -30) goPrev();
+        rsvpWheelOverscroll = 0;
+        if (deltaY > DEFAULT_WHEEL_PX) goNext();
+        else if (deltaY < -DEFAULT_WHEEL_PX) goPrev();
       }, { passive: false });
 
       viewport.addEventListener('touchstart', (e) => {
@@ -1171,7 +1293,7 @@
         const touchEndY = e.changedTouches[0].clientY;
         const deltaY = touchStartY - touchEndY;
 
-        if (Math.abs(deltaY) < 50) return;
+        if (Math.abs(deltaY) < DEFAULT_SWIPE_PX) return;
 
         if (deltaY > 0) goNext();
         else goPrev();
@@ -1179,6 +1301,15 @@
 
       rsvpScroll.addEventListener('touchstart', (e) => {
         touchStartY = e.touches[0].clientY;
+        if (!isRsvpDetailsOpen()) {
+          rsvpTouchCanAdvance = false;
+          rsvpTouchCanAdvancePrev = false;
+          return;
+        }
+        rsvpTouchCanAdvance =
+          isRsvpAtBottom() && rsvpScroll.dataset.armedNext === '1';
+        rsvpTouchCanAdvancePrev =
+          isRsvpAtTop() && rsvpScroll.dataset.armedPrev === '1';
       }, { passive: true });
 
       rsvpScroll.addEventListener('touchend', (e) => {
@@ -1187,15 +1318,77 @@
         const touchEndY = e.changedTouches[0].clientY;
         const deltaY = touchStartY - touchEndY;
 
-        if (Math.abs(deltaY) < 50) return;
+        if (!isRsvpDetailsOpen()) {
+          if (Math.abs(deltaY) < DEFAULT_SWIPE_PX) return;
+          if (deltaY > 0) {
+            if (canScrollInner(rsvpScroll, deltaY)) return;
+            goNext();
+          } else if (deltaY < 0) {
+            if (canScrollInner(rsvpScroll, deltaY)) return;
+            goPrev();
+          }
+          return;
+        }
 
-        if (deltaY > 0 && !canScrollInner(rsvpScroll, deltaY)) goNext();
-        else if (deltaY < 0 && !canScrollInner(rsvpScroll, deltaY)) goPrev();
+        if (deltaY > 0) {
+          if (!rsvpTouchCanAdvance || !isRsvpAtBottom()) {
+            if (isRsvpAtBottom()) scheduleArmRsvpAdvance();
+            return;
+          }
+          if (deltaY < RSVP_NEXT_SWIPE_PX) return;
+          clearRsvpArmed();
+          goNext();
+          return;
+        }
+
+        if (deltaY < 0) {
+          if (!rsvpTouchCanAdvancePrev || !isRsvpAtTop()) {
+            if (isRsvpAtTop()) scheduleArmRsvpAdvance();
+            return;
+          }
+          if (Math.abs(deltaY) < RSVP_NEXT_SWIPE_PX) return;
+          clearRsvpArmed();
+          goPrev();
+        }
       }, { passive: true });
 
       window.addEventListener('keydown', (e) => {
         if (!giftFaqModal.classList.contains('hidden')) return;
         if (wheelLocked || animating) return;
+
+        if (current === 1 && isRsvpDetailsOpen()) {
+          if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+            e.preventDefault();
+            if (canScrollInner(rsvpScroll, 1)) {
+              rsvpScroll.scrollTop += 80;
+              clearRsvpArmed();
+              return;
+            }
+            if (rsvpScroll.dataset.armedNext === '1') {
+              clearRsvpArmed();
+              goNext();
+            } else if (isRsvpAtBottom()) {
+              scheduleArmRsvpAdvance();
+            }
+            return;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+            e.preventDefault();
+            if (canScrollInner(rsvpScroll, -1)) {
+              rsvpScroll.scrollTop -= 80;
+              clearRsvpArmed();
+              return;
+            }
+            if (rsvpScroll.dataset.armedPrev === '1') {
+              clearRsvpArmed();
+              goPrev();
+            } else if (isRsvpAtTop()) {
+              scheduleArmRsvpAdvance();
+            }
+            return;
+          }
+        }
+
         if (e.key === 'ArrowDown' || e.key === 'PageDown') {
           e.preventDefault();
           goNext();
@@ -1228,7 +1421,7 @@
       giftError.classList.add('show');
     }
 
-    giftPayBtn.addEventListener('click', () => {
+    giftPayBtn.addEventListener('click', async () => {
       const amount = parseInt(giftAmountInput.value, 10);
       if (isNaN(amount) || amount < GIFT_MIN_AMOUNT) {
         showGiftError(`אנא הזינו סכום בין ₪${GIFT_MIN_AMOUNT} ל-₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
@@ -1240,8 +1433,32 @@
         giftAmountInput.focus();
         return;
       }
+
       giftError.classList.remove('show');
-      window.location.href = BIT_PAY_URL;
+      giftPayBtn.disabled = true;
+      const previousLabel = giftPayBtn.textContent;
+      giftPayBtn.textContent = 'פותח...';
+
+      try {
+        const response = await fetch('/api/pay/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount,
+            guestPhone,
+            guestName,
+          }),
+        });
+        const result = await response.json();
+        if (!result.success || !result.url) {
+          throw new Error(result.error || 'לא הצלחנו לפתוח את אפליקציית התשלום');
+        }
+        window.location.href = result.url;
+      } catch (error) {
+        showGiftError(error.message || 'שגיאה בפתיחת התשלום. אנא נסו שוב.');
+        giftPayBtn.disabled = false;
+        giftPayBtn.textContent = previousLabel;
+      }
     });
 
     giftAmountInput.addEventListener('input', () => {
@@ -1292,6 +1509,12 @@
       } else {
         attendingDetails.classList.remove('show');
         guestsInput.required = false;
+      }
+      // Two-gesture edge behavior only applies while details are open
+      const rsvpScrollEl = document.getElementById('rsvpScroll');
+      if (rsvpScrollEl) {
+        rsvpScrollEl.dataset.armedNext = '0';
+        rsvpScrollEl.dataset.armedPrev = '0';
       }
     }
 

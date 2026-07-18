@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 
 import rsvpRouter from './routes/rsvp.js';
 import adminRouter from './routes/admin.js';
+import adminPayRouter from './routes/adminPay.js';
+import payRouter from './routes/pay.js';
 import { configureSheets } from './services/googleSheets.js';
 import { warmWhatsAppSessions } from './services/whatsapp.js';
 
@@ -27,6 +29,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/rsvp', rsvpRouter);
+app.use('/api/pay', payRouter);
+app.use('/api/admin/pay', adminPayRouter);
 app.use('/api/admin', adminRouter);
 
 app.get('*', (_req, res) => {
