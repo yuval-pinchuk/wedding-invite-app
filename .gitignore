@@ -10,3 +10,4 @@ dist/
 .wwebjs_auth_*/
 .wwebjs_cache/
 .baileys_auth_*/
+server/data/payment-routing.json
