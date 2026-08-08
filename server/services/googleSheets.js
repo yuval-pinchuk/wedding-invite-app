@@ -133,8 +133,14 @@ function mapDataRowsToGuests(rows) {
       sendConfirmation: (row[13] || '').toString().toLowerCase().trim(),
       sender: row[14] || '',
       phoneTo: findPhoneNumber(row),
+      rsvpGuestCount: (row[7] || '').toString().trim(),
     };
   });
+}
+
+/** @param {{ rsvpGuestCount?: string }} guest */
+export function hasRsvpResponded(guest) {
+  return Boolean((guest.rsvpGuestCount || '').trim());
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
@@ -148,6 +154,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column A: First name (Hebrew)
  * Column B: Family name (Hebrew)
  * Column L: Addons (optional, Hebrew name)
+ * Column H: RSVP guest count (empty = pending)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
  * Phone number: detected by scanning the row (often in a column after O)

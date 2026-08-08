@@ -1,10 +1,14 @@
 import express from 'express';
 import { envGuestSheetId } from '../config/loadEnv.js';
-import { getSenders, getGuestList, updateSendConfirmation } from '../services/googleSheets.js';
+import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded } from '../services/googleSheets.js';
 import {
   initializeWhatsApp,
   waitForReady,
   sendWhatsAppInvitation,
+  sendWhatsAppText,
+  renderReminderTemplate,
+  DEFAULT_RSVP_REMINDER_TEMPLATE,
+  getRsvpBaseUrl,
   getQRCode,
   getStatus,
   getClient,
@@ -17,6 +21,23 @@ router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
+
+function requireAdminKey(req, res, next) {
+  const expected = (process.env.ADMIN_API_KEY || '').trim();
+  if (!expected) {
+    return next();
+  }
+  const provided = String(req.get('x-admin-key') || req.query.key || '').trim();
+  if (provided !== expected) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized. Provide a valid x-admin-key header.',
+    });
+  }
+  return next();
+}
+
+router.use(requireAdminKey);
 
 /** @type {Map<string, string>} raw pairing string → PNG data URL */
 const qrPngByPairing = new Map();
@@ -154,6 +175,9 @@ router.post('/init-whatsapp', async (req, res) => {
 
     let qrCode = getQRCode(sender);
     const status = getStatus(sender);
+    // #region agent log
+    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.js:init-whatsapp:start',message:'init start',data:{sender,ready:status.ready,hasQr:Boolean(qrCode)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
 
     if (status.ready) {
       return res.json({
@@ -179,8 +203,10 @@ router.post('/init-whatsapp', async (req, res) => {
       initError = err;
     });
 
+    const MAX_INIT_WAIT_MS = 8000;
+    const waitStart = Date.now();
     let attempts = 0;
-    while (!qrCode && !initError) {
+    while (!qrCode && !initError && Date.now() - waitStart < MAX_INIT_WAIT_MS) {
       await new Promise((r) => setTimeout(r, 400));
       attempts += 1;
       if (getStatus(sender).ready) {
@@ -210,6 +236,10 @@ router.post('/init-whatsapp', async (req, res) => {
         }
       }
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.js:init-whatsapp:loop-exit',message:'wait loop ended',data:{sender,attempts,elapsedMs:Date.now()-waitStart,hasQr:Boolean(qrCode),ready:getStatus(sender).ready,initError:Boolean(initError),timedOut:Date.now()-waitStart>=MAX_INIT_WAIT_MS},timestamp:Date.now(),hypothesisId:'H1',runId:'post-fix'})}).catch(()=>{});
+    // #endregion
 
     if (initError) {
       return res.status(500).json({
@@ -412,6 +442,197 @@ router.post('/send-invitations', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to send invitations',
+    });
+  }
+});
+
+/**
+ * @param {string} sender
+ * @param {Array<{ name?: string, fullName?: string, phoneTo: string }>} guests
+ * @param {string} messageTemplate
+ * @param {(completed: number, guest: object, summary: object) => void} [afterEach]
+ */
+async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afterEach) {
+  await waitForReady(sender, null);
+  const summary = {
+    total: guests.length,
+    successful: 0,
+    failed: 0,
+    skipped: 0,
+    details: [],
+  };
+
+  for (let i = 0; i < guests.length; i++) {
+    const guest = guests[i];
+    if (!guest.phoneTo) {
+      summary.skipped++;
+      summary.details.push({
+        name: guest.name,
+        phone: guest.phoneTo,
+        success: false,
+        skipped: true,
+        error: 'No phone number',
+      });
+      afterEach?.(i + 1, guest, summary);
+      continue;
+    }
+
+    const text = renderReminderTemplate(messageTemplate, {
+      name: guest.name,
+      fullName: guest.fullName || guest.name,
+      phone: guest.phoneTo,
+    });
+
+    try {
+      const result = await sendWhatsAppText({
+        to: guest.phoneTo,
+        senderName: sender,
+        text,
+      });
+      if (result.success) {
+        summary.successful++;
+      } else {
+        summary.failed++;
+      }
+      summary.details.push({
+        name: guest.name,
+        phone: guest.phoneTo,
+        ...result,
+      });
+    } catch (error) {
+      summary.failed++;
+      summary.details.push({
+        name: guest.name,
+        phone: guest.phoneTo,
+        success: false,
+        error: error.message,
+      });
+    }
+    afterEach?.(i + 1, guest, summary);
+  }
+
+  return summary;
+}
+
+router.get('/rsvp-reminder-defaults', (_req, res) => {
+  res.json({
+    success: true,
+    template: DEFAULT_RSVP_REMINDER_TEMPLATE,
+    placeholders: ['{{name}}', '{{fullName}}', '{{link}}'],
+    rsvpBaseUrl: getRsvpBaseUrl(),
+    authRequired: Boolean((process.env.ADMIN_API_KEY || '').trim()),
+  });
+});
+
+/**
+ * POST /api/admin/send-rsvp-reminders
+ * Body: { sender, message }
+ */
+router.post('/send-rsvp-reminders', async (req, res) => {
+  try {
+    const { sender, message } = req.body || {};
+    const guestSheetId = envGuestSheetId();
+
+    if (!guestSheetId) {
+      return res.status(500).json({
+        success: false,
+        error: 'Guest sheet not configured',
+      });
+    }
+
+    if (!sender) {
+      return res.status(400).json({
+        success: false,
+        error: 'Sender is required',
+      });
+    }
+
+    const messageTemplate = typeof message === 'string' ? message.trim() : '';
+    if (!messageTemplate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required',
+      });
+    }
+
+    const allGuests = await getGuestList(guestSheetId);
+    const pendingGuests = allGuests.filter((guest) => {
+      const matchesSender = guest.sender && guest.sender.trim() === sender.trim();
+      return matchesSender && !hasRsvpResponded(guest) && guest.phoneTo;
+    });
+
+    if (!pendingGuests.length) {
+      return res.json({
+        success: true,
+        total: 0,
+        successful: 0,
+        failed: 0,
+        skipped: 0,
+        details: [],
+        message: 'No pending guests to remind',
+      });
+    }
+
+    console.log(`[send-rsvp-reminders] sender=${sender} pending=${pendingGuests.length}`);
+
+    const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
+
+    if (wantsNdjson) {
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('X-Accel-Buffering', 'no');
+      try {
+        const summary = await sendRsvpRemindersSequential(
+          sender,
+          pendingGuests,
+          messageTemplate,
+          (completed, guest, s) => {
+            res.write(
+              `${JSON.stringify({
+                type: 'progress',
+                completed,
+                total: s.total,
+                successful: s.successful,
+                failed: s.failed,
+                skipped: s.skipped,
+                lastPhone: guest.phoneTo,
+              })}\n`,
+            );
+          },
+        );
+        console.log(
+          `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
+        );
+        res.write(`${JSON.stringify({ type: 'done', success: true, ...summary })}\n`);
+        res.end();
+      } catch (error) {
+        console.error('Error sending RSVP reminders (stream):', error);
+        res.write(
+          `${JSON.stringify({
+            type: 'error',
+            success: false,
+            error: error.message || 'Failed to send RSVP reminders',
+          })}\n`,
+        );
+        res.end();
+      }
+      return;
+    }
+
+    const summary = await sendRsvpRemindersSequential(sender, pendingGuests, messageTemplate);
+    console.log(
+      `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
+    );
+
+    res.json({
+      success: true,
+      ...summary,
+    });
+  } catch (error) {
+    console.error('Error sending RSVP reminders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send RSVP reminders',
     });
   }
 });
