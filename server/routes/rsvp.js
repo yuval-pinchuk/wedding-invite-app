@@ -1,6 +1,6 @@
 import express from 'express';
 import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
-import { saveRSVPResponse, initializeResponseSheet } from '../services/googleSheets.js';
+import { saveRSVPResponse, initializeResponseSheet, updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
 
 const router = express.Router();
 
@@ -71,6 +71,14 @@ router.post('/', async (req, res) => {
       ? additionalNotes.trim().slice(0, 60)
       : '';
 
+    const guestSheetId = envGuestSheetId();
+    if (!guestSheetId) {
+      return res.status(500).json({
+        success: false,
+        error: 'Guest sheet not configured',
+      });
+    }
+
     const responseSheetId = envResponseSheetId();
     if (!responseSheetId) {
       return res.status(500).json({
@@ -78,6 +86,14 @@ router.post('/', async (req, res) => {
         error: 'Response sheet not configured',
       });
     }
+
+    await updateGuestRsvpOnGuestSheet(guestSheetId, phone, {
+      isAttending,
+      numberOfGuests: guests,
+      numberOfBabies: babies,
+      numberOfVegan: vegan,
+      additionalNotes: notes,
+    });
 
     // Initialize sheet headers if needed
     await initializeResponseSheet(responseSheetId);
@@ -100,6 +116,13 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing RSVP:', error);
+
+    if (error.status === 404) {
+      return res.status(404).json({
+        success: false,
+        error: error.message || 'Guest not found in guest list',
+      });
+    }
     
     // Handle permission errors specifically
     if (error.code === 'PERMISSION_DENIED' || error.message?.includes('Permission denied')) {
