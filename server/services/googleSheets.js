@@ -234,16 +234,7 @@ export async function getGuestByPhone(spreadsheetId, phone, range = GUEST_SHEET_
 
   try {
     const guests = await getGuestList(spreadsheetId, range);
-    const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
-
-    const guest = guests.find((g) => {
-      const guestPhone = normalizePhoneCell(g.phoneTo || '').replace(/\D/g, '');
-      return (
-        guestPhone === normalizedPhone ||
-        guestPhone.endsWith(normalizedPhone) ||
-        normalizedPhone.endsWith(guestPhone)
-      );
-    });
+    const guest = guests.find((g) => phonesMatch(g.phoneTo, phone));
 
     return guest || null;
   } catch (error) {
@@ -252,20 +243,18 @@ export async function getGuestByPhone(spreadsheetId, phone, range = GUEST_SHEET_
   }
 }
 
-function rowContainsPhone(row, phone) {
-  const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
-  for (let j = 0; j < row.length; j++) {
-    const cell = normalizePhoneCell((row[j] || '').toString());
-    const cellPhone = cell.replace(/\D/g, '');
-    if (
-      cellPhone === normalizedPhone ||
-      cellPhone.endsWith(normalizedPhone) ||
-      normalizedPhone.endsWith(cellPhone)
-    ) {
-      return true;
-    }
+function phonesMatch(phoneA, phoneB) {
+  const a = normalizePhoneCell(phoneA).replace(/\D/g, '');
+  const b = normalizePhoneCell(phoneB).replace(/\D/g, '');
+  if (!a || !b) {
+    return false;
   }
-  return false;
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+
+function rowContainsPhone(row, phone) {
+  const rowPhone = findPhoneNumber(row);
+  return rowPhone ? phonesMatch(rowPhone, phone) : false;
 }
 
 /**
@@ -327,14 +316,14 @@ export async function updateGuestRsvpOnGuestSheet(
   }
 
   try {
-    const rowIndex = await findGuestRowIndexByPhone(spreadsheetId, phone);
-    if (rowIndex === -1) {
+    const guest = await getGuestByPhone(spreadsheetId, phone);
+    if (!guest) {
       const notFound = new Error('Guest not found in guest list');
       notFound.status = 404;
       throw notFound;
     }
 
-    const rowNumber = rowIndex + 1;
+    const rowNumber = guest.rowNumber;
     const columnH = isAttending
       ? formatGuestCountColumn(numberOfGuests, numberOfBabies)
       : '0';
