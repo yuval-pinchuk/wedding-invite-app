@@ -128,9 +128,56 @@ function normalizeState(parsed) {
   };
 }
 
+const BIT_REQUIRED_MIN_AMOUNT = 1000;
+
 /** @param {PaymentLink} link */
 function remaining(link) {
   return Math.max(0, link.threshold - link.currentSum);
+}
+
+/** @param {PaymentLink} link @param {number} amount */
+function linkFitsAmount(link, amount) {
+  return link.currentSum + amount <= link.threshold;
+}
+
+/** @param {PaymentLink} link @param {number} amount */
+function linkEligibleForAmount(link, amount) {
+  if (!linkFitsAmount(link, amount)) return false;
+  if (amount >= BIT_REQUIRED_MIN_AMOUNT && link.provider !== 'bit') return false;
+  return true;
+}
+
+/**
+ * Pick a link that can accept the given amount without exceeding its threshold.
+ * Amounts >= 1000 require a Bit link. Manual mode: prefer the forced link if eligible;
+ * otherwise cascade to the next eligible link. Auto mode: first eligible link in order.
+ * @param {PaymentState} state
+ * @param {number} amount
+ * @returns {PaymentLink}
+ */
+export function resolveLinkForAmount(state, amount) {
+  const value = Math.floor(Number(amount));
+  if (!Number.isFinite(value) || value < 1) {
+    throw Object.assign(new Error('Amount must be a positive integer'), { status: 400 });
+  }
+
+  if (state.mode === 'manual' && state.manualLinkId) {
+    const forced = state.links.find((l) => l.id === state.manualLinkId);
+    if (forced && linkEligibleForAmount(forced, value)) {
+      return forced;
+    }
+  }
+
+  const fitting = state.links.find((l) => linkEligibleForAmount(l, value));
+  if (!fitting) {
+    const message =
+      value >= BIT_REQUIRED_MIN_AMOUNT
+        ? 'No Bit payment link can accept this amount right now'
+        : 'No payment link can accept this amount right now';
+    throw Object.assign(new Error(message), { status: 503 });
+  }
+
+  return fitting;
 }
 
 /**
@@ -187,7 +234,7 @@ export function recordGiftAndGetLink(amount, meta = {}) {
   }
 
   const state = readPaymentState();
-  const active = resolveActiveLink(state);
+  const active = resolveLinkForAmount(state, value);
   const link = state.links.find((l) => l.id === active.id);
   if (!link) {
     throw Object.assign(new Error('No payment link available'), { status: 500 });

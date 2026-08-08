@@ -33,7 +33,9 @@ router.get('/status', (_req, res) => {
 /**
  * POST /api/pay/checkout
  * Body: { amount, guestPhone?, guestName? }
- * Records amount against the currently active link and returns its URL.
+ * Records amount against a link that can fit it (currentSum + amount <= threshold)
+ * and returns its URL. Cascades to the next link when the active one would overflow.
+ * Amounts >= 1000 require a Bit link.
  */
 router.post('/checkout', (req, res) => {
   try {
