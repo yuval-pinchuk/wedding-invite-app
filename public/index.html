@@ -1576,7 +1576,9 @@
         const result = await response.json();
 
         if (result.success) {
-          messageDiv.textContent = 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉';
+          messageDiv.textContent = isAttending
+            ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
+            : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
           messageDiv.classList.add('show', 'success');
           form.reset();
           attendingDetails.classList.remove('show');

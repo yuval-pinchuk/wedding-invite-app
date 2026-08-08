@@ -317,6 +317,78 @@ function composeMessageText(name, addons) {
 מחכים לחגוג איתכם❤️`;
 }
 
+function stripEnvQuotes(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+export const DEFAULT_RSVP_REMINDER_TEMPLATE = `שלום {{name}},
+טרם קיבלנו את אישור ההגעה שלכם לחתונה של דניאל ויובל.
+נשמח אם תוכלו למלא את הטופס כאן:
+{{link}}
+תודה!`;
+
+export function buildRsvpLink(phone) {
+  const base = getRsvpBaseUrl();
+  if (!base) {
+    return '';
+  }
+  return `${base}/?phone=${encodeURIComponent(phone)}`;
+}
+
+export function getRsvpBaseUrl() {
+  const base = stripEnvQuotes(process.env.RSVP_BASE_URL || process.env.INVITE_BASE_URL || '');
+  return base.replace(/\/$/, '');
+}
+
+/**
+ * @param {string} template
+ * @param {{ name?: string, fullName?: string, phone?: string }} vars
+ */
+export function renderReminderTemplate(template, { name, fullName, phone }) {
+  const link = buildRsvpLink(phone || '');
+  return String(template || '')
+    .replace(/\{\{name\}\}/g, name || '')
+    .replace(/\{\{fullName\}\}/g, fullName || name || '')
+    .replace(/\{\{link\}\}/g, link);
+}
+
+/**
+ * @param {{ to: string, senderName: string, text: string }} payload
+ */
+export async function sendWhatsAppText(payload) {
+  const { to, senderName, text } = payload;
+  if (!to || !senderName) {
+    return { success: false, error: 'Missing to or senderName', to: to || '' };
+  }
+  if (!text || !String(text).trim()) {
+    return { success: false, error: 'Message text is required', to: to || '' };
+  }
+
+  const digits = formatPhoneNumber(to);
+  const jid = `${digits}@s.whatsapp.net`;
+
+  try {
+    const sock = await waitForReady(senderName, null);
+    if (!sock || !sock.user) {
+      return { success: false, error: 'WhatsApp not connected', to: digits };
+    }
+
+    await sock.sendMessage(jid, { text: String(text) });
+    const delayMs = getSendDelayMs();
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+
+    return { success: true, to: digits, jid };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || String(error),
+      to: digits,
+    };
+  }
+}
+
 /**
  * @param {{ to: string, senderName: string, name: string, addons?: string }} payload
  */

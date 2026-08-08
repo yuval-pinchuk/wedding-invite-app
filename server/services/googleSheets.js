@@ -133,8 +133,14 @@ function mapDataRowsToGuests(rows) {
       sendConfirmation: (row[13] || '').toString().toLowerCase().trim(),
       sender: row[14] || '',
       phoneTo: findPhoneNumber(row),
+      rsvpGuestCount: (row[7] || '').toString().trim(),
     };
   });
+}
+
+/** @param {{ rsvpGuestCount?: string }} guest */
+export function hasRsvpResponded(guest) {
+  return Boolean((guest.rsvpGuestCount || '').trim());
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
@@ -148,6 +154,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column A: First name (Hebrew)
  * Column B: Family name (Hebrew)
  * Column L: Addons (optional, Hebrew name)
+ * Column H: RSVP guest count (empty = pending)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
  * Phone number: detected by scanning the row (often in a column after O)
@@ -234,20 +241,130 @@ export async function getGuestByPhone(spreadsheetId, phone, range = GUEST_SHEET_
 
   try {
     const guests = await getGuestList(spreadsheetId, range);
-    const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
-
-    const guest = guests.find((g) => {
-      const guestPhone = normalizePhoneCell(g.phoneTo || '').replace(/\D/g, '');
-      return (
-        guestPhone === normalizedPhone ||
-        guestPhone.endsWith(normalizedPhone) ||
-        normalizedPhone.endsWith(guestPhone)
-      );
-    });
+    const guest = guests.find((g) => phonesMatch(g.phoneTo, phone));
 
     return guest || null;
   } catch (error) {
     console.error('Error getting guest by phone:', error);
+    throw error;
+  }
+}
+
+function phonesMatch(phoneA, phoneB) {
+  const a = normalizePhoneCell(phoneA).replace(/\D/g, '');
+  const b = normalizePhoneCell(phoneB).replace(/\D/g, '');
+  if (!a || !b) {
+    return false;
+  }
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+
+function rowContainsPhone(row, phone) {
+  const rowPhone = findPhoneNumber(row);
+  return rowPhone ? phonesMatch(rowPhone, phone) : false;
+}
+
+/**
+ * @param {string[][]} rows
+ * @param {string} phone
+ * @returns {number} Row index in rows array, or -1
+ */
+function findGuestRowIndexInRows(rows, phone) {
+  for (let i = 1; i < rows.length; i++) {
+    if (rowContainsPhone(rows[i], phone)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * @param {string} spreadsheetId
+ * @param {string} phone
+ * @param {string} [range]
+ * @returns {Promise<number>} Row index in rows array, or -1
+ */
+async function findGuestRowIndexByPhone(spreadsheetId, phone, range = GUEST_SHEET_READ_RANGE) {
+  const rows = await fetchSheetRows(spreadsheetId, range);
+  return findGuestRowIndexInRows(rows, phone);
+}
+
+function formatGuestCountColumn(numberOfGuests, numberOfBabies) {
+  if (numberOfBabies > 0) {
+    return `${numberOfGuests}(${numberOfBabies})`;
+  }
+  return String(numberOfGuests);
+}
+
+function formatRemarksColumn(numberOfVegan, additionalNotes) {
+  const parts = [];
+  if (numberOfVegan > 0) {
+    parts.push(`${numberOfVegan} טבעוני/צמחוני`);
+  }
+  if (additionalNotes) {
+    parts.push(additionalNotes);
+  }
+  return parts.join(' ');
+}
+
+/**
+ * Write RSVP summary to guest list columns H (guest count) and M (remarks).
+ * @param {string} spreadsheetId
+ * @param {string} phone
+ * @param {{ isAttending: boolean, numberOfGuests: number, numberOfBabies: number, numberOfVegan: number, additionalNotes: string }} rsvp
+ */
+export async function updateGuestRsvpOnGuestSheet(
+  spreadsheetId,
+  phone,
+  { isAttending, numberOfGuests, numberOfBabies, numberOfVegan, additionalNotes }
+) {
+  if (!sheets) {
+    await configureSheets();
+  }
+
+  try {
+    const guest = await getGuestByPhone(spreadsheetId, phone);
+    if (!guest) {
+      const notFound = new Error('Guest not found in guest list');
+      notFound.status = 404;
+      throw notFound;
+    }
+
+    const rowNumber = guest.rowNumber;
+    const columnH = isAttending
+      ? formatGuestCountColumn(numberOfGuests, numberOfBabies)
+      : '0';
+    const columnM = isAttending
+      ? formatRemarksColumn(numberOfVegan, additionalNotes)
+      : '';
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      resource: {
+        valueInputOption: 'RAW',
+        data: [
+          { range: `${GUEST_SHEET_TAB}!H${rowNumber}`, values: [[columnH]] },
+          { range: `${GUEST_SHEET_TAB}!M${rowNumber}`, values: [[columnM]] },
+        ],
+      },
+    });
+
+    console.log(`Updated guest sheet RSVP for phone ${phone} at row ${rowNumber}`);
+    return { success: true, rowNumber };
+  } catch (error) {
+    console.error('Error updating guest RSVP on guest sheet:', error);
+
+    if (isPermissionError(error)) {
+      const email = getServiceAccountEmail();
+      const errorMessage = email
+        ? `Permission denied. Please share the guest sheet with the service account email: ${email} (Editor permissions required).`
+        : 'Permission denied. Please ensure the service account has Editor access to the guest sheet.';
+      const permissionError = new Error(errorMessage);
+      permissionError.code = 'PERMISSION_DENIED';
+      permissionError.serviceAccountEmail = email;
+      throw permissionError;
+    }
+
     throw error;
   }
 }
@@ -261,45 +378,13 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
   }
 
   try {
-    // Get all rows to find the one to update
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const rows = response.data.values || [];
-    if (rows.length === 0) {
-      throw new Error('No data found in sheet');
-    }
-
-    // Find the row with matching phone number
-    const normalizedPhone = normalizePhoneCell(phone).replace(/\D/g, '');
-    let rowIndex = -1;
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      // Check all columns for phone number
-      for (let j = 0; j < row.length; j++) {
-        const cell = normalizePhoneCell((row[j] || '').toString());
-        const cellPhone = cell.replace(/\D/g, '');
-        if (cellPhone === normalizedPhone || cellPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(cellPhone)) {
-          rowIndex = i;
-          break;
-        }
-      }
-      if (rowIndex !== -1) break;
-    }
-
+    const rowIndex = await findGuestRowIndexByPhone(spreadsheetId, phone, range);
     if (rowIndex === -1) {
       throw new Error('Guest with this phone number not found');
     }
 
-    // Column N is index 13 (0-based), but we need to update it
-    // Update the send confirmation column (N = column 14 in 1-based, index 13 in 0-based)
-    const columnN = 13; // 0-based index for column N
-    const rowNumber = rowIndex + 1; // 1-based row number
-    
-    // Update the cell
+    const rowNumber = rowIndex + 1;
+
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${GUEST_SHEET_TAB}!N${rowNumber}`,

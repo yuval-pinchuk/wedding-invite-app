@@ -42,7 +42,7 @@
     }
     .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
     label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
-    select {
+    select, input, textarea {
       width: 100%;
       padding: 12px 14px;
       border-radius: 8px;
@@ -52,7 +52,42 @@
       font-family: inherit;
       font-size: 1rem;
     }
-    select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .preview-box {
+      background: var(--bg);
+      border: 1px solid var(--surface2);
+      border-radius: 8px;
+      padding: 14px;
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      min-height: 100px;
+    }
+    .guest-rsvp-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+    .guest-rsvp-badge.pending {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+    }
+    .guest-rsvp-badge.done {
+      background: rgba(34, 197, 94, 0.15);
+      color: #86efac;
+    }
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .row .grow { flex: 1; min-width: 200px; }
     button {
@@ -179,6 +214,18 @@
       <p style="margin-top:10px"><a href="/admin-pay.html" style="color:#14b8a6;text-decoration:none;font-weight:600">ניהול מתנות / תשלומים →</a></p>
     </header>
 
+    <div class="card" id="authCard">
+      <h2>מפתח מנהל (אופציונלי)</h2>
+      <p class="hint">אם הוגדר <code>ADMIN_API_KEY</code> בשרת, הזינו אותו כאן. נשמר רק בדפדפן זה.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="adminKey">Admin API Key</label>
+          <input type="password" id="adminKey" autocomplete="off" placeholder="x-admin-key">
+        </div>
+        <button type="button" class="btn-primary" id="saveKeyBtn">שמירה ורענון</button>
+      </div>
+    </div>
+
     <div class="card" id="stepSender">
       <h2>1. Sender</h2>
       <div class="row">
@@ -220,12 +267,33 @@
       <p id="sendProgress" class="send-progress hidden" aria-live="polite"></p>
       <div class="banner" id="sendBanner" role="status"></div>
     </div>
+
+    <div class="card hidden" id="stepRsvpReminders">
+      <h2>4. RSVP reminders</h2>
+      <p class="hint">שליחת תזכורת ב-WhatsApp לכל האורחים של השולח שנבחר שעדיין לא מילאו אישור הגעה (עמודה H ריקה).</p>
+      <div class="stats">
+        <div class="stat"><b id="pendingRsvpCount">0</b><span>Pending RSVP</span></div>
+      </div>
+      <label for="rsvpReminderMessage">נוסח ההודעה</label>
+      <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
+      <p class="hint" style="margin-top:12px">משתנים: <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
+      <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
+      <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
+      <button type="button" class="btn-primary" id="sendRsvpRemindersBtn" style="width:100%;margin-top:16px;" disabled>
+        Send reminders to all pending (0)
+      </button>
+      <p id="rsvpReminderProgress" class="send-progress hidden" aria-live="polite"></p>
+      <div class="banner" id="rsvpReminderBanner" role="status"></div>
+    </div>
   </div>
   <div id="toast"></div>
 
   <script>
+    const KEY_STORAGE = 'wedding_admin_key';
     let currentSender = '';
     let guests = [];
+    let rsvpBaseUrl = '';
+    let reminderTemplateLoaded = false;
     let pollingInterval = null;
     let wa = { ready: false, qr: null };
     /** Avoid re-encoding the same Baileys payload on every poll (flicker + scan glitches). */
@@ -251,6 +319,16 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      const adminKeyInput = document.getElementById('adminKey');
+      adminKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || '';
+      document.getElementById('saveKeyBtn').addEventListener('click', async () => {
+        sessionStorage.setItem(KEY_STORAGE, adminKeyInput.value.trim());
+        toast('Admin key saved');
+        await loadReminderDefaults();
+        await loadSenders();
+      });
+
+      loadReminderDefaults();
       loadSenders();
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
       document.getElementById('senderSelect').addEventListener('change', onSenderChange);
@@ -258,13 +336,94 @@
       document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
       document.getElementById('refreshSheetBtn').addEventListener('click', refreshGuestsFromSheet);
       document.getElementById('sendBtn').addEventListener('click', confirmAndSend);
+      document.getElementById('sendRsvpRemindersBtn').addEventListener('click', confirmAndSendRsvpReminders);
+      document.getElementById('rsvpReminderMessage').addEventListener('input', updateReminderPreview);
       document.getElementById('clearSessionBtn').addEventListener('click', clearSession);
     });
 
     window.addEventListener('beforeunload', () => stopPolling());
 
+    function adminHeaders(extra = {}) {
+      const headers = { ...(extra || {}) };
+      const key = (sessionStorage.getItem(KEY_STORAGE) || '').trim();
+      if (key) headers['x-admin-key'] = key;
+      return headers;
+    }
+
     function noStoreFetch(input, init) {
-      return fetch(input, { cache: 'no-store', ...(init || {}) });
+      const merged = { cache: 'no-store', ...(init || {}) };
+      merged.headers = adminHeaders(merged.headers || {});
+      return fetch(input, merged).then((res) => {
+        if (res.status === 401) {
+          toast('Unauthorized — enter Admin API Key above', true);
+        }
+        return res;
+      });
+    }
+
+    function hasRsvpResponded(guest) {
+      return Boolean((guest.rsvpGuestCount || '').trim());
+    }
+
+    function getPendingGuests() {
+      return guests.filter((g) => !hasRsvpResponded(g) && g.phoneTo);
+    }
+
+    function buildPreviewLink(phone) {
+      const base = (rsvpBaseUrl || window.location.origin).replace(/\/$/, '');
+      return base + '/?phone=' + encodeURIComponent(phone || '0500000000');
+    }
+
+    function renderReminderPreview(template, guest) {
+      const sample = guest || {
+        name: 'ישראל',
+        fullName: 'ישראל ישראלי',
+        phoneTo: '0500000000',
+      };
+      const link = buildPreviewLink(sample.phoneTo);
+      return String(template || '')
+        .replace(/\{\{name\}\}/g, sample.name || '')
+        .replace(/\{\{fullName\}\}/g, sample.fullName || sample.name || '')
+        .replace(/\{\{link\}\}/g, link);
+    }
+
+    function updateReminderPreview() {
+      const template = document.getElementById('rsvpReminderMessage').value;
+      const pending = getPendingGuests();
+      const previewGuest = pending[0] || guests[0] || null;
+      document.getElementById('rsvpReminderPreview').textContent = renderReminderPreview(template, previewGuest);
+      updateRsvpReminderUi();
+    }
+
+    function updateRsvpReminderUi() {
+      const pending = getPendingGuests();
+      const n = pending.length;
+      document.getElementById('pendingRsvpCount').textContent = n;
+      const btn = document.getElementById('sendRsvpRemindersBtn');
+      btn.textContent = 'Send reminders to all pending (' + n + ')';
+      btn.disabled = n === 0 || !wa.ready;
+    }
+
+    async function loadReminderDefaults() {
+      try {
+        const res = await noStoreFetch('/api/admin/rsvp-reminder-defaults');
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('Server returned HTML instead of JSON for /api/admin/rsvp-reminder-defaults. Restart the server (npm start).');
+        }
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load reminder template');
+        }
+        rsvpBaseUrl = data.rsvpBaseUrl || '';
+        if (!reminderTemplateLoaded) {
+          document.getElementById('rsvpReminderMessage').value = data.template || '';
+          reminderTemplateLoaded = true;
+        }
+        updateReminderPreview();
+      } catch (e) {
+        toast(e.message, true);
+      }
     }
 
     function onSenderChange() {
@@ -272,6 +431,7 @@
       document.getElementById('loadGuestsBtn').disabled = !v;
       document.getElementById('stepGuests').classList.add('hidden');
       document.getElementById('stepQr').classList.add('hidden');
+      document.getElementById('stepRsvpReminders').classList.add('hidden');
       document.getElementById('sendBanner').classList.remove('show', 'info', 'success', 'error');
       stopPolling();
       resetQrCanvas();
@@ -327,8 +487,10 @@
         guests = await fetchGuestsForSender(sender);
         document.getElementById('stepGuests').classList.remove('hidden');
         document.getElementById('stepQr').classList.remove('hidden');
+        document.getElementById('stepRsvpReminders').classList.remove('hidden');
         displayGuests();
         updateStats();
+        updateReminderPreview();
         document.getElementById('qrStatus').textContent = 'Starting WhatsApp…';
         void initWaBackground();
         toast('Guests loaded');
@@ -352,6 +514,7 @@
         currentSender = sender;
         displayGuests();
         updateStats();
+        updateReminderPreview();
         toast('Sheet data updated');
       } catch (e) {
         toast(e.message, true);
@@ -362,12 +525,19 @@
 
     async function initWaBackground() {
       try {
+        const t0 = Date.now();
+        // #region agent log
+        fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.html:initWaBackground:start',message:'client init start',data:{sender:currentSender},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         const res = await noStoreFetch('/api/admin/init-whatsapp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sender: currentSender }),
         });
         const data = await res.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.html:initWaBackground:done',message:'client init response',data:{elapsedMs:Date.now()-t0,ready:Boolean(data.ready),hasQr:Boolean(data.qrCode),success:Boolean(data.success)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         if (!data.success) {
           setWaConnectedUi(false);
           document.getElementById('qrStatus').textContent = data.error || 'Init failed';
@@ -376,6 +546,7 @@
         if (data.ready) {
           wa.ready = true;
           setWaConnectedUi(true);
+          updateRsvpReminderUi();
           return;
         }
         setWaConnectedUi(false);
@@ -383,10 +554,13 @@
           wa.qr = data.qrCode;
           displayQR(data.qrCode, data.qrDataUrl);
           document.getElementById('qrStatus').textContent = 'Scan QR with WhatsApp (Linked devices).';
+        } else if (!data.ready) {
+          document.getElementById('qrStatus').textContent = 'Waiting for QR code…';
         }
         pollStatus();
       } catch (e) {
         document.getElementById('qrStatus').textContent = e.message;
+        pollStatus();
       }
     }
 
@@ -401,6 +575,7 @@
             stopPolling();
             setWaConnectedUi(true);
             resetQrCanvas();
+            updateRsvpReminderUi();
             return;
           }
           if (data.qr) {
@@ -502,6 +677,9 @@
       }
       guests.forEach((guest, index) => {
         const isSelected = guest.sendConfirmation === 'v' || guest.sendConfirmation === 'V';
+        const responded = hasRsvpResponded(guest);
+        const badgeClass = responded ? 'done' : 'pending';
+        const badgeText = responded ? 'RSVP received' : 'Pending';
         const div = document.createElement('div');
         div.className = 'guest-item' + (isSelected ? '' : ' unselected');
         div.innerHTML =
@@ -510,7 +688,8 @@
           '<div class="guest-name">' + escapeHtml(guest.fullName || guest.name || '') + '</div>' +
           '<div class="guest-phone">' + escapeHtml(guest.phoneTo || '') + '</div>' +
           (guest.addons ? '<div class="guest-addons">+ ' + escapeHtml(guest.addons) + '</div>' : '') +
-          '</div>';
+          '</div>' +
+          '<span class="guest-rsvp-badge ' + badgeClass + '">' + badgeText + '</span>';
         div.querySelector('input').addEventListener('change', (ev) => toggleGuest(index, ev.target.checked));
         list.appendChild(div);
       });
@@ -627,6 +806,123 @@
         throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
       }
       return lastDone;
+    }
+
+    function formatReminderProgressLine(ev) {
+      let s = ev.successful + ' / ' + ev.total + ' reminders delivered';
+      if (ev.failed > 0) {
+        s += ' (' + ev.failed + ' failed)';
+      }
+      if (ev.completed < ev.total) {
+        s += '…';
+      }
+      return s;
+    }
+
+    async function confirmAndSendRsvpReminders() {
+      const pending = getPendingGuests();
+      if (!pending.length) {
+        toast('No pending guests', true);
+        return;
+      }
+      if (!confirm('Send RSVP reminders to ' + pending.length + ' guest(s)?')) return;
+
+      const btn = document.getElementById('sendRsvpRemindersBtn');
+      const banner = document.getElementById('rsvpReminderBanner');
+      const progress = document.getElementById('rsvpReminderProgress');
+      const message = document.getElementById('rsvpReminderMessage').value.trim();
+      if (!message) {
+        toast('Message cannot be empty', true);
+        return;
+      }
+
+      btn.disabled = true;
+      progress.classList.add('hidden');
+      progress.textContent = '';
+      banner.className = 'banner show info';
+      banner.textContent = 'Checking WhatsApp…';
+
+      try {
+        const st = await noStoreFetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender)).then((r) => r.json());
+        if (!st.ready) {
+          banner.className = 'banner show error';
+          banner.textContent = 'WhatsApp not connected. Scan QR in step 2.';
+          updateRsvpReminderUi();
+          return;
+        }
+
+        banner.className = 'banner show info';
+        banner.textContent = 'Sending reminders…';
+        progress.classList.remove('hidden');
+        progress.textContent = '0 / ' + pending.length + ' reminders delivered…';
+
+        const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/x-ndjson',
+          },
+          body: JSON.stringify({
+            sender: currentSender,
+            message,
+          }),
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || res.statusText || 'Send failed');
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let lastDone = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          let nl;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            const ev = JSON.parse(line);
+            if (ev.type === 'progress') {
+              progress.textContent = formatReminderProgressLine(ev);
+            } else if (ev.type === 'done') {
+              lastDone = ev;
+            } else if (ev.type === 'error') {
+              throw new Error(ev.error || 'Send failed');
+            }
+          }
+          if (done) {
+            if (buffer.trim()) {
+              const ev = JSON.parse(buffer.trim());
+              if (ev.type === 'done') lastDone = ev;
+              if (ev.type === 'error') throw new Error(ev.error || 'Send failed');
+            }
+            break;
+          }
+        }
+
+        if (!lastDone || !lastDone.success) {
+          throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
+        }
+
+        progress.classList.add('hidden');
+        banner.className = 'banner show success';
+        banner.textContent =
+          'Done: ' + lastDone.successful + ' delivered' +
+          (lastDone.failed ? ', ' + lastDone.failed + ' failed.' : '.');
+        toast('Reminders finished');
+      } catch (e) {
+        progress.classList.add('hidden');
+        banner.className = 'banner show error';
+        banner.textContent = e.message;
+        toast(e.message, true);
+      } finally {
+        updateRsvpReminderUi();
+      }
     }
 
     async function confirmAndSend() {
