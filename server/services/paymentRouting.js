@@ -99,20 +99,22 @@ function normalizeState(parsed) {
   const defaults = defaultState();
   const byId = new Map((parsed?.links || []).map((l) => [l.id, l]));
 
-  const links = defaults.links.map((def) => {
-    const existing = byId.get(def.id) || {};
-    return {
-      ...def,
-      url: typeof existing.url === 'string' && existing.url ? existing.url : def.url,
-      threshold: Number.isFinite(Number(existing.threshold))
-        ? Math.max(0, Math.floor(Number(existing.threshold)))
-        : def.threshold,
-      currentSum: Number.isFinite(Number(existing.currentSum))
-        ? Math.max(0, Math.floor(Number(existing.currentSum)))
-        : 0,
-      label: typeof existing.label === 'string' && existing.label ? existing.label : def.label,
-    };
-  });
+  const links = linksInAutoOrder(
+    defaults.links.map((def) => {
+      const existing = byId.get(def.id) || {};
+      return {
+        ...def,
+        url: typeof existing.url === 'string' && existing.url ? existing.url : def.url,
+        threshold: Number.isFinite(Number(existing.threshold))
+          ? Math.max(0, Math.floor(Number(existing.threshold)))
+          : def.threshold,
+        currentSum: Number.isFinite(Number(existing.currentSum))
+          ? Math.max(0, Math.floor(Number(existing.currentSum)))
+          : 0,
+        label: typeof existing.label === 'string' && existing.label ? existing.label : def.label,
+      };
+    }),
+  );
 
   const mode = parsed?.mode === 'manual' ? 'manual' : 'auto';
   const manualLinkId =
@@ -129,6 +131,19 @@ function normalizeState(parsed) {
 }
 
 const BIT_REQUIRED_MIN_AMOUNT = 1000;
+
+/** Auto cascade: all PayBox links, then all Bit links. */
+const PROVIDER_AUTO_ORDER = { paybox: 0, bit: 1 };
+
+/** @param {PaymentLink[]} links @returns {PaymentLink[]} */
+function linksInAutoOrder(links) {
+  return [...links].sort((a, b) => {
+    const rankA = PROVIDER_AUTO_ORDER[a.provider] ?? 99;
+    const rankB = PROVIDER_AUTO_ORDER[b.provider] ?? 99;
+    if (rankA !== rankB) return rankA - rankB;
+    return links.indexOf(a) - links.indexOf(b);
+  });
+}
 
 /** @param {PaymentLink} link */
 function remaining(link) {
@@ -150,7 +165,7 @@ function linkEligibleForAmount(link, amount) {
 /**
  * Pick a link that can accept the given amount without exceeding its threshold.
  * Amounts >= 1000 require a Bit link. Manual mode: prefer the forced link if eligible;
- * otherwise cascade to the next eligible link. Auto mode: first eligible link in order.
+ * otherwise cascade. Auto cascade order: PayBox links first, then Bit links.
  * @param {PaymentState} state
  * @param {number} amount
  * @returns {PaymentLink}
@@ -168,7 +183,8 @@ export function resolveLinkForAmount(state, amount) {
     }
   }
 
-  const fitting = state.links.find((l) => linkEligibleForAmount(l, value));
+  const ordered = linksInAutoOrder(state.links);
+  const fitting = ordered.find((l) => linkEligibleForAmount(l, value));
   if (!fitting) {
     const message =
       value >= BIT_REQUIRED_MIN_AMOUNT
@@ -181,8 +197,8 @@ export function resolveLinkForAmount(state, amount) {
 }
 
 /**
- * Auto: first link that still has capacity (currentSum < threshold).
- * If all are full, falls back to the last link.
+ * Auto: first PayBox (then Bit) link that still has capacity.
+ * If all are full, falls back to the last link in that same order.
  * Manual: forced link id.
  * @param {PaymentState} [state]
  * @returns {PaymentLink}
@@ -193,8 +209,9 @@ export function resolveActiveLink(state = readPaymentState()) {
     if (forced) return forced;
   }
 
-  const available = state.links.find((l) => l.currentSum < l.threshold);
-  return available || state.links[state.links.length - 1];
+  const ordered = linksInAutoOrder(state.links);
+  const available = ordered.find((l) => l.currentSum < l.threshold);
+  return available || ordered[ordered.length - 1];
 }
 
 /** @param {PaymentState} [state] */

@@ -175,9 +175,6 @@ router.post('/init-whatsapp', async (req, res) => {
 
     let qrCode = getQRCode(sender);
     const status = getStatus(sender);
-    // #region agent log
-    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.js:init-whatsapp:start',message:'init start',data:{sender,ready:status.ready,hasQr:Boolean(qrCode)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
 
     if (status.ready) {
       return res.json({
@@ -236,10 +233,6 @@ router.post('/init-whatsapp', async (req, res) => {
         }
       }
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f4043e'},body:JSON.stringify({sessionId:'f4043e',location:'admin.js:init-whatsapp:loop-exit',message:'wait loop ended',data:{sender,attempts,elapsedMs:Date.now()-waitStart,hasQr:Boolean(qrCode),ready:getStatus(sender).ready,initError:Boolean(initError),timedOut:Date.now()-waitStart>=MAX_INIT_WAIT_MS},timestamp:Date.now(),hypothesisId:'H1',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
 
     if (initError) {
       return res.status(500).json({
@@ -526,11 +519,13 @@ router.get('/rsvp-reminder-defaults', (_req, res) => {
 
 /**
  * POST /api/admin/send-rsvp-reminders
- * Body: { sender, message }
+ * Body: { sender, message, guests? }
+ * If guests is provided, sends only to those phone numbers (must belong to sender).
+ * Otherwise sends to all pending guests for the sender.
  */
 router.post('/send-rsvp-reminders', async (req, res) => {
   try {
-    const { sender, message } = req.body || {};
+    const { sender, message, guests: requestedGuests } = req.body || {};
     const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
@@ -556,12 +551,35 @@ router.post('/send-rsvp-reminders', async (req, res) => {
     }
 
     const allGuests = await getGuestList(guestSheetId);
-    const pendingGuests = allGuests.filter((guest) => {
-      const matchesSender = guest.sender && guest.sender.trim() === sender.trim();
-      return matchesSender && !hasRsvpResponded(guest) && guest.phoneTo;
-    });
+    const senderGuests = allGuests.filter(
+      (guest) => guest.sender && guest.sender.trim() === sender.trim(),
+    );
 
-    if (!pendingGuests.length) {
+    let targetGuests;
+    if (Array.isArray(requestedGuests) && requestedGuests.length) {
+      const byPhone = new Map(
+        senderGuests.map((guest) => [(guest.phoneTo || '').trim(), guest]),
+      );
+      targetGuests = [];
+      for (const reqGuest of requestedGuests) {
+        const phone = String(reqGuest.phoneTo || reqGuest.phone || '').trim();
+        if (!phone) continue;
+        const sheetGuest = byPhone.get(phone);
+        if (sheetGuest) {
+          targetGuests.push(sheetGuest);
+        } else {
+          targetGuests.push({
+            name: reqGuest.name,
+            fullName: reqGuest.fullName || reqGuest.name,
+            phoneTo: phone,
+          });
+        }
+      }
+    } else {
+      targetGuests = senderGuests.filter((guest) => !hasRsvpResponded(guest) && guest.phoneTo);
+    }
+
+    if (!targetGuests.length) {
       return res.json({
         success: true,
         total: 0,
@@ -569,11 +587,11 @@ router.post('/send-rsvp-reminders', async (req, res) => {
         failed: 0,
         skipped: 0,
         details: [],
-        message: 'No pending guests to remind',
+        message: 'No guests to remind',
       });
     }
 
-    console.log(`[send-rsvp-reminders] sender=${sender} pending=${pendingGuests.length}`);
+    console.log(`[send-rsvp-reminders] sender=${sender} targets=${targetGuests.length}`);
 
     const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
 
@@ -584,7 +602,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
       try {
         const summary = await sendRsvpRemindersSequential(
           sender,
-          pendingGuests,
+          targetGuests,
           messageTemplate,
           (completed, guest, s) => {
             res.write(
@@ -619,7 +637,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
       return;
     }
 
-    const summary = await sendRsvpRemindersSequential(sender, pendingGuests, messageTemplate);
+    const summary = await sendRsvpRemindersSequential(sender, targetGuests, messageTemplate);
     console.log(
       `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
     );

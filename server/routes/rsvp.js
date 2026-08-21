@@ -161,7 +161,7 @@ router.get('/guest/:phone', async (req, res) => {
       });
     }
 
-    const { getGuestByPhone } = await import('../services/googleSheets.js');
+    const { getGuestByPhone, parseStoredRsvp } = await import('../services/googleSheets.js');
     const guest = await getGuestByPhone(guestSheetId, phone);
 
     if (!guest) {
@@ -177,6 +177,7 @@ router.get('/guest/:phone', async (req, res) => {
         name: guest.fullName || guest.name, // Use full name (first + last)
         phone: guest.phoneTo,
         addons: guest.addons,
+        rsvp: parseStoredRsvp(guest),
       },
     });
   } catch (error) {

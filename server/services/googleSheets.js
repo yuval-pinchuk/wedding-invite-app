@@ -134,6 +134,7 @@ function mapDataRowsToGuests(rows) {
       sender: row[14] || '',
       phoneTo: findPhoneNumber(row),
       rsvpGuestCount: (row[7] || '').toString().trim(),
+      rsvpRemarks: (row[12] || '').toString().trim(),
     };
   });
 }
@@ -141,6 +142,69 @@ function mapDataRowsToGuests(rows) {
 /** @param {{ rsvpGuestCount?: string }} guest */
 export function hasRsvpResponded(guest) {
   return Boolean((guest.rsvpGuestCount || '').trim());
+}
+
+/**
+ * Parse stored RSVP columns H + M into structured fields.
+ * Column H: "0" = not attending, "2" or "2(1)" = guests (babies).
+ * Column M: optional "N טבעוני/צמחוני" + free-text notes.
+ * @param {{ rsvpGuestCount?: string, rsvpRemarks?: string }} guest
+ * @returns {null | {
+ *   isAttending: boolean,
+ *   numberOfGuests: number,
+ *   numberOfBabies: number,
+ *   numberOfVegan: number,
+ *   additionalNotes: string,
+ * }}
+ */
+export function parseStoredRsvp(guest) {
+  const raw = (guest?.rsvpGuestCount || '').trim();
+  if (!raw) return null;
+
+  if (raw === '0') {
+    return {
+      isAttending: false,
+      numberOfGuests: 0,
+      numberOfBabies: 0,
+      numberOfVegan: 0,
+      additionalNotes: '',
+    };
+  }
+
+  const countMatch = raw.match(/^(\d+)(?:\((\d+)\))?$/);
+  if (!countMatch) {
+    return {
+      isAttending: true,
+      numberOfGuests: Math.max(1, parseInt(raw, 10) || 1),
+      numberOfBabies: 0,
+      numberOfVegan: 0,
+      additionalNotes: '',
+    };
+  }
+
+  const numberOfGuests = Math.max(1, parseInt(countMatch[1], 10) || 1);
+  const numberOfBabies = parseInt(countMatch[2] || '0', 10) || 0;
+
+  let numberOfVegan = 0;
+  let additionalNotes = '';
+  const remarks = (guest?.rsvpRemarks || '').trim();
+  if (remarks) {
+    const veganMatch = remarks.match(/^(\d+)\s*טבעוני\/צמחוני\s*/);
+    if (veganMatch) {
+      numberOfVegan = parseInt(veganMatch[1], 10) || 0;
+      additionalNotes = remarks.slice(veganMatch[0].length).trim();
+    } else {
+      additionalNotes = remarks;
+    }
+  }
+
+  return {
+    isAttending: true,
+    numberOfGuests,
+    numberOfBabies,
+    numberOfVegan,
+    additionalNotes,
+  };
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
