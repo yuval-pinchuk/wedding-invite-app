@@ -1,17 +1,25 @@
 import express from 'express';
 import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
-import { saveRSVPResponse, initializeResponseSheet } from '../services/googleSheets.js';
+import { saveRSVPResponse, initializeResponseSheet, updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
 
 const router = express.Router();
 
 /**
  * POST /api/rsvp
  * Handle RSVP submission
- * Body: { name, phone, isAttending, numberOfGuests }
+ * Body: { name, phone, isAttending, numberOfGuests, numberOfBabies?, numberOfVegan?, additionalNotes? }
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, phone, isAttending, numberOfGuests } = req.body;
+    const {
+      name,
+      phone,
+      isAttending,
+      numberOfGuests,
+      numberOfBabies,
+      numberOfVegan,
+      additionalNotes,
+    } = req.body;
 
     // Validation
     if (!name || !phone) {
@@ -28,11 +36,46 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const guests = parseInt(numberOfGuests, 10);
+    const guests = isAttending ? parseInt(numberOfGuests, 10) : 0;
     if (isNaN(guests) || guests < 0) {
       return res.status(400).json({
         success: false,
         error: 'Number of guests must be a non-negative integer',
+      });
+    }
+
+    if (isAttending && guests < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of guests must be at least 1 when attending',
+      });
+    }
+
+    const babies = isAttending ? parseInt(numberOfBabies, 10) || 0 : 0;
+    if (isNaN(babies) || babies < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of babies must be a non-negative integer',
+      });
+    }
+
+    const vegan = isAttending ? parseInt(numberOfVegan, 10) || 0 : 0;
+    if (isNaN(vegan) || vegan < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Number of vegan/vegetarian guests must be a non-negative integer',
+      });
+    }
+
+    let notes = isAttending && typeof additionalNotes === 'string'
+      ? additionalNotes.trim().slice(0, 60)
+      : '';
+
+    const guestSheetId = envGuestSheetId();
+    if (!guestSheetId) {
+      return res.status(500).json({
+        success: false,
+        error: 'Guest sheet not configured',
       });
     }
 
@@ -44,6 +87,14 @@ router.post('/', async (req, res) => {
       });
     }
 
+    await updateGuestRsvpOnGuestSheet(guestSheetId, phone, {
+      isAttending,
+      numberOfGuests: guests,
+      numberOfBabies: babies,
+      numberOfVegan: vegan,
+      additionalNotes: notes,
+    });
+
     // Initialize sheet headers if needed
     await initializeResponseSheet(responseSheetId);
 
@@ -53,7 +104,10 @@ router.post('/', async (req, res) => {
       name,
       phone,
       isAttending,
-      guests
+      guests,
+      babies,
+      vegan,
+      notes
     );
 
     res.json({
@@ -62,6 +116,13 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing RSVP:', error);
+
+    if (error.status === 404) {
+      return res.status(404).json({
+        success: false,
+        error: error.message || 'Guest not found in guest list',
+      });
+    }
     
     // Handle permission errors specifically
     if (error.code === 'PERMISSION_DENIED' || error.message?.includes('Permission denied')) {
@@ -100,7 +161,7 @@ router.get('/guest/:phone', async (req, res) => {
       });
     }
 
-    const { getGuestByPhone } = await import('../services/googleSheets.js');
+    const { getGuestByPhone, parseStoredRsvp } = await import('../services/googleSheets.js');
     const guest = await getGuestByPhone(guestSheetId, phone);
 
     if (!guest) {
@@ -116,6 +177,7 @@ router.get('/guest/:phone', async (req, res) => {
         name: guest.fullName || guest.name, // Use full name (first + last)
         phone: guest.phoneTo,
         addons: guest.addons,
+        rsvp: parseStoredRsvp(guest),
       },
     });
   } catch (error) {

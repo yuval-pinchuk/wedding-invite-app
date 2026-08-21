@@ -42,7 +42,7 @@
     }
     .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
     label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
-    select {
+    select, input, textarea {
       width: 100%;
       padding: 12px 14px;
       border-radius: 8px;
@@ -52,7 +52,42 @@
       font-family: inherit;
       font-size: 1rem;
     }
-    select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .preview-box {
+      background: var(--bg);
+      border: 1px solid var(--surface2);
+      border-radius: 8px;
+      padding: 14px;
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      min-height: 100px;
+    }
+    .guest-rsvp-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+    .guest-rsvp-badge.pending {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+    }
+    .guest-rsvp-badge.done {
+      background: rgba(34, 197, 94, 0.15);
+      color: #86efac;
+    }
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .row .grow { flex: 1; min-width: 200px; }
     button {
@@ -176,7 +211,20 @@
     <header>
       <h1>Wedding Invitation Manager</h1>
       <p>Google Sheet guests and WhatsApp (Baileys / personal account — unofficial).</p>
+      <p style="margin-top:10px"><a href="/admin-pay.html" style="color:#14b8a6;text-decoration:none;font-weight:600">ניהול מתנות / תשלומים →</a></p>
     </header>
+
+    <div class="card" id="authCard">
+      <h2>מפתח מנהל (אופציונלי)</h2>
+      <p class="hint">אם הוגדר <code>ADMIN_API_KEY</code> בשרת, הזינו אותו כאן. נשמר רק בדפדפן זה.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="adminKey">Admin API Key</label>
+          <input type="password" id="adminKey" autocomplete="off" placeholder="x-admin-key">
+        </div>
+        <button type="button" class="btn-primary" id="saveKeyBtn">שמירה ורענון</button>
+      </div>
+    </div>
 
     <div class="card" id="stepSender">
       <h2>1. Sender</h2>
@@ -208,14 +256,24 @@
       <div class="stats">
         <div class="stat"><b id="totalGuests">0</b><span>Total</span></div>
         <div class="stat"><b id="selectedGuests">0</b><span>Selected</span></div>
+        <div class="stat"><b id="pendingRsvpGuestsStat">0</b><span>Pending RSVP</span></div>
       </div>
       <div class="toolbar">
         <button type="button" class="btn-ghost" id="selectAllBtn">Select all</button>
         <button type="button" class="btn-ghost" id="deselectAllBtn">Deselect all</button>
+        <button type="button" class="btn-ghost" id="selectAllPendingBtn">Select all pending</button>
         <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
       <div class="guest-list" id="guestList"></div>
-      <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>Send invitations</button>
+      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו (עמודה H ריקה = ממתין לאישור).</p>
+      <label for="rsvpReminderMessage">נוסח ההודעה</label>
+      <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
+      <p class="hint" style="margin-top:12px">משתנים: <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
+      <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
+      <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
+      <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>
+        שליחת תזכורת RSVP (0)
+      </button>
       <p id="sendProgress" class="send-progress hidden" aria-live="polite"></p>
       <div class="banner" id="sendBanner" role="status"></div>
     </div>
@@ -223,8 +281,11 @@
   <div id="toast"></div>
 
   <script>
+    const KEY_STORAGE = 'wedding_admin_key';
     let currentSender = '';
     let guests = [];
+    let rsvpBaseUrl = '';
+    let reminderTemplateLoaded = false;
     let pollingInterval = null;
     let wa = { ready: false, qr: null };
     /** Avoid re-encoding the same Baileys payload on every poll (flicker + scan glitches). */
@@ -250,20 +311,118 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      const adminKeyInput = document.getElementById('adminKey');
+      adminKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || '';
+      document.getElementById('saveKeyBtn').addEventListener('click', async () => {
+        sessionStorage.setItem(KEY_STORAGE, adminKeyInput.value.trim());
+        toast('Admin key saved');
+        await loadReminderDefaults();
+        await loadSenders();
+      });
+
+      loadReminderDefaults();
       loadSenders();
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
       document.getElementById('senderSelect').addEventListener('change', onSenderChange);
       document.getElementById('selectAllBtn').addEventListener('click', selectAll);
       document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+      document.getElementById('selectAllPendingBtn').addEventListener('click', selectAllPending);
       document.getElementById('refreshSheetBtn').addEventListener('click', refreshGuestsFromSheet);
-      document.getElementById('sendBtn').addEventListener('click', confirmAndSend);
+      document.getElementById('sendBtn').addEventListener('click', confirmAndSendRsvpReminders);
+      document.getElementById('rsvpReminderMessage').addEventListener('input', updateReminderPreview);
       document.getElementById('clearSessionBtn').addEventListener('click', clearSession);
     });
 
     window.addEventListener('beforeunload', () => stopPolling());
 
+    function adminHeaders(extra = {}) {
+      const headers = { ...(extra || {}) };
+      const key = (sessionStorage.getItem(KEY_STORAGE) || '').trim();
+      if (key) headers['x-admin-key'] = key;
+      return headers;
+    }
+
     function noStoreFetch(input, init) {
-      return fetch(input, { cache: 'no-store', ...(init || {}) });
+      const merged = { cache: 'no-store', ...(init || {}) };
+      merged.headers = adminHeaders(merged.headers || {});
+      return fetch(input, merged).then((res) => {
+        if (res.status === 401) {
+          toast('Unauthorized — enter Admin API Key above', true);
+        }
+        return res;
+      });
+    }
+
+    function hasRsvpResponded(guest) {
+      return Boolean((guest.rsvpGuestCount || '').trim());
+    }
+
+    function getPendingGuests() {
+      return guests.filter((g) => !hasRsvpResponded(g) && g.phoneTo);
+    }
+
+    function buildPreviewLink(phone) {
+      const base = (rsvpBaseUrl || window.location.origin).replace(/\/$/, '');
+      return base + '/?phone=' + encodeURIComponent(phone || '0500000000');
+    }
+
+    function renderReminderPreview(template, guest) {
+      const sample = guest || {
+        name: 'ישראל',
+        fullName: 'ישראל ישראלי',
+        phoneTo: '0500000000',
+      };
+      const link = buildPreviewLink(sample.phoneTo);
+      return String(template || '')
+        .replace(/\{\{name\}\}/g, sample.name || '')
+        .replace(/\{\{fullName\}\}/g, sample.fullName || sample.name || '')
+        .replace(/\{\{link\}\}/g, link);
+    }
+
+    function updateReminderPreview() {
+      const template = document.getElementById('rsvpReminderMessage').value;
+      const pending = getPendingGuests();
+      const selected = getSelectedGuests();
+      const previewGuest = selected[0] || pending[0] || guests[0] || null;
+      document.getElementById('rsvpReminderPreview').textContent = renderReminderPreview(template, previewGuest);
+      updateStats();
+    }
+
+    function getSelectedGuests() {
+      return guests.filter((g) => g.selected && g.phoneTo);
+    }
+
+    function updateStats() {
+      const selected = getSelectedGuests();
+      const pending = getPendingGuests();
+      document.getElementById('totalGuests').textContent = guests.length;
+      document.getElementById('selectedGuests').textContent = selected.length;
+      document.getElementById('pendingRsvpGuestsStat').textContent = pending.length;
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.textContent = 'שליחת תזכורת RSVP (' + selected.length + ')';
+      sendBtn.disabled = selected.length === 0 || !wa.ready;
+    }
+
+    async function loadReminderDefaults() {
+      try {
+        const res = await noStoreFetch('/api/admin/rsvp-reminder-defaults');
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('Server returned HTML instead of JSON for /api/admin/rsvp-reminder-defaults. Restart the server (npm start).');
+        }
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load reminder template');
+        }
+        rsvpBaseUrl = data.rsvpBaseUrl || '';
+        if (!reminderTemplateLoaded) {
+          document.getElementById('rsvpReminderMessage').value = data.template || '';
+          reminderTemplateLoaded = true;
+        }
+        updateReminderPreview();
+      } catch (e) {
+        toast(e.message, true);
+      }
     }
 
     function onSenderChange() {
@@ -323,11 +482,12 @@
       currentSender = sender;
       toast('Loading guests…');
       try {
-        guests = await fetchGuestsForSender(sender);
+        guests = (await fetchGuestsForSender(sender)).map((g) => ({ ...g, selected: false }));
         document.getElementById('stepGuests').classList.remove('hidden');
         document.getElementById('stepQr').classList.remove('hidden');
         displayGuests();
         updateStats();
+        updateReminderPreview();
         document.getElementById('qrStatus').textContent = 'Starting WhatsApp…';
         void initWaBackground();
         toast('Guests loaded');
@@ -347,10 +507,11 @@
       btn.disabled = true;
       toast('Refreshing from sheet…');
       try {
-        guests = await fetchGuestsForSender(sender);
+        guests = (await fetchGuestsForSender(sender)).map((g) => ({ ...g, selected: false }));
         currentSender = sender;
         displayGuests();
         updateStats();
+        updateReminderPreview();
         toast('Sheet data updated');
       } catch (e) {
         toast(e.message, true);
@@ -375,6 +536,7 @@
         if (data.ready) {
           wa.ready = true;
           setWaConnectedUi(true);
+          updateStats();
           return;
         }
         setWaConnectedUi(false);
@@ -382,10 +544,13 @@
           wa.qr = data.qrCode;
           displayQR(data.qrCode, data.qrDataUrl);
           document.getElementById('qrStatus').textContent = 'Scan QR with WhatsApp (Linked devices).';
+        } else if (!data.ready) {
+          document.getElementById('qrStatus').textContent = 'Waiting for QR code…';
         }
         pollStatus();
       } catch (e) {
         document.getElementById('qrStatus').textContent = e.message;
+        pollStatus();
       }
     }
 
@@ -400,6 +565,7 @@
             stopPolling();
             setWaConnectedUi(true);
             resetQrCanvas();
+            updateStats();
             return;
           }
           if (data.qr) {
@@ -500,7 +666,10 @@
         return;
       }
       guests.forEach((guest, index) => {
-        const isSelected = guest.sendConfirmation === 'v' || guest.sendConfirmation === 'V';
+        const isSelected = Boolean(guest.selected);
+        const responded = hasRsvpResponded(guest);
+        const badgeClass = responded ? 'done' : 'pending';
+        const badgeText = responded ? 'RSVP received' : 'Pending';
         const div = document.createElement('div');
         div.className = 'guest-item' + (isSelected ? '' : ' unselected');
         div.innerHTML =
@@ -509,7 +678,8 @@
           '<div class="guest-name">' + escapeHtml(guest.fullName || guest.name || '') + '</div>' +
           '<div class="guest-phone">' + escapeHtml(guest.phoneTo || '') + '</div>' +
           (guest.addons ? '<div class="guest-addons">+ ' + escapeHtml(guest.addons) + '</div>' : '') +
-          '</div>';
+          '</div>' +
+          '<span class="guest-rsvp-badge ' + badgeClass + '">' + badgeText + '</span>';
         div.querySelector('input').addEventListener('change', (ev) => toggleGuest(index, ev.target.checked));
         list.appendChild(div);
       });
@@ -521,62 +691,55 @@
       return d.innerHTML;
     }
 
-    async function toggleGuest(index, isSelected) {
-      const guest = guests[index];
-      try {
-        await updateSendStatus(guest.phoneTo, isSelected);
-        guests[index].sendConfirmation = isSelected ? 'v' : '';
-        document.getElementById('g-' + index).closest('.guest-item').classList.toggle('unselected', !isSelected);
-        updateStats();
-      } catch (e) {
-        document.getElementById('g-' + index).checked = !isSelected;
-        toast(e.message, true);
-      }
+    function toggleGuest(index, isSelected) {
+      guests[index].selected = isSelected;
+      document.getElementById('g-' + index).closest('.guest-item').classList.toggle('unselected', !isSelected);
+      updateStats();
+      updateReminderPreview();
     }
 
-    async function updateSendStatus(phone, shouldSend) {
-      const res = await noStoreFetch('/api/admin/update-send-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, shouldSend }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Update failed');
-    }
-
-    async function selectAll() {
+    function selectAll() {
       for (let i = 0; i < guests.length; i++) {
-        if (guests[i].sendConfirmation !== 'v' && guests[i].sendConfirmation !== 'V') {
-          const cb = document.getElementById('g-' + i);
-          if (cb) {
-            cb.checked = true;
-            await toggleGuest(i, true);
-          }
+        guests[i].selected = true;
+        const cb = document.getElementById('g-' + i);
+        if (cb) {
+          cb.checked = true;
+          cb.closest('.guest-item').classList.remove('unselected');
         }
       }
+      updateStats();
+      updateReminderPreview();
     }
 
-    async function deselectAll() {
+    function deselectAll() {
       for (let i = 0; i < guests.length; i++) {
-        if (guests[i].sendConfirmation === 'v' || guests[i].sendConfirmation === 'V') {
-          const cb = document.getElementById('g-' + i);
-          if (cb) {
-            cb.checked = false;
-            await toggleGuest(i, false);
-          }
+        guests[i].selected = false;
+        const cb = document.getElementById('g-' + i);
+        if (cb) {
+          cb.checked = false;
+          cb.closest('.guest-item').classList.add('unselected');
         }
       }
+      updateStats();
+      updateReminderPreview();
     }
 
-    function updateStats() {
-      const n = guests.filter((g) => g.sendConfirmation === 'v' || g.sendConfirmation === 'V').length;
-      document.getElementById('totalGuests').textContent = guests.length;
-      document.getElementById('selectedGuests').textContent = n;
-      document.getElementById('sendBtn').disabled = n === 0;
+    function selectAllPending() {
+      for (let i = 0; i < guests.length; i++) {
+        const pending = !hasRsvpResponded(guests[i]);
+        guests[i].selected = pending;
+        const cb = document.getElementById('g-' + i);
+        if (cb) {
+          cb.checked = pending;
+          cb.closest('.guest-item').classList.toggle('unselected', !pending);
+        }
+      }
+      updateStats();
+      updateReminderPreview();
     }
 
-    function formatSendProgressLine(ev) {
-      let s = ev.successful + ' / ' + ev.total + ' invitations delivered';
+    function formatReminderProgressLine(ev) {
+      let s = ev.successful + ' / ' + ev.total + ' reminders delivered';
       if (ev.failed > 0) {
         s += ' (' + ev.failed + ' failed)';
       }
@@ -586,61 +749,26 @@
       return s;
     }
 
-    async function readSendInvitationsNdjson(res) {
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let lastDone = null;
-
-      function handleEvent(ev) {
-        if (ev.type === 'progress') {
-          const prog = document.getElementById('sendProgress');
-          prog.classList.remove('hidden');
-          prog.textContent = formatSendProgressLine(ev);
-        } else if (ev.type === 'done') {
-          lastDone = ev;
-        } else if (ev.type === 'error') {
-          throw new Error(ev.error || 'Send failed');
-        }
-      }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        let nl;
-        while ((nl = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          handleEvent(JSON.parse(line));
-        }
-        if (done) {
-          if (buffer.trim()) {
-            handleEvent(JSON.parse(buffer.trim()));
-          }
-          break;
-        }
-      }
-
-      if (!lastDone || !lastDone.success) {
-        throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
-      }
-      return lastDone;
-    }
-
-    async function confirmAndSend() {
-      const selected = guests.filter((g) => g.sendConfirmation === 'v' || g.sendConfirmation === 'V');
+    async function confirmAndSendRsvpReminders() {
+      const selected = getSelectedGuests();
       if (!selected.length) {
         toast('No guests selected', true);
         return;
       }
-      if (!confirm('Send ' + selected.length + ' WhatsApp invitation(s)?')) return;
+      if (!confirm('לשלוח תזכורת RSVP ל-' + selected.length + ' אורחים שנבחרו?')) return;
 
-      document.getElementById('sendBtn').disabled = true;
+      const btn = document.getElementById('sendBtn');
       const banner = document.getElementById('sendBanner');
-      const sendProgress = document.getElementById('sendProgress');
-      sendProgress.classList.add('hidden');
-      sendProgress.textContent = '';
+      const progress = document.getElementById('sendProgress');
+      const message = document.getElementById('rsvpReminderMessage').value.trim();
+      if (!message) {
+        toast('Message cannot be empty', true);
+        return;
+      }
+
+      btn.disabled = true;
+      progress.classList.add('hidden');
+      progress.textContent = '';
       banner.className = 'banner show info';
       banner.textContent = 'Checking WhatsApp…';
 
@@ -649,15 +777,16 @@
         if (!st.ready) {
           banner.className = 'banner show error';
           banner.textContent = 'WhatsApp not connected. Scan QR in step 2.';
-          document.getElementById('sendBtn').disabled = false;
+          updateStats();
           return;
         }
-        banner.className = 'banner show info';
-        banner.textContent = 'Sending invitations…';
-        sendProgress.classList.remove('hidden');
-        sendProgress.textContent = '0 / ' + selected.length + ' invitations delivered…';
 
-        const res = await noStoreFetch('/api/admin/send-invitations', {
+        banner.className = 'banner show info';
+        banner.textContent = 'Sending reminders…';
+        progress.classList.remove('hidden');
+        progress.textContent = '0 / ' + selected.length + ' reminders delivered…';
+
+        const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -665,7 +794,12 @@
           },
           body: JSON.stringify({
             sender: currentSender,
-            guests: selected.map((g) => ({ name: g.name, phone: g.phoneTo, addons: g.addons })),
+            message,
+            guests: selected.map((g) => ({
+              name: g.name,
+              fullName: g.fullName,
+              phoneTo: g.phoneTo,
+            })),
           }),
         });
 
@@ -674,14 +808,50 @@
           throw new Error(errJson.error || res.statusText || 'Send failed');
         }
 
-        const data = await readSendInvitationsNdjson(res);
-        sendProgress.classList.add('hidden');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let lastDone = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          let nl;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            const ev = JSON.parse(line);
+            if (ev.type === 'progress') {
+              progress.textContent = formatReminderProgressLine(ev);
+            } else if (ev.type === 'done') {
+              lastDone = ev;
+            } else if (ev.type === 'error') {
+              throw new Error(ev.error || 'Send failed');
+            }
+          }
+          if (done) {
+            if (buffer.trim()) {
+              const ev = JSON.parse(buffer.trim());
+              if (ev.type === 'done') lastDone = ev;
+              if (ev.type === 'error') throw new Error(ev.error || 'Send failed');
+            }
+            break;
+          }
+        }
+
+        if (!lastDone || !lastDone.success) {
+          throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
+        }
+
+        progress.classList.add('hidden');
         banner.className = 'banner show success';
         banner.textContent =
-          'Done: ' + data.successful + ' delivered' + (data.failed ? ', ' + data.failed + ' failed.' : '.');
-        toast('Finished');
+          'Done: ' + lastDone.successful + ' delivered' +
+          (lastDone.failed ? ', ' + lastDone.failed + ' failed.' : '.');
+        toast('Reminders finished');
       } catch (e) {
-        sendProgress.classList.add('hidden');
+        progress.classList.add('hidden');
         banner.className = 'banner show error';
         banner.textContent = e.message;
         toast(e.message, true);

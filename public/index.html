@@ -1,10 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wedding RSVP</title>
+  <title>אישור הגעה לחתונה</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --cream: #FAF7F2;
+      --cream-dark: #F0EBE3;
+      --text: #3D3630;
+      --text-muted: #7A7168;
+      --accent: #C4A574;
+      --accent-dark: #A88B5E;
+      --envelope: #E8DFD0;
+      --envelope-flap: #DDD4C4;
+      --error-bg: #FDF0EE;
+      --error-text: #8B3A32;
+      --success-bg: #EEF5EE;
+      --success-text: #2D5A32;
+      --radius: 14px;
+      --font: 'Heebo', system-ui, sans-serif;
+      --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
+      --header-h: 96px;
+      --hint-h: 112px;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -12,29 +35,48 @@
     }
 
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
+      font-family: var(--font);
+      background: var(--cream);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    body.scroll-locked {
+      overflow: hidden;
+      height: 100dvh;
+    }
+
+    .page-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
       display: flex;
-      align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 14px 20px 18px;
+      background: linear-gradient(
+        180deg,
+        rgba(250, 247, 242, 0.98) 0%,
+        rgba(250, 247, 242, 0.92) 55%,
+        rgba(250, 247, 242, 0)
+      );
+      pointer-events: none;
     }
 
-    .container {
-      background: white;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      max-width: 500px;
-      width: 100%;
-      padding: 40px;
-      animation: fadeIn 0.5s ease-in;
+    .page-header-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      max-width: 420px;
+      animation: headerIn 0.8s ease-out both;
     }
 
-    @keyframes fadeIn {
+    @keyframes headerIn {
       from {
         opacity: 0;
-        transform: translateY(-20px);
+        transform: translateY(-8px);
       }
       to {
         opacity: 1;
@@ -42,51 +84,650 @@
       }
     }
 
-    h1 {
-      color: #667eea;
-      text-align: center;
-      margin-bottom: 10px;
-      font-size: 2.5em;
+    .page-header-kicker {
+      font-family: var(--font);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      color: var(--accent-dark);
+      text-transform: none;
     }
 
-    .subtitle {
+    .page-header-names {
+      font-family: var(--font-display);
+      font-size: clamp(1.45rem, 5.2vw, 2rem);
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.15;
+      letter-spacing: 0.02em;
+    }
+
+    .page-header-date {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 2px;
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.14em;
+    }
+
+    .page-header-date::before,
+    .page-header-date::after {
+      content: '';
+      width: 28px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .page-header-inner {
+        animation: none;
+      }
+    }
+
+    .sections-viewport {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .page-section {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--header-h) 20px var(--hint-h);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page-section.is-active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      z-index: 2;
+    }
+
+    .page-section.is-animating {
+      z-index: 3;
+      pointer-events: none;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .page-section.is-exiting {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .page-section.exit-down {
+      opacity: 0;
+      transform: translateY(-48px);
+    }
+
+    .page-section.exit-up {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    .page-section.enter-from-below {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    .page-section.enter-from-above {
+      opacity: 0;
+      transform: translateY(-48px);
+    }
+
+    .page-section.enter-from-below.is-visible,
+    .page-section.enter-from-above.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .section-inner {
+      width: 100%;
+      max-width: 480px;
+      max-height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+
+    .section-inner.no-scroll {
+      overflow: hidden;
+    }
+
+    .page-section[data-section="0"] {
+      padding-bottom: var(--hint-h);
+    }
+
+    .page-section[data-section="0"] .section-inner {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      height: 100%;
+      max-height: 100%;
+      position: relative;
+      overflow: hidden;
+      padding-top: 8px;
+      padding-bottom: 12px;
+    }
+
+    .page-section[data-section="0"] .envelope-scene {
+      transform: none;
+      width: min(200px, 52vw);
+      height: min(300px, calc(100dvh - var(--header-h) - var(--hint-h) - 24px));
+      max-height: 42dvh;
+      margin-top: auto;
+      margin-bottom: auto;
+    }
+
+    .page-section[data-section="1"] {
+      padding-bottom: 40px;
+    }
+
+    .page-section[data-section="2"],
+    .page-section[data-section="3"] {
+      padding-bottom: 40px;
+    }
+
+    .page-section[data-section="1"] .section-inner,
+    .page-section[data-section="2"] .section-inner,
+    .page-section[data-section="3"] .section-inner {
+      padding-bottom: 8px;
+    }
+
+    .page-section[data-section="2"] .section-inner {
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      max-height: 100%;
+    }
+
+    .page-section[data-section="2"] .gift-section {
+      padding-top: 0;
+    }
+
+    .page-section[data-section="2"] .section-title {
+      font-size: 1.3rem;
+      margin-bottom: 10px;
+    }
+
+    .page-section[data-section="2"] .gift-subtitle {
+      font-size: 0.88rem;
+      margin-bottom: 12px;
+      line-height: 1.35;
+    }
+
+    .page-section[data-section="2"] .form-group {
+      margin-bottom: 10px;
+    }
+
+    .page-section[data-section="2"] .form-group > label {
+      margin-bottom: 4px;
+      font-size: 0.88rem;
+    }
+
+    .page-section[data-section="2"] .gift-amount-wrap {
+      margin-bottom: 12px;
+    }
+
+    .page-section[data-section="2"] #giftAmount {
+      font-size: 1.3rem;
+      padding: 10px 12px;
+    }
+
+    .page-section[data-section="2"] #giftPayBtn {
+      padding: 12px 18px;
+      font-size: 0.95rem;
+    }
+
+    .page-section[data-section="2"] .gift-note {
+      margin-top: 8px;
+      font-size: 0.8rem;
+      line-height: 1.35;
+    }
+
+    .page-section[data-section="2"] .gift-faq-link {
+      margin-top: 8px;
+      font-size: 0.82rem;
+    }
+
+    .page-section[data-section="2"] .gift-error {
+      margin-top: 6px;
+      font-size: 0.8rem;
+    }
+
+    /* ── Hero / Envelope ── */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: visible;
+      width: 100%;
+    }
+
+    .envelope-scene {
+      position: relative;
+      width: min(260px, 72vw);
+      height: 420px;
+      perspective: 800px;
+      overflow: visible;
+    }
+
+    .envelope {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      height: 160px;
+      opacity: 0;
+      z-index: 1;
+      animation:
+        floatUpFade 1.2s ease-out forwards,
+        envelopeFadeOut 0.9s ease-out 3.4s forwards;
+    }
+
+    @keyframes floatUpFade {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(80px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    @keyframes envelopeFadeOut {
+      to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+      }
+    }
+
+    .envelope-body {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 120px;
+      background: var(--envelope);
+      border-radius: 4px 4px 8px 8px;
+      box-shadow: 0 8px 30px rgba(61, 54, 48, 0.12);
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .envelope-body::before,
+    .envelope-body::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      background: var(--envelope-flap);
+    }
+
+    .envelope-body::before {
+      left: 0;
+      clip-path: polygon(0 0, 100% 50%, 0 100%);
+    }
+
+    .envelope-body::after {
+      right: 0;
+      clip-path: polygon(100% 0, 0 50%, 100% 100%);
+    }
+
+    .envelope-flap {
+      position: absolute;
+      top: 40px;
+      left: 0;
+      width: 100%;
+      height: 80px;
+      background: var(--envelope-flap);
+      clip-path: polygon(0 0, 50% 100%, 100% 0);
+      transform-origin: top center;
+      z-index: 3;
+      animation: flapOpen 0.6s ease-in-out 1.2s forwards;
+    }
+
+    @keyframes flapOpen {
+      from { transform: rotateX(0deg); }
+      to { transform: rotateX(180deg); }
+    }
+
+    .invite-card {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(40px) scale(0.92);
+      width: 78%;
+      z-index: 2;
+      opacity: 0;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(61, 54, 48, 0.15);
+      animation:
+        cardSlideOut 1.6s ease-out 1.8s forwards,
+        cardFloatBob 3.5s ease-in-out 3.4s infinite;
+    }
+
+    @keyframes cardSlideOut {
+      0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40px) scale(0.92);
+      }
+      40% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-6px) scale(1);
+      }
+    }
+
+    @keyframes cardFloatBob {
+      0%, 100% {
+        transform: translateX(-50%) translateY(-4px) scale(1);
+      }
+      50% {
+        transform: translateX(-50%) translateY(-10px) scale(1);
+      }
+    }
+
+    .invite-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .scroll-hint {
+      position: absolute;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent-dark);
+      font-size: 1.05rem;
+      font-weight: 600;
+      background: #fff;
+      border: 2px solid var(--accent);
+      border-radius: 20px;
+      font-family: inherit;
+      cursor: pointer;
+      opacity: 1;
+      z-index: 25;
+      padding: 14px 22px 12px;
+      box-shadow: 0 8px 24px rgba(61, 54, 48, 0.14);
+      min-width: min(260px, calc(100vw - 48px));
+    }
+
+    .scroll-hint span {
+      line-height: 1.3;
       text-align: center;
-      color: #666;
-      margin-bottom: 30px;
-      font-size: 1.1em;
+    }
+
+    .scroll-hint.is-delayed {
+      opacity: 0;
+      animation: hintFade 0.6s ease-out 3.5s forwards;
+    }
+
+    @keyframes hintFade {
+      to { opacity: 1; }
+    }
+
+    .scroll-hint svg {
+      width: 28px;
+      height: 28px;
+      animation: bounce 1.6s ease-in-out infinite;
+    }
+
+    .scroll-hint.is-delayed svg {
+      animation: bounce 1.6s ease-in-out 3s infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(8px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .envelope {
+        opacity: 0;
+        animation: none;
+        transform: translateX(-50%);
+      }
+      .envelope-flap {
+        animation: none;
+        transform: rotateX(180deg);
+        opacity: 0.3;
+      }
+      .invite-card {
+        opacity: 1;
+        animation: none;
+        transform: translateX(-50%) translateY(-6px) scale(1);
+      }
+      .scroll-hint,
+      .scroll-hint.is-delayed {
+        animation: none;
+        opacity: 1;
+      }
+      .scroll-hint svg,
+      .scroll-hint.is-delayed svg {
+        animation: none;
+      }
+    }
+
+    /* ── Error state ── */
+    .gate-error {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    .gate-error p {
+      font-size: 1.15rem;
+      color: var(--error-text);
+      background: var(--error-bg);
+      padding: 24px 28px;
+      border-radius: var(--radius);
+      max-width: 360px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* ── RSVP section ── */
+    .rsvp-section {
+      width: 100%;
+    }
+
+    .rsvp-logged {
+      text-align: center;
+      padding: 8px 4px 4px;
+    }
+
+    .rsvp-logged-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .rsvp-logged-text {
+      font-size: 1rem;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+      line-height: 1.55;
+    }
+
+    .rsvp-logged-summary {
+      background: #fff;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      text-align: right;
+      margin-bottom: 20px;
+    }
+
+    .rsvp-logged-summary p {
+      font-size: 0.95rem;
+      color: var(--text);
+      margin: 0 0 8px;
+    }
+
+    .rsvp-logged-summary p:last-child {
+      margin-bottom: 0;
+    }
+
+    .rsvp-logged-summary strong {
+      font-weight: 600;
+    }
+
+    .rsvp-hub-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .rsvp-hub-btn {
+      width: 100%;
+      padding: 14px 20px;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .rsvp-hub-btn-primary {
+      border: 2px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .rsvp-hub-btn-primary:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
+    }
+
+    .rsvp-hub-btn-secondary {
+      border: 2px solid var(--accent);
+      background: transparent;
+      color: var(--accent-dark);
+    }
+
+    .rsvp-hub-btn-secondary:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .section-back-btn {
+      position: absolute;
+      top: calc(var(--header-h) + 4px);
+      right: 16px;
+      z-index: 16;
+      padding: 8px 14px;
+      border: 2px solid var(--cream-dark);
+      border-radius: 999px;
+      background: rgba(250, 247, 242, 0.95);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .section-back-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent-dark);
+    }
+
+    .page-section[data-section="2"] .section-inner,
+    .page-section[data-section="3"] .section-inner {
+      padding-top: 36px;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 28px;
+      color: var(--text);
     }
 
     .form-group {
-      margin-bottom: 25px;
+      margin-bottom: 22px;
     }
 
     label {
       display: block;
       margin-bottom: 8px;
-      color: #333;
-      font-weight: 600;
+      font-weight: 500;
+      font-size: 0.95rem;
+      color: var(--text);
     }
 
-    input[type="text"],
-    input[type="tel"],
-    input[type="number"] {
+    input[type="number"],
+    textarea {
       width: 100%;
-      padding: 12px 15px;
-      border: 2px solid #e0e0e0;
-      border-radius: 10px;
+      padding: 14px 16px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
+      font-family: inherit;
       font-size: 16px;
-      transition: border-color 0.3s;
+      background: #fff;
+      color: var(--text);
+      transition: border-color 0.2s;
     }
 
-    input:focus {
+    input[type="number"]:focus,
+    textarea:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .char-counter {
+      text-align: left;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
     }
 
     .radio-group {
       display: flex;
-      gap: 20px;
-      margin-top: 10px;
+      gap: 12px;
     }
 
     .radio-option {
@@ -97,274 +738,1324 @@
     .radio-option input[type="radio"] {
       position: absolute;
       opacity: 0;
+      width: 100%;
+      height: 100%;
       cursor: pointer;
+      z-index: 1;
     }
 
     .radio-label {
       display: block;
-      padding: 15px;
-      border: 2px solid #e0e0e0;
-      border-radius: 10px;
+      padding: 16px 12px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
       text-align: center;
-      cursor: pointer;
-      transition: all 0.3s;
       font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fff;
     }
 
     .radio-option input[type="radio"]:checked + .radio-label {
-      background: #667eea;
-      color: white;
-      border-color: #667eea;
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
     }
 
     .radio-option:hover .radio-label {
-      border-color: #667eea;
+      border-color: var(--accent);
     }
 
-    .guests-input {
-      display: none;
-      margin-top: 15px;
+    .attending-details {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease;
+      margin-bottom: 0;
     }
 
-    .guests-input.show {
-      display: block;
+    .attending-details.show {
+      max-height: 600px;
+      opacity: 1;
+      margin-bottom: 22px;
     }
 
-    button {
+    .vegan-toggle {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .vegan-count {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+    }
+
+    .vegan-count.show {
+      max-height: 100px;
+      opacity: 1;
+    }
+
+    button[type="submit"] {
       width: 100%;
-      padding: 15px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      padding: 16px;
+      background: var(--accent);
+      color: #fff;
       border: none;
-      border-radius: 10px;
-      font-size: 18px;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.05rem;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
-      margin-top: 10px;
+      transition: background 0.2s, transform 0.1s;
+      margin-top: 8px;
     }
 
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    button[type="submit"]:hover:not(:disabled) {
+      background: var(--accent-dark);
     }
 
-    button:active {
-      transform: translateY(0);
+    button[type="submit"]:active:not(:disabled) {
+      transform: scale(0.98);
     }
 
-    button:disabled {
+    button[type="submit"]:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      transform: none;
-    }
-
-    .message {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 10px;
-      text-align: center;
-      display: none;
-    }
-
-    .message.show {
-      display: block;
-      animation: slideIn 0.3s ease-out;
-    }
-
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .message.success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-
-    .message.error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
     }
 
     .loading {
       display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(255, 255, 255, 0.3);
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 50%;
-      border-top-color: white;
-      animation: spin 1s ease-in-out infinite;
-      margin-right: 10px;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
       vertical-align: middle;
+      margin-left: 8px;
     }
 
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    .heart {
-      color: #e91e63;
-      font-size: 1.2em;
+    .message {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: var(--radius);
+      text-align: center;
+      display: none;
+      font-size: 0.95rem;
+    }
+
+    .message.show {
+      display: block;
+      animation: msgIn 0.3s ease-out;
+    }
+
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.success {
+      background: var(--success-bg);
+      color: var(--success-text);
+    }
+
+    .message.error {
+      background: var(--error-bg);
+      color: var(--error-text);
+    }
+
+    /* ── Venue links ── */
+    .directions-section {
+      width: 100%;
+      text-align: center;
+    }
+
+    .directions-address {
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .directions-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 36px;
+    }
+
+    .venue-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+    }
+
+    /* ── Gift / Bit pay ── */
+    .gift-section {
+      width: 100%;
+      text-align: center;
+    }
+
+    .gift-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .gift-amount-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .gift-currency {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    #giftAmount {
+      width: 140px;
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding: 14px 12px;
+      border: 2px solid var(--cream-dark);
+      border-radius: var(--radius);
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    #giftAmount:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .gift-note {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+
+    .gift-faq-link {
+      display: inline-block;
+      margin-top: 14px;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--accent-dark);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+
+    .gift-faq-link:hover {
+      color: var(--text);
+    }
+
+    .gift-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .gift-modal.hidden {
+      display: none;
+    }
+
+    .gift-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(61, 54, 48, 0.45);
+    }
+
+    .gift-modal-card {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      max-height: calc(100dvh - 40px);
+      overflow-y: auto;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 28px 24px 24px;
+      box-shadow: 0 20px 50px rgba(61, 54, 48, 0.2);
+      text-align: center;
+    }
+
+    .gift-modal-body {
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .gift-modal-body p + p {
+      margin-top: 14px;
+    }
+
+    .gift-modal-heart {
+      margin-top: 24px;
+      font-size: 1.75rem;
+      line-height: 1;
+    }
+
+    #giftFaqClose {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #giftFaqClose:hover {
+      background: var(--accent-dark);
+    }
+
+    #giftFaqClose:active {
+      transform: scale(0.98);
+    }
+
+    .gift-error {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: var(--error-text);
+      display: none;
+    }
+
+    .gift-error.show {
+      display: block;
+    }
+
+    #giftPayBtn {
+      width: 100%;
+      max-width: 280px;
+      padding: 16px 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #giftPayBtn:hover {
+      background: var(--accent-dark);
+    }
+
+    #giftPayBtn:active {
+      transform: scale(0.98);
+    }
+
+    .section-dots {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .section-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      background: var(--cream-dark);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .section-dot.is-active {
+      background: var(--accent);
+      transform: scale(1.2);
+    }
+
+    .venue-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      transition: color 0.2s, transform 0.15s;
+    }
+
+    .venue-link:hover {
+      color: var(--text);
+      transform: translateY(-2px);
+    }
+
+    .venue-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--cream-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .venue-link:hover .venue-icon {
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(196, 165, 116, 0.25);
+    }
+
+    .venue-icon img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Wedding RSVP <span class="heart">💕</span></h1>
-    <p class="subtitle">We'd love to celebrate with you!</p>
+  <div id="gateError" class="gate-error hidden">
+    <p id="gateErrorText"></p>
+  </div>
 
-    <form id="rsvpForm">
-      <div class="form-group">
-        <label for="name">Your Name *</label>
-        <input type="text" id="name" name="name" required placeholder="Enter your full name">
+  <div id="mainContent" class="hidden">
+    <header class="page-header" aria-label="כותרת האירוע">
+      <div class="page-header-inner">
+        <p class="page-header-kicker">החתונה של</p>
+        <p class="page-header-names">דניאל ויובל</p>
+        <p class="page-header-date">14.10.26</p>
       </div>
-
-      <div class="form-group">
-        <label for="phone">Phone Number *</label>
-        <input type="tel" id="phone" name="phone" required placeholder="+1234567890">
-      </div>
-
-      <div class="form-group">
-        <label>Will you be attending? *</label>
-        <div class="radio-group">
-          <div class="radio-option">
-            <input type="radio" id="yes" name="isAttending" value="true" required>
-            <label for="yes" class="radio-label">Yes! 🎉</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="no" name="isAttending" value="false" required>
-            <label for="no" class="radio-label">Sorry, can't make it</label>
+    </header>
+    <div id="sectionsViewport" class="sections-viewport">
+      <section class="page-section is-active" data-section="0" aria-label="הזמנה">
+        <div class="section-inner no-scroll">
+          <div class="hero">
+            <div class="envelope-scene">
+              <div class="envelope">
+                <div class="envelope-body"></div>
+                <div class="envelope-flap"></div>
+              </div>
+              <div class="invite-card">
+                <img src="/wedding.jpg" alt="הזמנה לחתונה">
+              </div>
+            </div>
           </div>
         </div>
+        <button type="button" class="scroll-hint is-delayed" data-goto="1" aria-label="גללו למטה לאישור הגעה">
+          <span>גללו למטה לאישור הגעה</span>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M12 5v14M5 12l7 7 7-7"/>
+          </svg>
+        </button>
+      </section>
+
+      <section class="page-section" data-section="1" aria-label="אישור הגעה">
+        <div class="section-inner" id="rsvpScroll">
+          <div class="rsvp-section">
+            <h2 class="section-title">אישור הגעה</h2>
+
+            <div class="rsvp-logged hidden" id="rsvpLogged">
+              <p class="rsvp-logged-title">התשובה שלכם נרשמה</p>
+              <p class="rsvp-logged-text" id="rsvpLoggedText">אישור ההגעה שלכם כבר התקבל. אפשר לעדכן אם משהו השתנה.</p>
+              <div class="rsvp-logged-summary" id="rsvpLoggedSummary"></div>
+              <div class="rsvp-hub-actions" id="rsvpHubActions">
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">שינוי תשובת RSVP</button>
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">תשלום באפליקציות</button>
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpDirectionsBtn">ניווט לאולם</button>
+              </div>
+            </div>
+
+            <form id="rsvpForm">
+              <div class="form-group">
+                <label>האם תגיעו?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="yes" name="isAttending" value="true" required>
+                    <label for="yes" class="radio-label">מגיעים</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="no" name="isAttending" value="false" required>
+                    <label for="no" class="radio-label">לא מגיעים</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="attending-details" id="attendingDetails">
+                <div class="form-group">
+                  <label for="numberOfGuests">כמה אנשים?</label>
+                  <input type="number" id="numberOfGuests" name="numberOfGuests" min="1" value="1">
+                </div>
+
+                <div class="form-group">
+                  <label for="numberOfBabies">כמה ילדים (עד גיל 6)?</label>
+                  <input type="number" id="numberOfBabies" name="numberOfBabies" min="0" value="0">
+                </div>
+
+                <div class="form-group">
+                  <label>טבעונים/צמחונים?</label>
+                  <div class="vegan-toggle radio-group">
+                    <div class="radio-option">
+                      <input type="radio" id="veganYes" name="hasVegan" value="true">
+                      <label for="veganYes" class="radio-label">כן</label>
+                    </div>
+                    <div class="radio-option">
+                      <input type="radio" id="veganNo" name="hasVegan" value="false" checked>
+                      <label for="veganNo" class="radio-label">לא</label>
+                    </div>
+                  </div>
+                  <div class="vegan-count" id="veganCountGroup">
+                    <label for="numberOfVegan">כמה?</label>
+                    <input type="number" id="numberOfVegan" name="numberOfVegan" min="1" value="1">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="additionalNotes">מידע נוסף חשוב</label>
+                  <textarea id="additionalNotes" name="additionalNotes" maxlength="60" placeholder="עד 60 תווים"></textarea>
+                  <div class="char-counter"><span id="charCount">0</span>/60</div>
+                </div>
+              </div>
+
+              <button type="submit" id="submitBtn">שליחת תשובה</button>
+            </form>
+
+            <div class="message" id="message"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section" data-section="2" aria-label="שליחת מתנה">
+        <button type="button" class="section-back-btn" data-goto="1" aria-label="חזרה לאישור הגעה">חזרה</button>
+        <div class="section-inner no-scroll">
+          <div class="gift-section">
+            <h2 class="section-title">שליחת מתנה</h2>
+            <p class="gift-subtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לפתיחת אפליקציית התשלום</p>
+            <div class="form-group">
+              <label for="giftAmount">סכום בש״ח</label>
+              <div class="gift-amount-wrap">
+                <span class="gift-currency">₪</span>
+                <input type="text" id="giftAmount" name="giftAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="5" placeholder="0">
+              </div>
+            </div>
+            <button type="button" id="giftPayBtn">שליחת מתנה</button>
+            <p class="gift-note">הקישור יפתח את אפליקציית ביט או פייבוקס בנייד.</p>
+            <p class="gift-note">לאחר הפתיחה, הזינו את הסכום הרצוי שנית.</p>
+            <button type="button" class="gift-faq-link" id="giftFaqTrigger">למה אני צריך להזין את הסכום פעמיים?</button>
+            <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section" data-section="3" aria-label="ניווט לאולם">
+        <button type="button" class="section-back-btn" data-goto="1" aria-label="חזרה לאישור הגעה">חזרה</button>
+        <div class="section-inner no-scroll">
+          <div class="directions-section">
+            <h2 class="section-title">איך מגיעים</h2>
+            <p class="directions-address">קאי ריזורט - רחוב השיטה 5, חרב לאת</p>
+            <p class="directions-subtitle">בחרו אפליקציית ניווט לפתיחת המסלול לאולם</p>
+            <div class="venue-links">
+              <a class="venue-link" href="https://waze.com/ul/hsvbb619mk" target="_blank" rel="noopener noreferrer" aria-label="ניווט ב-Waze">
+                <div class="venue-icon">
+                  <img src="/waze.png" alt="">
+                </div>
+                <span>Waze</span>
+              </a>
+              <a class="venue-link" href="https://maps.app.goo.gl/TUjcHRnDVxTVAYha8?g_st=aw" target="_blank" rel="noopener noreferrer" aria-label="מיקום ב-Google Maps">
+                <div class="venue-icon">
+                  <img src="/google%20maps.png" alt="">
+                </div>
+                <span>Google Maps</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <nav class="section-dots hidden" id="sectionDots" aria-label="ניווט בין חלקי הדף">
+      <button type="button" class="section-dot is-active" data-goto="0" aria-label="הזמנה"></button>
+      <button type="button" class="section-dot" data-goto="1" aria-label="אישור הגעה"></button>
+    </nav>
+
+    <div class="gift-modal hidden" id="giftFaqModal" role="dialog" aria-modal="true" aria-labelledby="giftFaqTitle">
+      <div class="gift-modal-backdrop" id="giftFaqBackdrop"></div>
+      <div class="gift-modal-card">
+        <div class="gift-modal-body" id="giftFaqTitle">
+          <p>אתר האינטרנט ואפליקציות התשלום עובדות בנפרד.</p>
+          <p>ההזנה באתר מתבצעת על מנת לקשר בין האורח לבין המתנה שנשלחה.</p>
+          <p>תודה על ההבנה!</p>
+        </div>
+        <p class="gift-modal-heart" aria-hidden="true">❤️</p>
+        <button type="button" id="giftFaqClose">הבנתי תודה!</button>
       </div>
-
-      <div class="form-group guests-input" id="guestsGroup">
-        <label for="numberOfGuests">Number of Guests *</label>
-        <input type="number" id="numberOfGuests" name="numberOfGuests" min="1" value="1" placeholder="Including yourself">
-      </div>
-
-      <button type="submit" id="submitBtn">
-        Submit RSVP
-      </button>
-    </form>
-
-    <div class="message" id="message"></div>
+    </div>
   </div>
 
   <script>
+    let guestName = '';
+    let guestPhone = '';
+    let existingRsvp = null;
+    let navigateToSection = null;
+
+    const gateError = document.getElementById('gateError');
+    const gateErrorText = document.getElementById('gateErrorText');
+    const mainContent = document.getElementById('mainContent');
     const form = document.getElementById('rsvpForm');
+    const rsvpLogged = document.getElementById('rsvpLogged');
+    const rsvpLoggedText = document.getElementById('rsvpLoggedText');
+    const rsvpLoggedSummary = document.getElementById('rsvpLoggedSummary');
+    const rsvpChangeBtn = document.getElementById('rsvpChangeBtn');
+    const rsvpPayBtn = document.getElementById('rsvpPayBtn');
+    const rsvpDirectionsBtn = document.getElementById('rsvpDirectionsBtn');
     const yesRadio = document.getElementById('yes');
     const noRadio = document.getElementById('no');
-    const guestsGroup = document.getElementById('guestsGroup');
+    const attendingDetails = document.getElementById('attendingDetails');
     const guestsInput = document.getElementById('numberOfGuests');
+    const babiesInput = document.getElementById('numberOfBabies');
+    const veganYes = document.getElementById('veganYes');
+    const veganNo = document.getElementById('veganNo');
+    const veganCountGroup = document.getElementById('veganCountGroup');
+    const veganInput = document.getElementById('numberOfVegan');
+    const notesInput = document.getElementById('additionalNotes');
+    const charCount = document.getElementById('charCount');
     const submitBtn = document.getElementById('submitBtn');
     const messageDiv = document.getElementById('message');
+    const giftAmountInput = document.getElementById('giftAmount');
+    const giftPayBtn = document.getElementById('giftPayBtn');
+    const giftError = document.getElementById('giftError');
+    const giftFaqTrigger = document.getElementById('giftFaqTrigger');
+    const giftFaqModal = document.getElementById('giftFaqModal');
+    const giftFaqBackdrop = document.getElementById('giftFaqBackdrop');
+    const giftFaqClose = document.getElementById('giftFaqClose');
 
-    // Show/hide guests input based on RSVP selection
-    function toggleGuestsInput() {
+    const GIFT_MIN_AMOUNT = 1;
+    const GIFT_MAX_AMOUNT = 15000;
+    const SWIPEABLE_MAX_SECTION = 1;
+
+    function escapeHtml(text) {
+      const el = document.createElement('div');
+      el.textContent = text == null ? '' : String(text);
+      return el.innerHTML;
+    }
+
+    function buildRsvpSummaryHtml(rsvp) {
+      if (!rsvp) return '';
+      if (!rsvp.isAttending) {
+        return '<p><strong>בחירה:</strong> לא מגיעים</p>';
+      }
+      const lines = [
+        '<p><strong>בחירה:</strong> מגיעים</p>',
+        '<p><strong>מספר אנשים:</strong> ' + escapeHtml(rsvp.numberOfGuests) + '</p>',
+        '<p><strong>ילדים עד גיל 6:</strong> ' + escapeHtml(rsvp.numberOfBabies || 0) + '</p>',
+      ];
+      if (rsvp.numberOfVegan > 0) {
+        lines.push('<p><strong>טבעונים/צמחונים:</strong> ' + escapeHtml(rsvp.numberOfVegan) + '</p>');
+      }
+      if (rsvp.additionalNotes) {
+        lines.push('<p><strong>מידע נוסף:</strong> ' + escapeHtml(rsvp.additionalNotes) + '</p>');
+      }
+      return lines.join('');
+    }
+
+    function fillRsvpForm(rsvp) {
+      if (!rsvp) return;
+      if (rsvp.isAttending) {
+        yesRadio.checked = true;
+        noRadio.checked = false;
+        guestsInput.value = String(rsvp.numberOfGuests || 1);
+        babiesInput.value = String(rsvp.numberOfBabies || 0);
+        if (rsvp.numberOfVegan > 0) {
+          veganYes.checked = true;
+          veganNo.checked = false;
+          veganInput.value = String(rsvp.numberOfVegan);
+        } else {
+          veganYes.checked = false;
+          veganNo.checked = true;
+          veganInput.value = '1';
+        }
+        notesInput.value = rsvp.additionalNotes || '';
+        charCount.textContent = String(notesInput.value.length);
+      } else {
+        yesRadio.checked = false;
+        noRadio.checked = true;
+        guestsInput.value = '1';
+        babiesInput.value = '0';
+        veganYes.checked = false;
+        veganNo.checked = true;
+        veganInput.value = '1';
+        notesInput.value = '';
+        charCount.textContent = '0';
+      }
+      toggleAttendingDetails();
+      toggleVeganCount();
+    }
+
+    function showLoggedRsvp(rsvp) {
+      existingRsvp = rsvp;
+      rsvpLoggedSummary.innerHTML = buildRsvpSummaryHtml(rsvp);
+      const attending = Boolean(rsvp && rsvp.isAttending);
+      rsvpLoggedText.textContent = attending
+        ? 'אישור ההגעה שלכם כבר התקבל. אפשר לבחור פעולה למטה, או לעדכן אם משהו השתנה.'
+        : 'התשובה שלכם נרשמה. אפשר לעדכן אם משהו השתנה.';
+      rsvpPayBtn.classList.toggle('hidden', !attending);
+      rsvpDirectionsBtn.classList.toggle('hidden', !attending);
+      rsvpLogged.classList.remove('hidden');
+      form.classList.add('hidden');
+      messageDiv.classList.remove('show', 'success', 'error');
+      messageDiv.textContent = '';
+    }
+
+    function showRsvpFormForEdit() {
+      fillRsvpForm(existingRsvp);
+      rsvpLogged.classList.add('hidden');
+      form.classList.remove('hidden');
+      submitBtn.textContent = 'עדכון תשובה';
+      messageDiv.classList.remove('show', 'success', 'error');
+    }
+
+    function showGateError(text) {
+      gateErrorText.textContent = text;
+      gateError.classList.remove('hidden');
+      mainContent.classList.add('hidden');
+    }
+
+    function showMain() {
+      gateError.classList.add('hidden');
+      mainContent.classList.remove('hidden');
+      document.body.classList.add('scroll-locked');
+      initSectionScroller();
+    }
+
+    function initSectionScroller() {
+      const viewport = document.getElementById('sectionsViewport');
+      const sections = [...viewport.querySelectorAll('.page-section')];
+      const dots = [...document.querySelectorAll('.section-dot')];
+      const rsvpScroll = document.getElementById('rsvpScroll');
+      const scrollHints = [...viewport.querySelectorAll('.scroll-hint')];
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const TRANSITION_MS = prefersReducedMotion ? 0 : 500;
+
+      let current = 0;
+      let animating = false;
+      let wheelLocked = false;
+      let touchStartY = 0;
+      let rsvpTouchCanAdvance = false;
+      let rsvpTouchCanAdvancePrev = false;
+      let rsvpWheelGestureActive = false;
+      let rsvpWheelGestureCanAdvance = false;
+      let rsvpWheelGestureCanGoPrev = false;
+      let rsvpWheelOverscroll = 0;
+      let rsvpArmTimer = null;
+      let rsvpWheelIdleTimer = null;
+      const RSVP_NEXT_SWIPE_PX = 80;
+      const RSVP_NEXT_WHEEL_PX = 120;
+      const RSVP_ARM_DELAY_MS = 220;
+      const RSVP_WHEEL_IDLE_MS = 280;
+      const DEFAULT_SWIPE_PX = 50;
+      const DEFAULT_WHEEL_PX = 30;
+
+      function updateDots(index) {
+        const dotsNav = document.getElementById('sectionDots');
+        if (dotsNav) {
+          dotsNav.classList.toggle('hidden', index === 0 || index > SWIPEABLE_MAX_SECTION);
+        }
+        dots.forEach((dot) => {
+          const target = parseInt(dot.dataset.goto, 10);
+          dot.classList.toggle('is-active', target === Math.min(index, SWIPEABLE_MAX_SECTION));
+        });
+      }
+
+      function resetSectionClasses(section) {
+        section.classList.remove(
+          'is-active',
+          'is-animating',
+          'is-exiting',
+          'exit-down',
+          'exit-up',
+          'enter-from-below',
+          'enter-from-above',
+          'is-visible'
+        );
+      }
+
+      function goTo(index) {
+        if (animating || index === current || index < 0 || index >= sections.length) return;
+
+        const goingDown = index > current;
+        const from = sections[current];
+        const to = sections[index];
+
+        animating = true;
+        wheelLocked = true;
+
+        if (current === 1 || index === 1) {
+          rsvpScroll.scrollTop = 0;
+          clearRsvpArmed();
+        }
+
+        resetSectionClasses(from);
+        resetSectionClasses(to);
+
+        from.style.visibility = 'visible';
+        from.classList.add('is-animating', 'is-exiting');
+
+        to.style.visibility = 'visible';
+        to.classList.add('is-animating', goingDown ? 'enter-from-below' : 'enter-from-above');
+
+        if (prefersReducedMotion) {
+          from.style.visibility = 'hidden';
+          resetSectionClasses(from);
+          resetSectionClasses(to);
+          to.classList.add('is-active');
+          current = index;
+          updateDots(index);
+          animating = false;
+          setTimeout(() => { wheelLocked = false; }, 300);
+          return;
+        }
+
+        requestAnimationFrame(() => {
+          from.classList.add(goingDown ? 'exit-down' : 'exit-up');
+          to.classList.add('is-visible');
+        });
+
+        const finish = () => {
+          from.style.visibility = 'hidden';
+          resetSectionClasses(from);
+          resetSectionClasses(to);
+          to.classList.add('is-active');
+          current = index;
+          updateDots(index);
+          animating = false;
+          if (current === 1) {
+            clearRsvpArmed();
+          }
+          setTimeout(() => { wheelLocked = false; }, 350);
+        };
+
+        setTimeout(finish, TRANSITION_MS);
+      }
+
+      navigateToSection = goTo;
+
+      function goNext() {
+        if (current >= SWIPEABLE_MAX_SECTION) return;
+        goTo(current + 1);
+      }
+
+      function goPrev() {
+        if (current > SWIPEABLE_MAX_SECTION) return;
+        goTo(current - 1);
+      }
+
+      function canScrollInner(el, deltaY) {
+        if (!el || el.scrollHeight <= el.clientHeight + 1) return false;
+        if (deltaY > 0) return el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+        return el.scrollTop > 2;
+      }
+
+      function isRsvpAtBottom() {
+        return !canScrollInner(rsvpScroll, 1);
+      }
+
+      function isRsvpAtTop() {
+        return !canScrollInner(rsvpScroll, -1);
+      }
+
+      function isRsvpDetailsOpen() {
+        return Boolean(yesRadio?.checked && attendingDetails?.classList.contains('show'));
+      }
+
+      function scheduleArmRsvpAdvance() {
+        if (!isRsvpDetailsOpen()) return;
+        clearTimeout(rsvpArmTimer);
+        rsvpArmTimer = setTimeout(() => {
+          if (current !== 1 || !isRsvpDetailsOpen()) return;
+          if (isRsvpAtTop()) rsvpScroll.dataset.armedPrev = '1';
+        }, RSVP_ARM_DELAY_MS);
+      }
+
+      function clearRsvpArmed() {
+        rsvpScroll.dataset.armedNext = '0';
+        rsvpScroll.dataset.armedPrev = '0';
+        clearTimeout(rsvpArmTimer);
+        rsvpArmTimer = null;
+      }
+
+      rsvpScroll.addEventListener('scroll', () => {
+        if (current !== 1 || !isRsvpDetailsOpen()) return;
+        rsvpScroll.dataset.armedNext = '0';
+        rsvpScroll.dataset.armedPrev = '0';
+        if (isRsvpAtTop()) {
+          scheduleArmRsvpAdvance();
+        } else {
+          clearTimeout(rsvpArmTimer);
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
+
+        const deltaY = e.deltaY;
+
+        if (current === 1 && isRsvpDetailsOpen()) {
+          clearTimeout(rsvpWheelIdleTimer);
+          rsvpWheelIdleTimer = setTimeout(() => {
+            rsvpWheelGestureActive = false;
+            rsvpWheelOverscroll = 0;
+            if (isRsvpAtTop()) {
+              scheduleArmRsvpAdvance();
+            }
+          }, RSVP_WHEEL_IDLE_MS);
+
+          if (!rsvpWheelGestureActive) {
+            rsvpWheelGestureActive = true;
+            rsvpWheelGestureCanAdvance = false;
+            rsvpWheelGestureCanGoPrev = rsvpScroll.dataset.armedPrev === '1';
+            rsvpWheelOverscroll = 0;
+          }
+
+          if (canScrollInner(rsvpScroll, deltaY)) {
+            rsvpScroll.scrollTop += deltaY;
+            rsvpScroll.dataset.armedNext = '0';
+            rsvpScroll.dataset.armedPrev = '0';
+            rsvpWheelGestureCanAdvance = false;
+            rsvpWheelGestureCanGoPrev = false;
+            rsvpWheelOverscroll = 0;
+            return;
+          }
+
+          if (deltaY > 0) {
+            rsvpWheelOverscroll = 0;
+            return;
+          }
+
+          if (deltaY < 0) {
+            if (!rsvpWheelGestureCanGoPrev) {
+              rsvpWheelOverscroll = 0;
+              return;
+            }
+            rsvpWheelOverscroll += deltaY;
+            if (rsvpWheelOverscroll <= -RSVP_NEXT_WHEEL_PX) {
+              rsvpWheelGestureActive = false;
+              rsvpWheelOverscroll = 0;
+              clearRsvpArmed();
+              goPrev();
+            }
+            return;
+          }
+        }
+
+        if (current === 1 && canScrollInner(rsvpScroll, deltaY)) {
+          rsvpScroll.scrollTop += deltaY;
+          return;
+        }
+
+        rsvpWheelOverscroll = 0;
+        if (deltaY > DEFAULT_WHEEL_PX) goNext();
+        else if (deltaY < -DEFAULT_WHEEL_PX) goPrev();
+      }, { passive: false });
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.target.closest('#rsvpScroll')) return;
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      viewport.addEventListener('touchend', (e) => {
+        if (e.target.closest('#rsvpScroll')) return;
+        if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
+
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaY = touchStartY - touchEndY;
+
+        if (Math.abs(deltaY) < DEFAULT_SWIPE_PX) return;
+
+        if (deltaY > 0) goNext();
+        else goPrev();
+      }, { passive: true });
+
+      rsvpScroll.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+        if (!isRsvpDetailsOpen()) {
+          rsvpTouchCanAdvance = false;
+          rsvpTouchCanAdvancePrev = false;
+          return;
+        }
+        rsvpTouchCanAdvance = false;
+        rsvpTouchCanAdvancePrev =
+          isRsvpAtTop() && rsvpScroll.dataset.armedPrev === '1';
+      }, { passive: true });
+
+      rsvpScroll.addEventListener('touchend', (e) => {
+        if (wheelLocked || animating || current !== 1) return;
+
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaY = touchStartY - touchEndY;
+
+        if (!isRsvpDetailsOpen()) {
+          if (Math.abs(deltaY) < DEFAULT_SWIPE_PX) return;
+          if (deltaY > 0) {
+            if (canScrollInner(rsvpScroll, deltaY)) return;
+            return;
+          }
+          if (deltaY < 0) {
+            if (canScrollInner(rsvpScroll, deltaY)) return;
+            goPrev();
+          }
+          return;
+        }
+
+        if (deltaY > 0) {
+          return;
+        }
+
+        if (deltaY < 0) {
+          if (!rsvpTouchCanAdvancePrev || !isRsvpAtTop()) {
+            if (isRsvpAtTop()) scheduleArmRsvpAdvance();
+            return;
+          }
+          if (Math.abs(deltaY) < RSVP_NEXT_SWIPE_PX) return;
+          clearRsvpArmed();
+          goPrev();
+        }
+      }, { passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (!giftFaqModal.classList.contains('hidden')) return;
+        if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
+
+        if (current === 1 && isRsvpDetailsOpen()) {
+          if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+            e.preventDefault();
+            if (canScrollInner(rsvpScroll, 1)) {
+              rsvpScroll.scrollTop += 80;
+              clearRsvpArmed();
+            }
+            return;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+            e.preventDefault();
+            if (canScrollInner(rsvpScroll, -1)) {
+              rsvpScroll.scrollTop -= 80;
+              clearRsvpArmed();
+              return;
+            }
+            if (rsvpScroll.dataset.armedPrev === '1') {
+              clearRsvpArmed();
+              goPrev();
+            } else if (isRsvpAtTop()) {
+              scheduleArmRsvpAdvance();
+            }
+            return;
+          }
+        }
+
+        if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+          e.preventDefault();
+          goNext();
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault();
+          goPrev();
+        }
+      });
+
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => {
+          const target = parseInt(dot.dataset.goto, 10);
+          if (!Number.isNaN(target) && target <= SWIPEABLE_MAX_SECTION) goTo(target);
+        });
+      });
+
+      scrollHints.forEach((hint) => {
+        hint.addEventListener('click', () => {
+          const target = parseInt(hint.dataset.goto, 10);
+          if (!Number.isNaN(target)) goTo(target);
+        });
+      });
+
+      document.querySelectorAll('.section-back-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = parseInt(btn.dataset.goto, 10);
+          if (!Number.isNaN(target)) goTo(target);
+        });
+      });
+
+      updateDots(0);
+    }
+
+    function sanitizeGiftAmount(value) {
+      const digits = value.replace(/\D/g, '');
+      if (!digits) return '';
+      const num = parseInt(digits, 10);
+      if (num > GIFT_MAX_AMOUNT) return String(GIFT_MAX_AMOUNT);
+      return digits;
+    }
+
+    function showGiftError(message) {
+      giftError.textContent = message;
+      giftError.classList.add('show');
+    }
+
+    giftPayBtn.addEventListener('click', async () => {
+      const amount = parseInt(giftAmountInput.value, 10);
+      if (isNaN(amount) || amount < GIFT_MIN_AMOUNT) {
+        showGiftError(`אנא הזינו סכום בין ₪${GIFT_MIN_AMOUNT} ל-₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
+        giftAmountInput.focus();
+        return;
+      }
+      if (amount > GIFT_MAX_AMOUNT) {
+        showGiftError(`הסכום המקסימלי הוא ₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
+        giftAmountInput.focus();
+        return;
+      }
+
+      giftError.classList.remove('show');
+      giftPayBtn.disabled = true;
+      const previousLabel = giftPayBtn.textContent;
+      giftPayBtn.textContent = 'פותח...';
+
+      try {
+        const response = await fetch('/api/pay/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount,
+            guestPhone,
+            guestName,
+          }),
+        });
+        const result = await response.json();
+        if (!result.success || !result.url) {
+          throw new Error(result.error || 'לא הצלחנו לפתוח את אפליקציית התשלום');
+        }
+        window.location.href = result.url;
+      } catch (error) {
+        showGiftError(error.message || 'שגיאה בפתיחת התשלום. אנא נסו שוב.');
+        giftPayBtn.disabled = false;
+        giftPayBtn.textContent = previousLabel;
+      }
+    });
+
+    giftAmountInput.addEventListener('input', () => {
+      giftError.classList.remove('show');
+      const sanitized = sanitizeGiftAmount(giftAmountInput.value);
+      if (giftAmountInput.value !== sanitized) {
+        giftAmountInput.value = sanitized;
+      }
+    });
+
+    giftAmountInput.addEventListener('keydown', (e) => {
+      if (['e', 'E', '+', '-', '.', ','].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    giftAmountInput.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      giftAmountInput.value = sanitizeGiftAmount(pasted);
+      giftError.classList.remove('show');
+    });
+
+    function openGiftFaqModal() {
+      giftFaqModal.classList.remove('hidden');
+      giftFaqClose.focus();
+    }
+
+    function closeGiftFaqModal() {
+      giftFaqModal.classList.add('hidden');
+      giftFaqTrigger.focus();
+    }
+
+    giftFaqTrigger.addEventListener('click', openGiftFaqModal);
+    giftFaqClose.addEventListener('click', closeGiftFaqModal);
+    giftFaqBackdrop.addEventListener('click', closeGiftFaqModal);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !giftFaqModal.classList.contains('hidden')) {
+        closeGiftFaqModal();
+      }
+    });
+
+    function toggleAttendingDetails() {
       if (yesRadio.checked) {
-        guestsGroup.classList.add('show');
+        attendingDetails.classList.add('show');
         guestsInput.required = true;
       } else {
-        guestsGroup.classList.remove('show');
+        attendingDetails.classList.remove('show');
         guestsInput.required = false;
+      }
+      // Two-gesture edge behavior only applies while details are open
+      const rsvpScrollEl = document.getElementById('rsvpScroll');
+      if (rsvpScrollEl) {
+        rsvpScrollEl.dataset.armedNext = '0';
+        rsvpScrollEl.dataset.armedPrev = '0';
       }
     }
 
-    yesRadio.addEventListener('change', toggleGuestsInput);
-    noRadio.addEventListener('change', toggleGuestsInput);
+    function toggleVeganCount() {
+      if (veganYes.checked) {
+        veganCountGroup.classList.add('show');
+        veganInput.required = true;
+      } else {
+        veganCountGroup.classList.remove('show');
+        veganInput.required = false;
+      }
+    }
 
-    // Handle form submission
+    yesRadio.addEventListener('change', toggleAttendingDetails);
+    noRadio.addEventListener('change', toggleAttendingDetails);
+    veganYes.addEventListener('change', toggleVeganCount);
+    veganNo.addEventListener('change', toggleVeganCount);
+    rsvpChangeBtn.addEventListener('click', showRsvpFormForEdit);
+    rsvpPayBtn.addEventListener('click', () => {
+      if (typeof navigateToSection === 'function') navigateToSection(2);
+    });
+    rsvpDirectionsBtn.addEventListener('click', () => {
+      if (typeof navigateToSection === 'function') navigateToSection(3);
+    });
+
+    notesInput.addEventListener('input', () => {
+      charCount.textContent = notesInput.value.length;
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      const formData = new FormData(form);
+      const isAttending = yesRadio.checked;
+      const numberOfGuests = isAttending ? parseInt(guestsInput.value, 10) : 0;
+      const numberOfBabies = isAttending ? parseInt(babiesInput.value, 10) || 0 : 0;
+      const numberOfVegan = isAttending && veganYes.checked ? parseInt(veganInput.value, 10) || 0 : 0;
+      const additionalNotes = isAttending ? notesInput.value.trim().slice(0, 60) : '';
+
+      if (isAttending && (isNaN(numberOfGuests) || numberOfGuests < 1)) {
+        messageDiv.textContent = 'אנא הזינו מספר אנשים תקין (לפחות 1).';
+        messageDiv.className = 'message show error';
+        return;
+      }
+
       const data = {
-        name: formData.get('name'),
-        phone: formData.get('phone'),
-        isAttending: formData.get('isAttending') === 'true',
-        numberOfGuests: yesRadio.checked ? parseInt(formData.get('numberOfGuests'), 10) : 0,
+        name: guestName,
+        phone: guestPhone,
+        isAttending,
+        numberOfGuests,
+        numberOfBabies,
+        numberOfVegan,
+        additionalNotes,
       };
 
-      // Disable submit button and show loading
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="loading"></span> Submitting...';
+      submitBtn.innerHTML = 'שולח<span class="loading"></span>';
       messageDiv.classList.remove('show', 'success', 'error');
 
       try {
         const response = await fetch('/api/rsvp', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
 
         const result = await response.json();
 
         if (result.success) {
-          messageDiv.textContent = 'Thank you! Your RSVP has been submitted successfully. We look forward to celebrating with you! 🎉';
+          const saved = {
+            isAttending,
+            numberOfGuests: isAttending ? numberOfGuests : 0,
+            numberOfBabies: isAttending ? numberOfBabies : 0,
+            numberOfVegan: isAttending ? numberOfVegan : 0,
+            additionalNotes: isAttending ? additionalNotes : '',
+          };
+          showLoggedRsvp(saved);
+          messageDiv.textContent = isAttending
+            ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
+            : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
           messageDiv.classList.add('show', 'success');
-          form.reset();
-          guestsGroup.classList.remove('show');
         } else {
-          // Handle permission errors with detailed instructions
           if (result.details && result.details.serviceAccountEmail) {
-            let errorMessage = result.error || 'Permission denied.';
-            errorMessage += '\n\nTo fix this, please share the response sheet with:';
+            let errorMessage = result.error || 'שגיאת הרשאות.';
+            errorMessage += '\n\nיש לשתף את גיליון התשובות עם:';
             errorMessage += `\n${result.details.serviceAccountEmail}`;
-            errorMessage += '\n\nGive it "Editor" permissions.';
+            errorMessage += '\n\nעם הרשאות "עורך".';
             messageDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
           } else {
-            messageDiv.textContent = result.error || 'Failed to submit RSVP. Please try again or contact us directly.';
+            messageDiv.textContent = result.error || 'שליחת אישור ההגעה נכשלה. אנא נסו שוב.';
           }
           messageDiv.classList.add('show', 'error');
         }
       } catch (error) {
-        messageDiv.textContent = `Error: ${error.message || 'An unexpected error occurred'}. Please try again or contact us directly.`;
+        messageDiv.textContent = `שגיאה: ${error.message || 'אירעה שגיאה בלתי צפויה'}. אנא נסו שוב.`;
         messageDiv.classList.add('show', 'error');
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit RSVP';
+        submitBtn.textContent = existingRsvp ? 'עדכון תשובה' : 'שליחת תשובה';
       }
     });
 
-    // Extract phone number from URL and auto-fill form
-    const urlParams = new URLSearchParams(window.location.search);
-    const phoneParam = urlParams.get('phone');
-    if (phoneParam) {
-      document.getElementById('phone').value = phoneParam;
-      document.getElementById('phone').readOnly = true;
-      
-      // Fetch guest info from server
-      fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`)
-        .then(response => response.json())
-        .then(result => {
-          if (result.success && result.guest) {
-            document.getElementById('name').value = result.guest.name || '';
-            if (result.guest.addons) {
-              // If there are addons, show them in the name field or add a note
-              const nameField = document.getElementById('name');
-              nameField.value = result.guest.name;
-              nameField.readOnly = true;
-            }
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching guest info:', error);
-          // Continue with form as-is if fetch fails
-        });
+    async function init() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const phoneParam = urlParams.get('phone');
+
+      if (!phoneParam) {
+        showGateError('הקישור אינו תקין. אנא השתמשו בקישור האישי שנשלח אליכם.');
+        return;
+      }
+
+      guestPhone = phoneParam;
+
+      try {
+        const response = await fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`);
+        const result = await response.json();
+
+        if (!result.success || !result.guest) {
+          showGateError('לא מצאנו את פרטיכם ברשימה. אנא פנו אלינו ישירות.');
+          return;
+        }
+
+        guestName = result.guest.name || '';
+        showMain();
+        if (result.guest.rsvp) {
+          showLoggedRsvp(result.guest.rsvp);
+        }
+      } catch (error) {
+        console.error('Error fetching guest info:', error);
+        showGateError('שגיאה בטעינת הפרטים. אנא נסו שוב מאוחר יותר.');
+      }
     }
+
+    init();
   </script>
 </body>
 </html>
-

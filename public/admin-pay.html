@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Routing Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #334155;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #14b8a6;
+      --accent-dim: #0d9488;
+      --danger: #f43f5e;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --radius: 12px;
+      --font: 'Heebo', 'DM Sans', system-ui, sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .layout { max-width: 980px; margin: 0 auto; padding: 32px 20px 48px; }
+    header { margin-bottom: 28px; }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+    .nav-links { margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .nav-links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .nav-links a:hover { text-decoration: underline; }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid var(--surface2);
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--surface2);
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .row .grow { flex: 1; min-width: 160px; }
+    button {
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button:active:not(:disabled) { transform: scale(0.98); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #042f2e; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--surface2);
+    }
+    .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 8px 12px; font-size: 0.85rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .stat {
+      background: var(--bg);
+      border: 1px solid var(--surface2);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .stat .label { color: var(--muted); font-size: 0.8rem; margin-bottom: 6px; }
+    .stat .value { font-size: 1.35rem; font-weight: 700; }
+    .links { display: grid; gap: 16px; }
+    .link-card {
+      background: var(--bg);
+      border: 1px solid var(--surface2);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .link-card.is-active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.35);
+    }
+    .link-card.is-full { border-color: var(--warn); }
+    .link-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .link-title { font-weight: 700; font-size: 1.05rem; }
+    .link-url {
+      color: var(--muted);
+      font-size: 0.8rem;
+      word-break: break-all;
+      margin-top: 4px;
+    }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .badge.active { background: rgba(20, 184, 166, 0.2); color: var(--accent); }
+    .badge.full { background: rgba(245, 158, 11, 0.2); color: var(--warn); }
+    .progress {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 12px 0 16px;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      width: 0;
+      transition: width 0.25s ease;
+    }
+    .progress.full > span { background: var(--warn); }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+      font-size: 0.85rem;
+    }
+    .meta div {
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .meta .k { color: var(--muted); font-size: 0.75rem; }
+    .meta .v { font-weight: 700; margin-top: 2px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .message {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      display: none;
+      font-size: 0.9rem;
+    }
+    .message.show { display: block; }
+    .message.ok { background: rgba(34, 197, 94, 0.15); color: var(--ok); }
+    .message.err { background: rgba(244, 63, 94, 0.15); color: #fda4af; }
+    .history { max-height: 320px; overflow: auto; }
+    .history table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .history th, .history td {
+      text-align: right;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--surface2);
+    }
+    .history th { color: var(--muted); font-weight: 500; }
+    .mode-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .mode-pill {
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 1px solid var(--surface2);
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .mode-pill.on {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(20, 184, 166, 0.12);
+    }
+    @media (max-width: 640px) {
+      .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header>
+      <h1>ניהול מתנות / תשלומים</h1>
+      <p>מעקב אחרי סכומים, ספים, והקישור הפעיל לביט / פייבוקס</p>
+      <div class="nav-links">
+        <a href="/admin.html">← חזרה לניהול הזמנות</a>
+        <a href="/" target="_blank">דף האורחים</a>
+      </div>
+    </header>
+
+    <div class="card" id="authCard">
+      <h2>מפתח מנהל (אופציונלי)</h2>
+      <p class="hint">אם הוגדר <code>ADMIN_API_KEY</code> בשרת, הזינו אותו כאן. נשמר רק בדפדפן זה.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="adminKey">Admin API Key</label>
+          <input type="password" id="adminKey" autocomplete="off" placeholder="x-admin-key">
+        </div>
+        <button type="button" class="btn-primary" id="saveKeyBtn">שמירה ורענון</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>מצב נוכחי</h2>
+      <div class="stats" id="stats"></div>
+      <div class="mode-row">
+        <span class="mode-pill" id="modeAuto">אוטומטי</span>
+        <span class="mode-pill" id="modeManual">ידני</span>
+        <button type="button" class="btn-ghost btn-sm" id="setAutoBtn">חזרה לניתוב אוטומטי</button>
+        <button type="button" class="btn-ghost btn-sm" id="refreshBtn">רענון</button>
+      </div>
+      <p class="hint">
+        בניתוב אוטומטי: Danielle PayBox → Yuval PayBox → Danielle Bit → Yuval Bit.
+        כשקישור מגיע לסף שלו, האורח הבא מועבר לקישור הבא.
+      </p>
+      <div class="message" id="message"></div>
+    </div>
+
+    <div class="card">
+      <h2>קישורים</h2>
+      <div class="links" id="links"></div>
+    </div>
+
+    <div class="card">
+      <h2>היסטוריה אחרונה</h2>
+      <p class="hint">לחיצות אורחים נרשמות ככוונת תשלום. אפשר לתקן סכומים ידנית אם מישהו לא השלים העברה.</p>
+      <div class="history" id="history"></div>
+    </div>
+  </div>
+
+  <script>
+    const KEY_STORAGE = 'wedding_admin_pay_key';
+    const adminKeyInput = document.getElementById('adminKey');
+    const messageEl = document.getElementById('message');
+    const statsEl = document.getElementById('stats');
+    const linksEl = document.getElementById('links');
+    const historyEl = document.getElementById('history');
+    const modeAuto = document.getElementById('modeAuto');
+    const modeManual = document.getElementById('modeManual');
+
+    adminKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || '';
+
+    function showMessage(text, ok = true) {
+      messageEl.textContent = text;
+      messageEl.className = 'message show ' + (ok ? 'ok' : 'err');
+    }
+
+    function money(n) {
+      return '₪' + Number(n || 0).toLocaleString('he-IL');
+    }
+
+    function adminHeaders(extra = {}) {
+      const headers = { ...extra };
+      const key = (adminKeyInput.value || '').trim();
+      if (key) headers['x-admin-key'] = key;
+      return headers;
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        cache: 'no-store',
+        ...options,
+        headers: adminHeaders(options.headers || {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || ('HTTP ' + res.status));
+      }
+      return data;
+    }
+
+    function render(status) {
+      modeAuto.classList.toggle('on', status.mode === 'auto');
+      modeManual.classList.toggle('on', status.mode === 'manual');
+
+      statsEl.innerHTML = `
+        <div class="stat"><div class="label">סה״כ התקבל</div><div class="value">${money(status.totalReceived)}</div></div>
+        <div class="stat"><div class="label">קיבולת כוללת</div><div class="value">${money(status.totalCapacity)}</div></div>
+        <div class="stat"><div class="label">קישור פעיל</div><div class="value" style="font-size:1rem">${escapeHtml(status.links.find(l => l.isActive)?.label || '-')}</div></div>
+        <div class="stat"><div class="label">מצב</div><div class="value" style="font-size:1rem">${status.mode === 'auto' ? 'אוטומטי' : 'ידני'}</div></div>
+      `;
+
+      linksEl.innerHTML = status.links.map((link) => {
+        const pct = link.threshold > 0
+          ? Math.min(100, Math.round((link.currentSum / link.threshold) * 100))
+          : 0;
+        return `
+          <div class="link-card ${link.isActive ? 'is-active' : ''} ${link.isFull ? 'is-full' : ''}" data-id="${link.id}">
+            <div class="link-head">
+              <div>
+                <div class="link-title">${escapeHtml(link.label)}</div>
+                <div class="link-url">${escapeHtml(link.url)}</div>
+              </div>
+              <div class="badges">
+                ${link.isActive ? '<span class="badge active">פעיל</span>' : ''}
+                ${link.isFull ? '<span class="badge full">מלא</span>' : ''}
+                <span class="badge">${escapeHtml(link.provider)}</span>
+              </div>
+            </div>
+            <div class="meta">
+              <div><div class="k">נוכחי</div><div class="v">${money(link.currentSum)}</div></div>
+              <div><div class="k">סף</div><div class="v">${money(link.threshold)}</div></div>
+              <div><div class="k">נותר</div><div class="v">${money(link.remaining)}</div></div>
+            </div>
+            <div class="progress ${link.isFull ? 'full' : ''}"><span style="width:${pct}%"></span></div>
+            <div class="row">
+              <div class="grow">
+                <label>סכום נוכחי</label>
+                <input type="number" min="0" step="1" class="field-sum" value="${link.currentSum}">
+              </div>
+              <div class="grow">
+                <label>סף</label>
+                <input type="number" min="0" step="1" class="field-threshold" value="${link.threshold}">
+              </div>
+              <button type="button" class="btn-primary btn-sm btn-save">שמירת ערכים</button>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <div class="grow">
+                <label>התאמה ידנית (+/-)</label>
+                <input type="number" step="1" class="field-adjust" placeholder="לדוגמה 500 או -200">
+              </div>
+              <div class="grow">
+                <label>הערה</label>
+                <input type="text" class="field-note" placeholder="תיקון / העברה ידנית">
+              </div>
+              <button type="button" class="btn-ghost btn-sm btn-adjust">החל התאמה</button>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-primary btn-sm btn-activate" ${link.isActive && status.mode === 'manual' ? 'disabled' : ''}>
+                הפוך לקישור הפעיל
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      historyEl.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>זמן</th>
+              <th>קישור</th>
+              <th>סכום</th>
+              <th>מקור</th>
+              <th>הערה</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(status.recentHistory || []).map((h) => {
+              const linkLabel = status.links.find((l) => l.id === h.linkId)?.label || h.linkId;
+              return `
+                <tr>
+                  <td>${escapeHtml(formatTime(h.timestamp))}</td>
+                  <td>${escapeHtml(linkLabel)}</td>
+                  <td>${h.amount ? money(h.amount) : '—'}</td>
+                  <td>${escapeHtml(h.source || '')}</td>
+                  <td>${escapeHtml(h.note || '')}</td>
+                </tr>
+              `;
+            }).join('') || '<tr><td colspan="5">אין היסטוריה עדיין</td></tr>'}
+          </tbody>
+        </table>
+      `;
+
+      linksEl.querySelectorAll('.link-card').forEach((card) => {
+        const linkId = card.dataset.id;
+        card.querySelector('.btn-save').addEventListener('click', async () => {
+          try {
+            const currentSum = Number(card.querySelector('.field-sum').value);
+            const threshold = Number(card.querySelector('.field-threshold').value);
+            await api('/api/admin/pay/links/' + encodeURIComponent(linkId), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ currentSum, threshold }),
+            });
+            showMessage('הערכים נשמרו');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
+
+        card.querySelector('.btn-adjust').addEventListener('click', async () => {
+          try {
+            const amount = Number(card.querySelector('.field-adjust').value);
+            const note = card.querySelector('.field-note').value;
+            await api('/api/admin/pay/links/' + encodeURIComponent(linkId) + '/adjust', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount, note }),
+            });
+            showMessage('ההתאמה בוצעה');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
+
+        card.querySelector('.btn-activate').addEventListener('click', async () => {
+          try {
+            await api('/api/admin/pay/mode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'manual', manualLinkId: linkId }),
+            });
+            showMessage('הקישור הוגדר כפעיל ידנית');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '';
+      try {
+        return new Date(iso).toLocaleString('he-IL');
+      } catch {
+        return iso;
+      }
+    }
+
+    async function load() {
+      try {
+        const status = await api('/api/admin/pay/status');
+        render(status);
+      } catch (error) {
+        showMessage(error.message, false);
+      }
+    }
+
+    document.getElementById('saveKeyBtn').addEventListener('click', async () => {
+      sessionStorage.setItem(KEY_STORAGE, adminKeyInput.value.trim());
+      showMessage('המפתח נשמר');
+      await load();
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', () => load());
+
+    document.getElementById('setAutoBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/admin/pay/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'auto' }),
+        });
+        showMessage('חזרה לניתוב אוטומטי');
+        await load();
+      } catch (error) {
+        showMessage(error.message, false);
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>

@@ -5,7 +5,7 @@
  * - WHATSAPP_SEND_DELAY_MS — pause after each successful send (default 600). Lower = faster, higher ban risk.
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
  * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite text as caption.
- *   If unset, looks for `henna_pic.jpg` in the project root (not cwd). If the file is missing, sends text only.
+ *   If unset, looks for `wedding.png` in the project root (not cwd). If the file is missing, sends text only.
  *
  * Auth data per sender: `.baileys_auth_<urlencoded_sender>/` under server/ (see authDirForSender).
  * Unofficial clients may violate WhatsApp ToS; use at your own risk.
@@ -31,7 +31,7 @@ const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
 
-const DEFAULT_INVITE_IMAGE_NAME = 'henna_pic.jpg';
+const DEFAULT_INVITE_IMAGE_NAME = 'wedding.jpg';
 
 function sessionKey(senderName) {
   return (senderName || '').trim();
@@ -312,9 +312,81 @@ function openingLineWithAddons(name, addonsRaw) {
 function composeMessageText(name, addons) {
   const opener = openingLineWithAddons(name, addons);
   return `${opener}
-הנכם מוזמנים למסיבת החינה של דניאל אביטל ויובל פינצ׳וק🪬
-פרטים נוספים ישלחו בהמשך,
+מתרגשים להזמינכם לחתונה של דניאל אביטל ויובל פינצ׳וק!
+שריינו את התאריך- פרטים נוספים יישלחו בהמשך
 מחכים לחגוג איתכם❤️`;
+}
+
+function stripEnvQuotes(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+export const DEFAULT_RSVP_REMINDER_TEMPLATE = `שלום {{name}},
+טרם קיבלנו את אישור ההגעה שלכם לחתונה של דניאל ויובל.
+נשמח אם תוכלו למלא את הטופס כאן:
+{{link}}
+תודה!`;
+
+export function buildRsvpLink(phone) {
+  const base = getRsvpBaseUrl();
+  if (!base) {
+    return '';
+  }
+  return `${base}/?phone=${encodeURIComponent(phone)}`;
+}
+
+export function getRsvpBaseUrl() {
+  const base = stripEnvQuotes(process.env.RSVP_BASE_URL || process.env.INVITE_BASE_URL || '');
+  return base.replace(/\/$/, '');
+}
+
+/**
+ * @param {string} template
+ * @param {{ name?: string, fullName?: string, phone?: string }} vars
+ */
+export function renderReminderTemplate(template, { name, fullName, phone }) {
+  const link = buildRsvpLink(phone || '');
+  return String(template || '')
+    .replace(/\{\{name\}\}/g, name || '')
+    .replace(/\{\{fullName\}\}/g, fullName || name || '')
+    .replace(/\{\{link\}\}/g, link);
+}
+
+/**
+ * @param {{ to: string, senderName: string, text: string }} payload
+ */
+export async function sendWhatsAppText(payload) {
+  const { to, senderName, text } = payload;
+  if (!to || !senderName) {
+    return { success: false, error: 'Missing to or senderName', to: to || '' };
+  }
+  if (!text || !String(text).trim()) {
+    return { success: false, error: 'Message text is required', to: to || '' };
+  }
+
+  const digits = formatPhoneNumber(to);
+  const jid = `${digits}@s.whatsapp.net`;
+
+  try {
+    const sock = await waitForReady(senderName, null);
+    if (!sock || !sock.user) {
+      return { success: false, error: 'WhatsApp not connected', to: digits };
+    }
+
+    await sock.sendMessage(jid, { text: String(text) });
+    const delayMs = getSendDelayMs();
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+
+    return { success: true, to: digits, jid };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || String(error),
+      to: digits,
+    };
+  }
 }
 
 /**
