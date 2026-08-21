@@ -25,7 +25,7 @@
       --font: 'Heebo', system-ui, sans-serif;
       --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
       --header-h: 96px;
-      --hint-h: 88px;
+      --hint-h: 112px;
     }
 
     * {
@@ -210,26 +210,40 @@
       padding-bottom: var(--hint-h);
     }
 
-    .page-section[data-section="1"] .section-inner,
-    .page-section[data-section="2"] .section-inner,
-    .page-section[data-section="3"] .section-inner {
-      padding-bottom: 8px;
-    }
-
     .page-section[data-section="0"] .section-inner {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       height: 100%;
       max-height: 100%;
       position: relative;
       overflow: hidden;
+      padding-top: 8px;
+      padding-bottom: 12px;
     }
 
     .page-section[data-section="0"] .envelope-scene {
-      transform: translateY(-12px);
-      width: min(220px, 58vw);
-      height: min(340px, 48dvh);
+      transform: none;
+      width: min(200px, 52vw);
+      height: min(300px, calc(100dvh - var(--header-h) - var(--hint-h) - 24px));
+      max-height: 42dvh;
+      margin-top: auto;
+      margin-bottom: auto;
+    }
+
+    .page-section[data-section="1"] {
+      padding-bottom: 40px;
+    }
+
+    .page-section[data-section="2"],
+    .page-section[data-section="3"] {
+      padding-bottom: 40px;
+    }
+
+    .page-section[data-section="1"] .section-inner,
+    .page-section[data-section="2"] .section-inner,
+    .page-section[data-section="3"] .section-inner {
+      padding-bottom: 8px;
     }
 
     .page-section[data-section="2"] .section-inner {
@@ -429,10 +443,10 @@
 
     @keyframes cardFloatBob {
       0%, 100% {
-        transform: translateX(-50%) translateY(-6px) scale(1);
+        transform: translateX(-50%) translateY(-4px) scale(1);
       }
       50% {
-        transform: translateX(-50%) translateY(-14px) scale(1);
+        transform: translateX(-50%) translateY(-10px) scale(1);
       }
     }
 
@@ -444,24 +458,31 @@
 
     .scroll-hint {
       position: absolute;
-      bottom: 20px;
+      bottom: 28px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      background: rgba(250, 247, 242, 0.92);
-      border: none;
-      border-radius: 999px;
+      gap: 8px;
+      color: var(--accent-dark);
+      font-size: 1.05rem;
+      font-weight: 600;
+      background: #fff;
+      border: 2px solid var(--accent);
+      border-radius: 20px;
       font-family: inherit;
       cursor: pointer;
       opacity: 1;
-      z-index: 15;
-      padding: 10px 16px;
-      backdrop-filter: blur(4px);
+      z-index: 25;
+      padding: 14px 22px 12px;
+      box-shadow: 0 8px 24px rgba(61, 54, 48, 0.14);
+      min-width: min(260px, calc(100vw - 48px));
+    }
+
+    .scroll-hint span {
+      line-height: 1.3;
+      text-align: center;
     }
 
     .scroll-hint.is-delayed {
@@ -474,16 +495,18 @@
     }
 
     .scroll-hint svg {
-      animation: bounce 2s ease-in-out infinite;
+      width: 28px;
+      height: 28px;
+      animation: bounce 1.6s ease-in-out infinite;
     }
 
     .scroll-hint.is-delayed svg {
-      animation: bounce 2s ease-in-out 3s infinite;
+      animation: bounce 1.6s ease-in-out 3s infinite;
     }
 
     @keyframes bounce {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(6px); }
+      50% { transform: translateY(8px); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -584,23 +607,71 @@
       font-weight: 600;
     }
 
-    .rsvp-change-btn {
+    .rsvp-hub-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .rsvp-hub-btn {
       width: 100%;
       padding: 14px 20px;
-      border: 2px solid var(--accent);
       border-radius: var(--radius);
-      background: transparent;
-      color: var(--accent-dark);
       font-family: inherit;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s, color 0.2s;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
     }
 
-    .rsvp-change-btn:hover {
+    .rsvp-hub-btn-primary {
+      border: 2px solid var(--accent);
       background: var(--accent);
       color: #fff;
+    }
+
+    .rsvp-hub-btn-primary:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
+    }
+
+    .rsvp-hub-btn-secondary {
+      border: 2px solid var(--accent);
+      background: transparent;
+      color: var(--accent-dark);
+    }
+
+    .rsvp-hub-btn-secondary:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .section-back-btn {
+      position: absolute;
+      top: calc(var(--header-h) + 4px);
+      right: 16px;
+      z-index: 16;
+      padding: 8px 14px;
+      border: 2px solid var(--cream-dark);
+      border-radius: 999px;
+      background: rgba(250, 247, 242, 0.95);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .section-back-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent-dark);
+    }
+
+    .page-section[data-section="2"] .section-inner,
+    .page-section[data-section="3"] .section-inner {
+      padding-top: 36px;
     }
 
     .section-title {
@@ -1101,7 +1172,7 @@
         </div>
         <button type="button" class="scroll-hint is-delayed" data-goto="1" aria-label="גללו למטה לאישור הגעה">
           <span>גללו למטה לאישור הגעה</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
             <path d="M12 5v14M5 12l7 7 7-7"/>
           </svg>
         </button>
@@ -1114,9 +1185,13 @@
 
             <div class="rsvp-logged hidden" id="rsvpLogged">
               <p class="rsvp-logged-title">התשובה שלכם נרשמה</p>
-              <p class="rsvp-logged-text">אישור ההגעה שלכם כבר התקבל. אפשר לעבור הלאה, או לעדכן אם משהו השתנה.</p>
+              <p class="rsvp-logged-text" id="rsvpLoggedText">אישור ההגעה שלכם כבר התקבל. אפשר לעדכן אם משהו השתנה.</p>
               <div class="rsvp-logged-summary" id="rsvpLoggedSummary"></div>
-              <button type="button" class="rsvp-change-btn" id="rsvpChangeBtn">רוצים לשנות את התשובה?</button>
+              <div class="rsvp-hub-actions" id="rsvpHubActions">
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">שינוי תשובת RSVP</button>
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">תשלום באפליקציות</button>
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpDirectionsBtn">ניווט לאולם</button>
+              </div>
             </div>
 
             <form id="rsvpForm">
@@ -1176,15 +1251,10 @@
             <div class="message" id="message"></div>
           </div>
         </div>
-        <button type="button" class="scroll-hint" data-goto="2" aria-label="גללו למטה לשליחת מתנה">
-          <span>גללו למטה לשליחת מתנה</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M12 5v14M5 12l7 7 7-7"/>
-          </svg>
-        </button>
       </section>
 
       <section class="page-section" data-section="2" aria-label="שליחת מתנה">
+        <button type="button" class="section-back-btn" data-goto="1" aria-label="חזרה לאישור הגעה">חזרה</button>
         <div class="section-inner no-scroll">
           <div class="gift-section">
             <h2 class="section-title">שליחת מתנה</h2>
@@ -1203,15 +1273,10 @@
             <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
           </div>
         </div>
-        <button type="button" class="scroll-hint" data-goto="3" aria-label="גללו למטה לניווט">
-          <span>גללו למטה לניווט</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M12 5v14M5 12l7 7 7-7"/>
-          </svg>
-        </button>
       </section>
 
       <section class="page-section" data-section="3" aria-label="ניווט לאולם">
+        <button type="button" class="section-back-btn" data-goto="1" aria-label="חזרה לאישור הגעה">חזרה</button>
         <div class="section-inner no-scroll">
           <div class="directions-section">
             <h2 class="section-title">איך מגיעים</h2>
@@ -1236,11 +1301,9 @@
       </section>
     </div>
 
-    <nav class="section-dots" id="sectionDots" aria-label="ניווט בין חלקי הדף">
+    <nav class="section-dots hidden" id="sectionDots" aria-label="ניווט בין חלקי הדף">
       <button type="button" class="section-dot is-active" data-goto="0" aria-label="הזמנה"></button>
       <button type="button" class="section-dot" data-goto="1" aria-label="אישור הגעה"></button>
-      <button type="button" class="section-dot" data-goto="2" aria-label="מתנה"></button>
-      <button type="button" class="section-dot" data-goto="3" aria-label="ניווט"></button>
     </nav>
 
     <div class="gift-modal hidden" id="giftFaqModal" role="dialog" aria-modal="true" aria-labelledby="giftFaqTitle">
@@ -1261,14 +1324,18 @@
     let guestName = '';
     let guestPhone = '';
     let existingRsvp = null;
+    let navigateToSection = null;
 
     const gateError = document.getElementById('gateError');
     const gateErrorText = document.getElementById('gateErrorText');
     const mainContent = document.getElementById('mainContent');
     const form = document.getElementById('rsvpForm');
     const rsvpLogged = document.getElementById('rsvpLogged');
+    const rsvpLoggedText = document.getElementById('rsvpLoggedText');
     const rsvpLoggedSummary = document.getElementById('rsvpLoggedSummary');
     const rsvpChangeBtn = document.getElementById('rsvpChangeBtn');
+    const rsvpPayBtn = document.getElementById('rsvpPayBtn');
+    const rsvpDirectionsBtn = document.getElementById('rsvpDirectionsBtn');
     const yesRadio = document.getElementById('yes');
     const noRadio = document.getElementById('no');
     const attendingDetails = document.getElementById('attendingDetails');
@@ -1292,6 +1359,7 @@
 
     const GIFT_MIN_AMOUNT = 1;
     const GIFT_MAX_AMOUNT = 15000;
+    const SWIPEABLE_MAX_SECTION = 1;
 
     function escapeHtml(text) {
       const el = document.createElement('div');
@@ -1354,6 +1422,12 @@
     function showLoggedRsvp(rsvp) {
       existingRsvp = rsvp;
       rsvpLoggedSummary.innerHTML = buildRsvpSummaryHtml(rsvp);
+      const attending = Boolean(rsvp && rsvp.isAttending);
+      rsvpLoggedText.textContent = attending
+        ? 'אישור ההגעה שלכם כבר התקבל. אפשר לבחור פעולה למטה, או לעדכן אם משהו השתנה.'
+        : 'התשובה שלכם נרשמה. אפשר לעדכן אם משהו השתנה.';
+      rsvpPayBtn.classList.toggle('hidden', !attending);
+      rsvpDirectionsBtn.classList.toggle('hidden', !attending);
       rsvpLogged.classList.remove('hidden');
       form.classList.add('hidden');
       messageDiv.classList.remove('show', 'success', 'error');
@@ -1410,8 +1484,13 @@
       const DEFAULT_WHEEL_PX = 30;
 
       function updateDots(index) {
-        dots.forEach((dot, i) => {
-          dot.classList.toggle('is-active', i === index);
+        const dotsNav = document.getElementById('sectionDots');
+        if (dotsNav) {
+          dotsNav.classList.toggle('hidden', index === 0 || index > SWIPEABLE_MAX_SECTION);
+        }
+        dots.forEach((dot) => {
+          const target = parseInt(dot.dataset.goto, 10);
+          dot.classList.toggle('is-active', target === Math.min(index, SWIPEABLE_MAX_SECTION));
         });
       }
 
@@ -1438,7 +1517,7 @@
         animating = true;
         wheelLocked = true;
 
-        if (current === 1) {
+        if (current === 1 || index === 1) {
           rsvpScroll.scrollTop = 0;
           clearRsvpArmed();
         }
@@ -1486,11 +1565,15 @@
         setTimeout(finish, TRANSITION_MS);
       }
 
+      navigateToSection = goTo;
+
       function goNext() {
+        if (current >= SWIPEABLE_MAX_SECTION) return;
         goTo(current + 1);
       }
 
       function goPrev() {
+        if (current > SWIPEABLE_MAX_SECTION) return;
         goTo(current - 1);
       }
 
@@ -1517,7 +1600,6 @@
         clearTimeout(rsvpArmTimer);
         rsvpArmTimer = setTimeout(() => {
           if (current !== 1 || !isRsvpDetailsOpen()) return;
-          if (isRsvpAtBottom()) rsvpScroll.dataset.armedNext = '1';
           if (isRsvpAtTop()) rsvpScroll.dataset.armedPrev = '1';
         }, RSVP_ARM_DELAY_MS);
       }
@@ -1531,10 +1613,9 @@
 
       rsvpScroll.addEventListener('scroll', () => {
         if (current !== 1 || !isRsvpDetailsOpen()) return;
-        // Any scroll movement disarms until the user settles at the edge again
         rsvpScroll.dataset.armedNext = '0';
         rsvpScroll.dataset.armedPrev = '0';
-        if (isRsvpAtBottom() || isRsvpAtTop()) {
+        if (isRsvpAtTop()) {
           scheduleArmRsvpAdvance();
         } else {
           clearTimeout(rsvpArmTimer);
@@ -1544,6 +1625,7 @@
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
 
         const deltaY = e.deltaY;
 
@@ -1552,14 +1634,14 @@
           rsvpWheelIdleTimer = setTimeout(() => {
             rsvpWheelGestureActive = false;
             rsvpWheelOverscroll = 0;
-            if (isRsvpAtBottom() || isRsvpAtTop()) {
+            if (isRsvpAtTop()) {
               scheduleArmRsvpAdvance();
             }
           }, RSVP_WHEEL_IDLE_MS);
 
           if (!rsvpWheelGestureActive) {
             rsvpWheelGestureActive = true;
-            rsvpWheelGestureCanAdvance = rsvpScroll.dataset.armedNext === '1';
+            rsvpWheelGestureCanAdvance = false;
             rsvpWheelGestureCanGoPrev = rsvpScroll.dataset.armedPrev === '1';
             rsvpWheelOverscroll = 0;
           }
@@ -1574,19 +1656,8 @@
             return;
           }
 
-          // Stuck at edge: only leave if this NEW gesture began while already armed
           if (deltaY > 0) {
-            if (!rsvpWheelGestureCanAdvance) {
-              rsvpWheelOverscroll = 0;
-              return;
-            }
-            rsvpWheelOverscroll += deltaY;
-            if (rsvpWheelOverscroll >= RSVP_NEXT_WHEEL_PX) {
-              rsvpWheelGestureActive = false;
-              rsvpWheelOverscroll = 0;
-              clearRsvpArmed();
-              goNext();
-            }
+            rsvpWheelOverscroll = 0;
             return;
           }
 
@@ -1606,7 +1677,6 @@
           }
         }
 
-        // RSVP without expanded details (or other sections): normal one-gesture jumps
         if (current === 1 && canScrollInner(rsvpScroll, deltaY)) {
           rsvpScroll.scrollTop += deltaY;
           return;
@@ -1625,6 +1695,7 @@
       viewport.addEventListener('touchend', (e) => {
         if (e.target.closest('#rsvpScroll')) return;
         if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
 
         const touchEndY = e.changedTouches[0].clientY;
         const deltaY = touchStartY - touchEndY;
@@ -1642,8 +1713,7 @@
           rsvpTouchCanAdvancePrev = false;
           return;
         }
-        rsvpTouchCanAdvance =
-          isRsvpAtBottom() && rsvpScroll.dataset.armedNext === '1';
+        rsvpTouchCanAdvance = false;
         rsvpTouchCanAdvancePrev =
           isRsvpAtTop() && rsvpScroll.dataset.armedPrev === '1';
       }, { passive: true });
@@ -1658,8 +1728,9 @@
           if (Math.abs(deltaY) < DEFAULT_SWIPE_PX) return;
           if (deltaY > 0) {
             if (canScrollInner(rsvpScroll, deltaY)) return;
-            goNext();
-          } else if (deltaY < 0) {
+            return;
+          }
+          if (deltaY < 0) {
             if (canScrollInner(rsvpScroll, deltaY)) return;
             goPrev();
           }
@@ -1667,13 +1738,6 @@
         }
 
         if (deltaY > 0) {
-          if (!rsvpTouchCanAdvance || !isRsvpAtBottom()) {
-            if (isRsvpAtBottom()) scheduleArmRsvpAdvance();
-            return;
-          }
-          if (deltaY < RSVP_NEXT_SWIPE_PX) return;
-          clearRsvpArmed();
-          goNext();
           return;
         }
 
@@ -1691,6 +1755,7 @@
       window.addEventListener('keydown', (e) => {
         if (!giftFaqModal.classList.contains('hidden')) return;
         if (wheelLocked || animating) return;
+        if (current > SWIPEABLE_MAX_SECTION) return;
 
         if (current === 1 && isRsvpDetailsOpen()) {
           if (e.key === 'ArrowDown' || e.key === 'PageDown') {
@@ -1698,13 +1763,6 @@
             if (canScrollInner(rsvpScroll, 1)) {
               rsvpScroll.scrollTop += 80;
               clearRsvpArmed();
-              return;
-            }
-            if (rsvpScroll.dataset.armedNext === '1') {
-              clearRsvpArmed();
-              goNext();
-            } else if (isRsvpAtBottom()) {
-              scheduleArmRsvpAdvance();
             }
             return;
           }
@@ -1737,7 +1795,7 @@
       dots.forEach((dot) => {
         dot.addEventListener('click', () => {
           const target = parseInt(dot.dataset.goto, 10);
-          if (!Number.isNaN(target)) goTo(target);
+          if (!Number.isNaN(target) && target <= SWIPEABLE_MAX_SECTION) goTo(target);
         });
       });
 
@@ -1747,6 +1805,15 @@
           if (!Number.isNaN(target)) goTo(target);
         });
       });
+
+      document.querySelectorAll('.section-back-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = parseInt(btn.dataset.goto, 10);
+          if (!Number.isNaN(target)) goTo(target);
+        });
+      });
+
+      updateDots(0);
     }
 
     function sanitizeGiftAmount(value) {
@@ -1874,6 +1941,12 @@
     veganYes.addEventListener('change', toggleVeganCount);
     veganNo.addEventListener('change', toggleVeganCount);
     rsvpChangeBtn.addEventListener('click', showRsvpFormForEdit);
+    rsvpPayBtn.addEventListener('click', () => {
+      if (typeof navigateToSection === 'function') navigateToSection(2);
+    });
+    rsvpDirectionsBtn.addEventListener('click', () => {
+      if (typeof navigateToSection === 'function') navigateToSection(3);
+    });
 
     notesInput.addEventListener('input', () => {
       charCount.textContent = notesInput.value.length;
