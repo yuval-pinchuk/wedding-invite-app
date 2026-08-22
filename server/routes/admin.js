@@ -474,6 +474,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
       name: guest.name,
       fullName: guest.fullName || guest.name,
       phone: guest.phoneTo,
+      addons: guest.addons,
     });
 
     try {
@@ -511,7 +512,7 @@ router.get('/rsvp-reminder-defaults', (_req, res) => {
   res.json({
     success: true,
     template: DEFAULT_RSVP_REMINDER_TEMPLATE,
-    placeholders: ['{{name}}', '{{fullName}}', '{{link}}'],
+    placeholders: ['{{greeting}}', '{{name}}', '{{fullName}}', '{{link}}'],
     rsvpBaseUrl: getRsvpBaseUrl(),
     authRequired: Boolean((process.env.ADMIN_API_KEY || '').trim()),
   });
@@ -572,6 +573,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
             name: reqGuest.name,
             fullName: reqGuest.fullName || reqGuest.name,
             phoneTo: phone,
+            addons: reqGuest.addons || '',
           });
         }
       }

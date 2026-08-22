@@ -268,7 +268,7 @@
       <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו (עמודה H ריקה = ממתין לאישור).</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
       <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
-      <p class="hint" style="margin-top:12px">משתנים: <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
+      <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
       <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
       <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
       <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>
@@ -366,16 +366,48 @@
       return base + '/?phone=' + encodeURIComponent(phone || '0500000000');
     }
 
+    function normalizeAddonsCell(addonsStr) {
+      return String(addonsStr || '')
+        .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+        .trim();
+    }
+
+    function formatNameWithAddons(name, addonsRaw) {
+      const base = String(name || '').trim();
+      const s = normalizeAddonsCell(addonsRaw);
+      if (!base) return s;
+      if (!s) return base;
+      const hasComma = /,/.test(s);
+      const hasConjunctiveVav = /[\s\u00A0\u2009\u202F]+\u05D5\s*\S/.test(s);
+      if (hasComma || hasConjunctiveVav) {
+        return base + ', ' + s;
+      }
+      return base + ' ו' + s;
+    }
+
+    function openingLineWithAddons(name, addonsRaw) {
+      const s = normalizeAddonsCell(addonsRaw);
+      if (!s) {
+        return 'שלום ' + (name || '') + ',';
+      }
+      return 'שלום ' + formatNameWithAddons(name, addonsRaw);
+    }
+
     function renderReminderPreview(template, guest) {
       const sample = guest || {
         name: 'ישראל',
         fullName: 'ישראל ישראלי',
         phoneTo: '0500000000',
+        addons: 'מתן',
       };
       const link = buildPreviewLink(sample.phoneTo);
+      const displayName = formatNameWithAddons(sample.name || '', sample.addons);
+      const displayFullName = formatNameWithAddons(sample.fullName || sample.name || '', sample.addons);
+      const greeting = openingLineWithAddons(sample.name || sample.fullName || '', sample.addons);
       return String(template || '')
-        .replace(/\{\{name\}\}/g, sample.name || '')
-        .replace(/\{\{fullName\}\}/g, sample.fullName || sample.name || '')
+        .replace(/\{\{greeting\}\}/g, greeting)
+        .replace(/\{\{name\}\}/g, displayName)
+        .replace(/\{\{fullName\}\}/g, displayFullName)
         .replace(/\{\{link\}\}/g, link);
     }
 
@@ -799,6 +831,7 @@
               name: g.name,
               fullName: g.fullName,
               phoneTo: g.phoneTo,
+              addons: g.addons,
             })),
           }),
         });
