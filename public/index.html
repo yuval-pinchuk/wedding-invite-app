@@ -21,6 +21,12 @@
       --error-text: #8B3A32;
       --success-bg: #EEF5EE;
       --success-text: #2D5A32;
+      --attend-green: #6B9B7A;
+      --attend-green-bg: #E8F2EB;
+      --attend-green-border: #A8C9B2;
+      --decline-red: #C47B73;
+      --decline-red-bg: #F7EDEC;
+      --decline-red-border: #E0B5B0;
       --radius: 14px;
       --font: 'Heebo', system-ui, sans-serif;
       --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
@@ -578,25 +584,38 @@
     }
 
     .rsvp-logged-text {
-      font-size: 1rem;
+      font-size: 1.05rem;
+      font-weight: 600;
       color: var(--text-muted);
       margin-bottom: 18px;
       line-height: 1.55;
+    }
+
+    .rsvp-logged-text.rsvp-logged-success {
+      color: var(--attend-green);
+      background: var(--attend-green-bg);
+      border: 1px solid var(--attend-green-border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
     }
 
     .rsvp-logged-summary {
       background: #fff;
       border: 2px solid var(--cream-dark);
       border-radius: var(--radius);
-      padding: 16px 18px;
+      padding: 8px 10px;
       text-align: right;
-      margin-bottom: 20px;
+      margin: 0 auto 16px;
+      width: 50%;
+      max-width: 240px;
+      box-sizing: border-box;
     }
 
     .rsvp-logged-summary p {
-      font-size: 0.95rem;
+      font-size: 0.82rem;
       color: var(--text);
-      margin: 0 0 8px;
+      margin: 0 0 4px;
+      line-height: 1.35;
     }
 
     .rsvp-logged-summary p:last-child {
@@ -614,15 +633,28 @@
       width: 100%;
     }
 
+    .rsvp-hub-row {
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+      width: 100%;
+    }
+
     .rsvp-hub-btn {
       width: 100%;
-      padding: 14px 20px;
+      padding: 14px 12px;
       border-radius: var(--radius);
       font-family: inherit;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .rsvp-hub-row .rsvp-hub-btn {
+      flex: 1 1 50%;
+      width: auto;
+      min-width: 0;
     }
 
     .rsvp-hub-btn-primary {
@@ -765,6 +797,40 @@
 
     .radio-option:hover .radio-label {
       border-color: var(--accent);
+    }
+
+    #yes + .radio-label {
+      color: var(--attend-green);
+      border-color: var(--attend-green-border);
+      background: var(--attend-green-bg);
+    }
+
+    #yes + .radio-label:hover,
+    .radio-option:hover #yes + .radio-label {
+      border-color: var(--attend-green);
+    }
+
+    #yes:checked + .radio-label {
+      background: var(--attend-green);
+      border-color: var(--attend-green);
+      color: #fff;
+    }
+
+    #no + .radio-label {
+      color: var(--decline-red);
+      border-color: var(--decline-red-border);
+      background: var(--decline-red-bg);
+    }
+
+    #no + .radio-label:hover,
+    .radio-option:hover #no + .radio-label {
+      border-color: var(--decline-red);
+    }
+
+    #no:checked + .radio-label {
+      background: var(--decline-red);
+      border-color: var(--decline-red);
+      color: #fff;
     }
 
     .attending-details {
@@ -1184,13 +1250,14 @@
             <h2 class="section-title">אישור הגעה</h2>
 
             <div class="rsvp-logged hidden" id="rsvpLogged">
-              <p class="rsvp-logged-title">התשובה שלכם נרשמה</p>
-              <p class="rsvp-logged-text" id="rsvpLoggedText">אישור ההגעה שלכם כבר התקבל. אפשר לעדכן אם משהו השתנה.</p>
+              <p class="rsvp-logged-text rsvp-logged-success" id="rsvpLoggedText">תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉</p>
               <div class="rsvp-logged-summary" id="rsvpLoggedSummary"></div>
               <div class="rsvp-hub-actions" id="rsvpHubActions">
-                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">שינוי תשובת RSVP</button>
-                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">תשלום באפליקציות</button>
-                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpDirectionsBtn">ניווט לאולם</button>
+                <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">עריכת תשובה</button>
+                <div class="rsvp-hub-row">
+                  <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">🎁 לשליחת מתנה ב PAYBOX</button>
+                  <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpDirectionsBtn">🚗 ניווט לאולם</button>
+                </div>
               </div>
             </div>
 
@@ -1424,8 +1491,9 @@
       rsvpLoggedSummary.innerHTML = buildRsvpSummaryHtml(rsvp);
       const attending = Boolean(rsvp && rsvp.isAttending);
       rsvpLoggedText.textContent = attending
-        ? 'אישור ההגעה שלכם כבר התקבל. אפשר לבחור פעולה למטה, או לעדכן אם משהו השתנה.'
-        : 'התשובה שלכם נרשמה. אפשר לעדכן אם משהו השתנה.';
+        ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
+        : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
+      rsvpLoggedText.classList.toggle('rsvp-logged-success', attending);
       rsvpPayBtn.classList.toggle('hidden', !attending);
       rsvpDirectionsBtn.classList.toggle('hidden', !attending);
       rsvpLogged.classList.remove('hidden');
@@ -1999,10 +2067,6 @@
             additionalNotes: isAttending ? additionalNotes : '',
           };
           showLoggedRsvp(saved);
-          messageDiv.textContent = isAttending
-            ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
-            : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
-          messageDiv.classList.add('show', 'success');
         } else {
           if (result.details && result.details.serviceAccountEmail) {
             let errorMessage = result.error || 'שגיאת הרשאות.';
