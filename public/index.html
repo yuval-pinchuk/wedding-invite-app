@@ -673,6 +673,10 @@
       text-align: center;
     }
 
+    .rsvp-hub-row #rsvpDirectionsBtn:not(.hidden) {
+      flex: 1 1 100%;
+    }
+
     .rsvp-hub-btn-emoji {
       font-size: 1.35rem;
       line-height: 1;
@@ -1377,13 +1381,13 @@
             <p class="directions-address">קאי ריזורט - רחוב השיטה 5, חרב לאת</p>
             <p class="directions-subtitle">בחרו אפליקציית ניווט לפתיחת המסלול לאולם</p>
             <div class="venue-links">
-              <a class="venue-link" href="https://waze.com/ul/hsvbb619mk" target="_blank" rel="noopener noreferrer" aria-label="ניווט ב-Waze">
+              <a class="venue-link" href="https://waze.com/ul/hsvbbfh9m2" target="_blank" rel="noopener noreferrer" aria-label="ניווט ב-Waze">
                 <div class="venue-icon">
                   <img src="/waze.png" alt="">
                 </div>
                 <span>Waze</span>
               </a>
-              <a class="venue-link" href="https://maps.app.goo.gl/TUjcHRnDVxTVAYha8?g_st=aw" target="_blank" rel="noopener noreferrer" aria-label="מיקום ב-Google Maps">
+              <a class="venue-link" href="https://maps.app.goo.gl/V8QGpodsR6M7y5Cf6?g_st=aw" target="_blank" rel="noopener noreferrer" aria-label="מיקום ב-Google Maps">
                 <div class="venue-icon">
                   <img src="/google%20maps.png" alt="">
                 </div>
@@ -1521,7 +1525,7 @@
         ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
         : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
       rsvpLoggedText.classList.toggle('rsvp-logged-success', attending);
-      rsvpPayBtn.classList.toggle('hidden', !attending);
+      rsvpPayBtn.classList.add('hidden');
       rsvpDirectionsBtn.classList.toggle('hidden', !attending);
       rsvpLogged.classList.remove('hidden');
       form.classList.add('hidden');
