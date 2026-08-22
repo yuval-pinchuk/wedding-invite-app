@@ -36,6 +36,7 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Not coming → guest count is always 0 in the guest sheet (column H)
     const guests = isAttending ? parseInt(numberOfGuests, 10) : 0;
     if (isNaN(guests) || guests < 0) {
       return res.status(400).json({
