@@ -290,23 +290,41 @@ function normalizeAddonsCell(addonsStr) {
 
 /**
  * Sheet shapes:
- * - One add-on: "מתן" → שלום {name} ומתן
- * - Two in one cell: "עמרי ומתן" (space before conjunctive ו) → שלום {name}, עמרי ומתן
- * - Several with commas: "יובל, עמרי ומתן" / "דניאל, יובל, עמרי ומתן" → שלום {name}, <full cell>
+ * - One add-on: "מתן" → {name} ומתן
+ * - Two in one cell: "עמרי ומתן" (space before conjunctive ו) → {name}, עמרי ומתן
+ * - Several with commas: "יובל, עמרי ומתן" → {name}, <full cell>
  */
-function openingLineWithAddons(name, addonsRaw) {
+export function formatNameWithAddons(name, addonsRaw) {
+  const base = String(name || '').trim();
   const s = normalizeAddonsCell(addonsRaw);
+  if (!base) {
+    return s;
+  }
   if (!s) {
-    return `שלום ${name},`;
+    return base;
   }
   const hasComma = /,/.test(s);
   // Conjunctive ו: whitespace before it, then the next name (with or without space after ו).
   // Not ו inside a word (e.g. "יובל" has no space before ו).
   const hasConjunctiveVav = /[\s\u00A0\u2009\u202F]+\u05D5\s*\S/.test(s);
   if (hasComma || hasConjunctiveVav) {
-    return `שלום ${name}, ${s}`;
+    return `${base}, ${s}`;
   }
-  return `שלום ${name} ו${s}`;
+  return `${base} ו${s}`;
+}
+
+/**
+ * Greeting line matching invitation copy:
+ * - No add-ons: שלום {name},
+ * - One add-on: שלום {name} ו{addon}
+ * - Multiple: שלום {name}, {addons}
+ */
+export function openingLineWithAddons(name, addonsRaw) {
+  const s = normalizeAddonsCell(addonsRaw);
+  if (!s) {
+    return `שלום ${name},`;
+  }
+  return `שלום ${formatNameWithAddons(name, addonsRaw)}`;
 }
 
 function composeMessageText(name, addons) {
@@ -321,7 +339,7 @@ function stripEnvQuotes(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/g, '');
 }
 
-export const DEFAULT_RSVP_REMINDER_TEMPLATE = `שלום {{name}},
+export const DEFAULT_RSVP_REMINDER_TEMPLATE = `{{greeting}}
 טרם קיבלנו את אישור ההגעה שלכם לחתונה של דניאל ויובל.
 נשמח אם תוכלו למלא את הטופס כאן:
 {{link}}
@@ -342,13 +360,17 @@ export function getRsvpBaseUrl() {
 
 /**
  * @param {string} template
- * @param {{ name?: string, fullName?: string, phone?: string }} vars
+ * @param {{ name?: string, fullName?: string, phone?: string, addons?: string }} vars
  */
-export function renderReminderTemplate(template, { name, fullName, phone }) {
+export function renderReminderTemplate(template, { name, fullName, phone, addons }) {
   const link = buildRsvpLink(phone || '');
+  const displayName = formatNameWithAddons(name || '', addons);
+  const displayFullName = formatNameWithAddons(fullName || name || '', addons);
+  const greeting = openingLineWithAddons(name || fullName || '', addons);
   return String(template || '')
-    .replace(/\{\{name\}\}/g, name || '')
-    .replace(/\{\{fullName\}\}/g, fullName || name || '')
+    .replace(/\{\{greeting\}\}/g, greeting)
+    .replace(/\{\{name\}\}/g, displayName)
+    .replace(/\{\{fullName\}\}/g, displayFullName)
     .replace(/\{\{link\}\}/g, link);
 }
 
