@@ -4,8 +4,8 @@
  * Environment (optional):
  * - WHATSAPP_SEND_DELAY_MS — pause after each successful send (default 600). Lower = faster, higher ban risk.
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
- * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite text as caption.
- *   If unset, looks for `wedding.png` in the project root (not cwd). If the file is missing, sends text only.
+ * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite/reminder text as caption.
+ *   If unset, looks for `henna_pic.jpg` in the project root (not cwd). If the file is missing, sends text only.
  *
  * Auth data per sender: `.baileys_auth_<urlencoded_sender>/` under server/ (see authDirForSender).
  * Unofficial clients may violate WhatsApp ToS; use at your own risk.
@@ -31,7 +31,7 @@ const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
 
-const DEFAULT_INVITE_IMAGE_NAME = 'wedding.jpg';
+const DEFAULT_INVITE_IMAGE_NAME = 'henna_pic.jpg';
 
 function sessionKey(senderName) {
   return (senderName || '').trim();
@@ -388,6 +388,7 @@ export async function sendWhatsAppText(payload) {
 
   const digits = formatPhoneNumber(to);
   const jid = `${digits}@s.whatsapp.net`;
+  const caption = String(text);
 
   try {
     const sock = await waitForReady(senderName, null);
@@ -395,7 +396,12 @@ export async function sendWhatsAppText(payload) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
 
-    await sock.sendMessage(jid, { text: String(text) });
+    const imageBuf = readInviteImageBuffer();
+    if (imageBuf) {
+      await sock.sendMessage(jid, { image: imageBuf, caption });
+    } else {
+      await sock.sendMessage(jid, { text: caption });
+    }
     const delayMs = getSendDelayMs();
     if (delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
