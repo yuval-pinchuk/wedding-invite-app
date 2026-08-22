@@ -220,7 +220,10 @@ export function parseStoredRsvp(guest) {
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
-const GUEST_SHEET_TAB = 'חתונה';
+const GUEST_SHEET_TAB = 'חינה';
+
+/** Response log worksheet name (separate GOOGLE_RESPONSE_SHEET_ID spreadsheet). */
+const RESPONSE_SHEET_TAB = 'חתונה';
 
 /** Read wide enough for phone cells placed after column O (API omits trailing empties only). */
 const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
@@ -520,7 +523,7 @@ export async function saveRSVPResponse(
   numberOfBabies = 0,
   numberOfVegan = 0,
   additionalNotes = '',
-  range = `${GUEST_SHEET_TAB}!A:H`
+  range = `${RESPONSE_SHEET_TAB}!A:H`
 ) {
   if (!sheets) {
     await configureSheets();
@@ -558,7 +561,7 @@ export async function saveRSVPResponse(
       const rowNumber = existingRowIndex + 1;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${GUEST_SHEET_TAB}!A${rowNumber}:H${rowNumber}`,
+        range: `${RESPONSE_SHEET_TAB}!A${rowNumber}:H${rowNumber}`,
         valueInputOption: 'RAW',
         resource: {
           values,
@@ -610,7 +613,7 @@ export async function initializeResponseSheet(spreadsheetId) {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${GUEST_SHEET_TAB}!A1:H1`,
+      range: `${RESPONSE_SHEET_TAB}!A1:H1`,
     });
 
     const existingHeaders = response.data.values?.[0] || [];
@@ -618,7 +621,7 @@ export async function initializeResponseSheet(spreadsheetId) {
     if (existingHeaders.length === 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${GUEST_SHEET_TAB}!A1:H1`,
+        range: `${RESPONSE_SHEET_TAB}!A1:H1`,
         valueInputOption: 'RAW',
         resource: {
           values: [RESPONSE_SHEET_HEADERS],
@@ -628,7 +631,7 @@ export async function initializeResponseSheet(spreadsheetId) {
     } else if (existingHeaders.length < RESPONSE_SHEET_HEADERS.length) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${GUEST_SHEET_TAB}!A1:H1`,
+        range: `${RESPONSE_SHEET_TAB}!A1:H1`,
         valueInputOption: 'RAW',
         resource: {
           values: [RESPONSE_SHEET_HEADERS],
