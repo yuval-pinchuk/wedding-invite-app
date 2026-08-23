@@ -1342,7 +1342,7 @@
             <h2 class="section-title">אישור הגעה</h2>
 
             <div class="rsvp-logged hidden" id="rsvpLogged">
-              <p class="rsvp-logged-text rsvp-logged-success" id="rsvpLoggedText">תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉</p>
+              <p class="rsvp-logged-text rsvp-logged-success" id="rsvpLoggedText">תודה! אישור ההגעה נשלח בהצלחה.<br>מחכים לראותכם! 🎉</p>
               <div class="rsvp-logged-summary" id="rsvpLoggedSummary"></div>
               <div class="rsvp-hub-actions" id="rsvpHubActions">
                 <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">עריכת תשובה</button>
@@ -1588,8 +1588,8 @@
       existingRsvp = rsvp;
       rsvpLoggedSummary.innerHTML = buildRsvpSummaryHtml(rsvp);
       const attending = Boolean(rsvp && rsvp.isAttending);
-      rsvpLoggedText.textContent = attending
-        ? 'תודה! אישור ההגעה נשלח בהצלחה. מחכים לראותכם! 🎉'
+      rsvpLoggedText.innerHTML = attending
+        ? 'תודה! אישור ההגעה נשלח בהצלחה.<br>מחכים לראותכם! 🎉'
         : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
       rsvpLoggedText.classList.toggle('rsvp-logged-success', attending);
       rsvpPayBtn.classList.add('hidden');
