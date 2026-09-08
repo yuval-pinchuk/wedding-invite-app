@@ -220,7 +220,7 @@ export function parseStoredRsvp(guest) {
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
-const GUEST_SHEET_TAB = 'חינה';
+const GUEST_SHEET_TAB = 'חתונה';
 
 /** Response log worksheet name (separate GOOGLE_RESPONSE_SHEET_ID spreadsheet). */
 const RESPONSE_SHEET_TAB = 'חתונה';
