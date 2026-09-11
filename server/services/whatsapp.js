@@ -198,8 +198,11 @@ export async function initializeWhatsApp(senderName = 'default') {
 }
 
 /**
- * Wait until connected or timeout (null max = 5 min default guard).
+ * Wait until connected or timeout.
+ * Pass null to wait indefinitely (avoid during sends — a dead session will hang the batch).
  */
+export const SEND_READY_TIMEOUT_MS = 60000;
+
 export async function waitForReady(senderName = 'default', maxWaitTime = 300000) {
   const start = Date.now();
   await connectSocket(senderName);
@@ -391,7 +394,7 @@ export async function sendWhatsAppText(payload) {
   const caption = String(text);
 
   try {
-    const sock = await waitForReady(senderName, null);
+    const sock = await waitForReady(senderName, SEND_READY_TIMEOUT_MS);
     if (!sock || !sock.user) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
@@ -431,7 +434,7 @@ export async function sendWhatsAppInvitation(payload) {
   const text = composeMessageText(name || 'אורח', addons);
 
   try {
-    const sock = await waitForReady(senderName, null);
+    const sock = await waitForReady(senderName, SEND_READY_TIMEOUT_MS);
     if (!sock || !sock.user) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }

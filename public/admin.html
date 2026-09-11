@@ -88,6 +88,21 @@
       background: rgba(34, 197, 94, 0.15);
       color: #86efac;
     }
+    .guest-badges {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .guest-rsvp-badge.sent {
+      background: rgba(20, 184, 166, 0.15);
+      color: #5eead4;
+    }
+    .guest-rsvp-badge.unsent {
+      background: rgba(148, 163, 184, 0.18);
+      color: #94a3b8;
+    }
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .row .grow { flex: 1; min-width: 200px; }
     button {
@@ -257,15 +272,17 @@
         <div class="stat"><b id="totalGuests">0</b><span>Total</span></div>
         <div class="stat"><b id="selectedGuests">0</b><span>Selected</span></div>
         <div class="stat"><b id="pendingRsvpGuestsStat">0</b><span>Pending RSVP</span></div>
+        <div class="stat"><b id="unsentWaGuestsStat">0</b><span>WA not sent</span></div>
       </div>
       <div class="toolbar">
         <button type="button" class="btn-ghost" id="selectAllBtn">Select all</button>
         <button type="button" class="btn-ghost" id="deselectAllBtn">Deselect all</button>
         <button type="button" class="btn-ghost" id="selectAllPendingBtn">Select all pending</button>
+        <button type="button" class="btn-ghost" id="selectUnsentBtn">Select unsent</button>
         <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
       <div class="guest-list" id="guestList"></div>
-      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו (עמודה H ריקה = ממתין לאישור).</p>
+      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה P = נשלח בוואטסאפ (ריק = לא נשלח). אורחים שכבר מסומנים כנשלח ידולגו כברירת מחדל.</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
       <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
       <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
@@ -327,6 +344,7 @@
       document.getElementById('selectAllBtn').addEventListener('click', selectAll);
       document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
       document.getElementById('selectAllPendingBtn').addEventListener('click', selectAllPending);
+      document.getElementById('selectUnsentBtn').addEventListener('click', selectUnsent);
       document.getElementById('refreshSheetBtn').addEventListener('click', refreshGuestsFromSheet);
       document.getElementById('sendBtn').addEventListener('click', confirmAndSendRsvpReminders);
       document.getElementById('rsvpReminderMessage').addEventListener('input', updateReminderPreview);
@@ -357,8 +375,16 @@
       return Boolean((guest.rsvpGuestCount || '').trim());
     }
 
+    function hasWhatsappSent(guest) {
+      return Boolean((guest.whatsappSentAt || '').trim());
+    }
+
     function getPendingGuests() {
       return guests.filter((g) => !hasRsvpResponded(g) && g.phoneTo);
+    }
+
+    function getUnsentGuests() {
+      return guests.filter((g) => g.phoneTo && !hasWhatsappSent(g));
     }
 
     function buildPreviewLink(phone) {
@@ -427,9 +453,11 @@
     function updateStats() {
       const selected = getSelectedGuests();
       const pending = getPendingGuests();
+      const unsent = getUnsentGuests();
       document.getElementById('totalGuests').textContent = guests.length;
       document.getElementById('selectedGuests').textContent = selected.length;
       document.getElementById('pendingRsvpGuestsStat').textContent = pending.length;
+      document.getElementById('unsentWaGuestsStat').textContent = unsent.length;
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.textContent = 'שליחת תזכורת RSVP (' + selected.length + ')';
       sendBtn.disabled = selected.length === 0 || !wa.ready;
@@ -700,8 +728,12 @@
       guests.forEach((guest, index) => {
         const isSelected = Boolean(guest.selected);
         const responded = hasRsvpResponded(guest);
+        const waSent = hasWhatsappSent(guest);
         const badgeClass = responded ? 'done' : 'pending';
         const badgeText = responded ? 'RSVP received' : 'Pending';
+        const waBadgeClass = waSent ? 'sent' : 'unsent';
+        const waBadgeText = waSent ? 'נשלח' : 'לא נשלח';
+        const waTitle = waSent ? escapeHtml(guest.whatsappSentAt) : 'עמודה P ריקה';
         const div = document.createElement('div');
         div.className = 'guest-item' + (isSelected ? '' : ' unselected');
         div.innerHTML =
@@ -711,7 +743,10 @@
           '<div class="guest-phone">' + escapeHtml(guest.phoneTo || '') + '</div>' +
           (guest.addons ? '<div class="guest-addons">+ ' + escapeHtml(guest.addons) + '</div>' : '') +
           '</div>' +
-          '<span class="guest-rsvp-badge ' + badgeClass + '">' + badgeText + '</span>';
+          '<div class="guest-badges">' +
+          '<span class="guest-rsvp-badge ' + badgeClass + '">' + badgeText + '</span>' +
+          '<span class="guest-rsvp-badge ' + waBadgeClass + '" title="' + waTitle + '">' + waBadgeText + '</span>' +
+          '</div>';
         div.querySelector('input').addEventListener('change', (ev) => toggleGuest(index, ev.target.checked));
         list.appendChild(div);
       });
@@ -770,15 +805,95 @@
       updateReminderPreview();
     }
 
-    function formatReminderProgressLine(ev) {
-      let s = ev.successful + ' / ' + ev.total + ' reminders delivered';
-      if (ev.failed > 0) {
-        s += ' (' + ev.failed + ' failed)';
+    function selectUnsent() {
+      for (let i = 0; i < guests.length; i++) {
+        const unsent = Boolean(guests[i].phoneTo) && !hasWhatsappSent(guests[i]);
+        guests[i].selected = unsent;
+        const cb = document.getElementById('g-' + i);
+        if (cb) {
+          cb.checked = unsent;
+          cb.closest('.guest-item').classList.toggle('unselected', !unsent);
+        }
       }
-      if (ev.completed < ev.total) {
+      updateStats();
+      updateReminderPreview();
+    }
+
+    function formatReminderProgressLine(ev, extras) {
+      const successful = extras && extras.successful != null ? extras.successful : ev.successful;
+      const failed = extras && extras.failed != null ? extras.failed : ev.failed;
+      const completed = extras && extras.completed != null ? extras.completed : ev.completed;
+      const total = extras && extras.total != null ? extras.total : ev.total;
+      let s = successful + ' / ' + total + ' reminders delivered';
+      if (failed > 0) {
+        s += ' (' + failed + ' failed)';
+      }
+      if (ev.lastName || ev.lastPhone) {
+        s += ' — last: ' + (ev.lastName || ev.lastPhone);
+        if (ev.lastPhone && ev.lastName) s += ' (' + ev.lastPhone + ')';
+      }
+      if (completed < total) {
         s += '…';
       }
       return s;
+    }
+
+    const SEND_CHUNK_SIZE = 15;
+
+    function chunkArray(items, size) {
+      const chunks = [];
+      for (let i = 0; i < items.length; i += size) {
+        chunks.push(items.slice(i, i + size));
+      }
+      return chunks;
+    }
+
+    async function readNdjsonSendStream(res, onProgress) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let lastDone = null;
+      let lastProgress = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          const ev = JSON.parse(line);
+          if (ev.type === 'progress') {
+            lastProgress = ev;
+            onProgress(ev);
+          } else if (ev.type === 'done') {
+            lastDone = ev;
+          } else if (ev.type === 'error') {
+            throw new Error(ev.error || 'Send failed');
+          }
+        }
+        if (done) {
+          if (buffer.trim()) {
+            const ev = JSON.parse(buffer.trim());
+            if (ev.type === 'progress') {
+              lastProgress = ev;
+              onProgress(ev);
+            }
+            if (ev.type === 'done') lastDone = ev;
+            if (ev.type === 'error') throw new Error(ev.error || 'Send failed');
+          }
+          break;
+        }
+      }
+
+      return { lastDone, lastProgress };
+    }
+
+    function applyLocalSentStamp(phone, stamp) {
+      if (!phone || !stamp) return;
+      const guest = guests.find((g) => (g.phoneTo || '') === phone);
+      if (guest) guest.whatsappSentAt = stamp;
     }
 
     async function confirmAndSendRsvpReminders() {
@@ -787,7 +902,17 @@
         toast('No guests selected', true);
         return;
       }
-      if (!confirm('לשלוח תזכורת RSVP ל-' + selected.length + ' אורחים שנבחרו?')) return;
+      const toSend = selected.filter((g) => !hasWhatsappSent(g));
+      const skippedSent = selected.length - toSend.length;
+      if (!toSend.length) {
+        toast('All selected guests are already marked sent (column P)', true);
+        return;
+      }
+      let confirmMsg = 'לשלוח תזכורת RSVP ל-' + toSend.length + ' אורחים?';
+      if (skippedSent) {
+        confirmMsg += '\n\n' + skippedSent + ' כבר מסומנים כנשלח וידולגו.';
+      }
+      if (!confirm(confirmMsg)) return;
 
       const btn = document.getElementById('sendBtn');
       const banner = document.getElementById('sendBanner');
@@ -799,10 +924,18 @@
       }
 
       btn.disabled = true;
-      progress.classList.add('hidden');
       progress.textContent = '';
+      progress.classList.remove('hidden');
       banner.className = 'banner show info';
       banner.textContent = 'Checking WhatsApp…';
+
+      const totals = {
+        successful: 0,
+        failed: 0,
+        skipped: skippedSent,
+        completed: 0,
+        total: toSend.length,
+      };
 
       try {
         const st = await noStoreFetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender)).then((r) => r.json());
@@ -814,80 +947,86 @@
         }
 
         banner.className = 'banner show info';
-        banner.textContent = 'Sending reminders…';
-        progress.classList.remove('hidden');
-        progress.textContent = '0 / ' + selected.length + ' reminders delivered…';
+        banner.textContent = 'Sending reminders in batches of ' + SEND_CHUNK_SIZE + '…';
+        progress.textContent = '0 / ' + toSend.length + ' reminders delivered…';
 
-        const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/x-ndjson',
-          },
-          body: JSON.stringify({
-            sender: currentSender,
-            message,
-            guests: selected.map((g) => ({
-              name: g.name,
-              fullName: g.fullName,
-              phoneTo: g.phoneTo,
-              addons: g.addons,
-            })),
-          }),
-        });
+        const chunks = chunkArray(toSend, SEND_CHUNK_SIZE);
+        for (let c = 0; c < chunks.length; c++) {
+          const chunk = chunks[c];
+          banner.textContent = 'Sending batch ' + (c + 1) + ' / ' + chunks.length + '…';
+          const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/x-ndjson',
+            },
+            body: JSON.stringify({
+              sender: currentSender,
+              message,
+              guests: chunk.map((g) => ({
+                name: g.name,
+                fullName: g.fullName,
+                phoneTo: g.phoneTo,
+                addons: g.addons,
+              })),
+            }),
+          });
 
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          throw new Error(errJson.error || res.statusText || 'Send failed');
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let lastDone = null;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-          let nl;
-          while ((nl = buffer.indexOf('\n')) >= 0) {
-            const line = buffer.slice(0, nl).trim();
-            buffer = buffer.slice(nl + 1);
-            if (!line) continue;
-            const ev = JSON.parse(line);
-            if (ev.type === 'progress') {
-              progress.textContent = formatReminderProgressLine(ev);
-            } else if (ev.type === 'done') {
-              lastDone = ev;
-            } else if (ev.type === 'error') {
-              throw new Error(ev.error || 'Send failed');
-            }
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.error || res.statusText || 'Send failed');
           }
-          if (done) {
-            if (buffer.trim()) {
-              const ev = JSON.parse(buffer.trim());
-              if (ev.type === 'done') lastDone = ev;
-              if (ev.type === 'error') throw new Error(ev.error || 'Send failed');
+
+          const { lastDone } = await readNdjsonSendStream(res, (ev) => {
+            const chunkSuccessful = ev.successful || 0;
+            const chunkFailed = ev.failed || 0;
+            progress.textContent = formatReminderProgressLine(ev, {
+              successful: totals.successful + chunkSuccessful,
+              failed: totals.failed + chunkFailed,
+              completed: totals.completed + (ev.completed || 0),
+              total: totals.total,
+            });
+            if (ev.lastSuccess && ev.lastPhone) {
+              applyLocalSentStamp(ev.lastPhone, ev.whatsappSentAt || 'reminder');
             }
-            break;
+          });
+
+          if (!lastDone || !lastDone.success) {
+            throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
           }
+
+          totals.successful += lastDone.successful || 0;
+          totals.failed += lastDone.failed || 0;
+          totals.completed += lastDone.total || chunk.length;
+          if (Array.isArray(lastDone.details)) {
+            lastDone.details.forEach((d) => {
+              if (d.success && d.phone) applyLocalSentStamp(d.phone, d.whatsappSentAt || 'reminder');
+            });
+          }
+          progress.textContent = totals.successful + ' / ' + totals.total + ' reminders delivered' +
+            (totals.failed ? ' (' + totals.failed + ' failed)' : '');
         }
 
-        if (!lastDone || !lastDone.success) {
-          throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
-        }
-
-        progress.classList.add('hidden');
+        displayGuests();
         banner.className = 'banner show success';
         banner.textContent =
-          'Done: ' + lastDone.successful + ' delivered' +
-          (lastDone.failed ? ', ' + lastDone.failed + ' failed.' : '.');
+          'Done: ' + totals.successful + ' delivered' +
+          (totals.failed ? ', ' + totals.failed + ' failed' : '') +
+          (skippedSent ? ', ' + skippedSent + ' already sent skipped' : '') +
+          '. Refresh from sheet to confirm column P.';
         toast('Reminders finished');
       } catch (e) {
-        progress.classList.add('hidden');
+        progress.classList.remove('hidden');
         banner.className = 'banner show error';
-        banner.textContent = e.message;
-        toast(e.message, true);
+        banner.textContent =
+          (e && e.message ? e.message : 'Network error') +
+          '. Sending may still continue on the server. Refresh from sheet to see who was marked sent in column P.';
+        toast(e.message || 'Network error', true);
+        try {
+          await refreshGuestsFromSheet();
+        } catch {
+          displayGuests();
+        }
       } finally {
         updateStats();
       }
