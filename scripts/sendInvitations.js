@@ -1,10 +1,11 @@
 import '../server/config/loadEnv.js';
 import readline from 'readline';
 import { envGuestSheetId } from '../server/config/loadEnv.js';
-import { configureSheets, getGuestList, getSenders, filterGuestsBySender } from '../server/services/googleSheets.js';
+import { configureSheets, getGuestList, getSenders, filterGuestsBySender, updateWhatsappSentAt, hasWhatsappSent } from '../server/services/googleSheets.js';
 import {
   initializeWhatsApp,
   waitForReady,
+  SEND_READY_TIMEOUT_MS,
   sendWhatsAppInvitation,
 } from '../server/services/whatsapp.js';
 
@@ -73,22 +74,28 @@ async function sendInvitations() {
     console.log(`\nSender: ${selectedSender}`);
 
     const filteredGuests = filterGuestsBySender(allGuests, selectedSender);
+    const unsentGuests = filteredGuests.filter((guest) => !hasWhatsappSent(guest));
+    const alreadySent = filteredGuests.length - unsentGuests.length;
     if (filteredGuests.length === 0) {
       console.log('No guests with send flag "v" for this sender.');
       process.exit(0);
     }
+    if (unsentGuests.length === 0) {
+      console.log(`All ${alreadySent} flagged guest(s) already have a WhatsApp sent stamp (column P).`);
+      process.exit(0);
+    }
 
-    console.log(`\n${filteredGuests.length} guest(s) to invite.`);
+    console.log(`\n${unsentGuests.length} guest(s) to invite.` + (alreadySent ? ` Skipping ${alreadySent} already marked sent.` : ''));
     console.log('Connecting WhatsApp (scan QR if prompted on server / use admin first)…');
     await initializeWhatsApp(selectedSender);
-    await waitForReady(selectedSender, null);
+    await waitForReady(selectedSender, SEND_READY_TIMEOUT_MS);
 
     console.log('\nPress Ctrl+C to cancel, or wait 5 seconds…\n');
     await new Promise((r) => setTimeout(r, 5000));
 
     const results = { successful: 0, failed: 0 };
 
-    for (const guest of filteredGuests) {
+    for (const guest of unsentGuests) {
       if (!guest.phoneTo) {
         console.warn(`Skip ${guest.name}: no phone`);
         results.failed++;
@@ -102,10 +109,15 @@ async function sendInvitations() {
       });
       if (res.success) {
         results.successful++;
-        console.log(`OK  ${guest.name}`);
+        try {
+          await updateWhatsappSentAt(guestSheetId, guest.phoneTo, 'invite');
+        } catch (sheetError) {
+          console.error(`Sent OK but failed to write column P for ${guest.name}: ${sheetError.message}`);
+        }
+        console.log(`OK  ${guest.name} ${guest.phoneTo}`);
       } else {
         results.failed++;
-        console.log(`ERR ${guest.name}: ${res.error}`);
+        console.log(`ERR ${guest.name} ${guest.phoneTo}: ${res.error}`);
       }
     }
 

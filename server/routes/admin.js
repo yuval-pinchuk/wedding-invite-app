@@ -1,9 +1,10 @@
 import express from 'express';
 import { envGuestSheetId } from '../config/loadEnv.js';
-import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded } from '../services/googleSheets.js';
+import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded, hasWhatsappSent, updateWhatsappSentAt } from '../services/googleSheets.js';
 import {
   initializeWhatsApp,
   waitForReady,
+  SEND_READY_TIMEOUT_MS,
   sendWhatsAppInvitation,
   sendWhatsAppText,
   renderReminderTemplate,
@@ -323,12 +324,50 @@ router.delete('/clear-session/:sender', async (req, res) => {
 });
 
 /**
+ * Write one NDJSON line; ignore client/proxy disconnects so the send loop can continue.
+ * @param {import('express').Response} res
+ * @param {object} payload
+ */
+function writeNdjsonLine(res, payload) {
+  if (!res || res.writableEnded || res.destroyed) return false;
+  try {
+    return res.write(`${JSON.stringify(payload)}\n`);
+  } catch {
+    return false;
+  }
+}
+
+function guestPhone(guest) {
+  return String(guest?.phoneTo || guest?.phone || '').trim();
+}
+
+/**
+ * Persist a successful WhatsApp send to column P. Sheet errors must not fail the send.
+ * @param {string | undefined} spreadsheetId
+ * @param {string} phone
+ * @param {'invite' | 'reminder'} kind
+ * @returns {Promise<string | ''>}
+ */
+async function persistWhatsappSent(spreadsheetId, phone, kind) {
+  if (!spreadsheetId || !phone) return '';
+  try {
+    const result = await updateWhatsappSentAt(spreadsheetId, phone, kind);
+    return result.stamp || '';
+  } catch (error) {
+    console.error(`[whatsapp-sent] failed to write column P for ${phone}:`, error.message || error);
+    return '';
+  }
+}
+
+/**
  * @param {string} sender
  * @param {Array<{ name?: string, phone: string, addons?: string }>} guests
- * @param {(completed: number, guest: { name?: string, phone: string }, summary: { total: number, successful: number, failed: number, details: unknown[] }) => void} [afterEach]
+ * @param {(completed: number, guest: { name?: string, phone: string }, summary: object) => void} [afterEach]
+ * @param {{ spreadsheetId?: string }} [options]
  */
-async function sendInvitationsSequential(sender, guests, afterEach) {
-  await waitForReady(sender, null);
+async function sendInvitationsSequential(sender, guests, afterEach, options = {}) {
+  await waitForReady(sender, SEND_READY_TIMEOUT_MS);
+  const spreadsheetId = options.spreadsheetId || envGuestSheetId();
   const summary = {
     total: guests.length,
     successful: 0,
@@ -338,32 +377,34 @@ async function sendInvitationsSequential(sender, guests, afterEach) {
 
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
+    const phone = guestPhone(guest);
+    let result;
     try {
-      const result = await sendWhatsAppInvitation({
-        to: guest.phone,
+      result = await sendWhatsAppInvitation({
+        to: guest.phone || guest.phoneTo,
         senderName: sender,
         name: guest.name,
         addons: guest.addons,
       });
-      if (result.success) {
-        summary.successful++;
-      } else {
-        summary.failed++;
-      }
-      summary.details.push({
-        name: guest.name,
-        phone: guest.phone,
-        ...result,
-      });
     } catch (error) {
-      summary.failed++;
-      summary.details.push({
-        name: guest.name,
-        phone: guest.phone,
-        success: false,
-        error: error.message,
-      });
+      result = { success: false, error: error.message, to: phone };
     }
+
+    let whatsappSentAt = '';
+    if (result.success) {
+      summary.successful++;
+      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone, 'invite');
+      console.log(`[send-invitations] OK ${guest.name || ''} ${phone}`);
+    } else {
+      summary.failed++;
+      console.log(`[send-invitations] ERR ${guest.name || ''} ${phone}: ${result.error || 'failed'}`);
+    }
+    summary.details.push({
+      name: guest.name,
+      phone,
+      ...result,
+      whatsappSentAt,
+    });
     afterEach?.(i + 1, guest, summary);
   }
 
@@ -387,6 +428,7 @@ router.post('/send-invitations', async (req, res) => {
 
     console.log(`[send-invitations] sender=${sender} guests=${guests.length}`);
 
+    const spreadsheetId = envGuestSheetId();
     const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
 
     if (wantsNdjson) {
@@ -394,36 +436,44 @@ router.post('/send-invitations', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('X-Accel-Buffering', 'no');
       try {
-        const summary = await sendInvitationsSequential(sender, guests, (completed, guest, s) => {
-          res.write(
-            `${JSON.stringify({
+        const summary = await sendInvitationsSequential(
+          sender,
+          guests,
+          (completed, guest, s) => {
+            const lastDetail = s.details[s.details.length - 1] || {};
+            writeNdjsonLine(res, {
               type: 'progress',
               completed,
               total: s.total,
               successful: s.successful,
               failed: s.failed,
-              lastPhone: guest.phone,
-            })}\n`,
-          );
-        });
+              lastPhone: guestPhone(guest),
+              lastName: guest.name || '',
+              lastSuccess: Boolean(lastDetail.success),
+              whatsappSentAt: lastDetail.whatsappSentAt || '',
+            });
+          },
+          { spreadsheetId },
+        );
         console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
-        res.write(`${JSON.stringify({ type: 'done', success: true, ...summary })}\n`);
-        res.end();
+        writeNdjsonLine(res, { type: 'done', success: true, ...summary });
       } catch (error) {
         console.error('Error sending invitations (stream):', error);
-        res.write(
-          `${JSON.stringify({
-            type: 'error',
-            success: false,
-            error: error.message || 'Failed to send invitations',
-          })}\n`,
-        );
+        writeNdjsonLine(res, {
+          type: 'error',
+          success: false,
+          error: error.message || 'Failed to send invitations',
+        });
+      }
+      try {
         res.end();
+      } catch {
+        /* client already gone */
       }
       return;
     }
 
-    const summary = await sendInvitationsSequential(sender, guests);
+    const summary = await sendInvitationsSequential(sender, guests, undefined, { spreadsheetId });
     console.log(`[send-invitations] done success=${summary.successful} failed=${summary.failed}`);
 
     res.json({
@@ -444,9 +494,11 @@ router.post('/send-invitations', async (req, res) => {
  * @param {Array<{ name?: string, fullName?: string, phoneTo: string }>} guests
  * @param {string} messageTemplate
  * @param {(completed: number, guest: object, summary: object) => void} [afterEach]
+ * @param {{ spreadsheetId?: string }} [options]
  */
-async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afterEach) {
-  await waitForReady(sender, null);
+async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afterEach, options = {}) {
+  await waitForReady(sender, SEND_READY_TIMEOUT_MS);
+  const spreadsheetId = options.spreadsheetId || envGuestSheetId();
   const summary = {
     total: guests.length,
     successful: 0,
@@ -457,7 +509,8 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
 
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
-    if (!guest.phoneTo) {
+    const phone = guestPhone(guest);
+    if (!phone) {
       summary.skipped++;
       summary.details.push({
         name: guest.name,
@@ -466,6 +519,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
         skipped: true,
         error: 'No phone number',
       });
+      console.log(`[send-rsvp-reminders] SKIP ${guest.name || ''} (no phone)`);
       afterEach?.(i + 1, guest, summary);
       continue;
     }
@@ -473,35 +527,36 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
     const text = renderReminderTemplate(messageTemplate, {
       name: guest.name,
       fullName: guest.fullName || guest.name,
-      phone: guest.phoneTo,
+      phone,
       addons: guest.addons,
     });
 
+    let result;
     try {
-      const result = await sendWhatsAppText({
-        to: guest.phoneTo,
+      result = await sendWhatsAppText({
+        to: phone,
         senderName: sender,
         text,
       });
-      if (result.success) {
-        summary.successful++;
-      } else {
-        summary.failed++;
-      }
-      summary.details.push({
-        name: guest.name,
-        phone: guest.phoneTo,
-        ...result,
-      });
     } catch (error) {
-      summary.failed++;
-      summary.details.push({
-        name: guest.name,
-        phone: guest.phoneTo,
-        success: false,
-        error: error.message,
-      });
+      result = { success: false, error: error.message, to: phone };
     }
+
+    let whatsappSentAt = '';
+    if (result.success) {
+      summary.successful++;
+      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone, 'reminder');
+      console.log(`[send-rsvp-reminders] OK ${guest.name || ''} ${phone}`);
+    } else {
+      summary.failed++;
+      console.log(`[send-rsvp-reminders] ERR ${guest.name || ''} ${phone}: ${result.error || 'failed'}`);
+    }
+    summary.details.push({
+      name: guest.name,
+      phone,
+      ...result,
+      whatsappSentAt,
+    });
     afterEach?.(i + 1, guest, summary);
   }
 
@@ -578,7 +633,9 @@ router.post('/send-rsvp-reminders', async (req, res) => {
         }
       }
     } else {
-      targetGuests = senderGuests.filter((guest) => !hasRsvpResponded(guest) && guest.phoneTo);
+      targetGuests = senderGuests.filter(
+        (guest) => !hasRsvpResponded(guest) && guest.phoneTo && !hasWhatsappSent(guest),
+      );
     }
 
     if (!targetGuests.length) {
@@ -607,39 +664,49 @@ router.post('/send-rsvp-reminders', async (req, res) => {
           targetGuests,
           messageTemplate,
           (completed, guest, s) => {
-            res.write(
-              `${JSON.stringify({
-                type: 'progress',
-                completed,
-                total: s.total,
-                successful: s.successful,
-                failed: s.failed,
-                skipped: s.skipped,
-                lastPhone: guest.phoneTo,
-              })}\n`,
-            );
+            const lastDetail = s.details[s.details.length - 1] || {};
+            writeNdjsonLine(res, {
+              type: 'progress',
+              completed,
+              total: s.total,
+              successful: s.successful,
+              failed: s.failed,
+              skipped: s.skipped,
+              lastPhone: guestPhone(guest),
+              lastName: guest.name || guest.fullName || '',
+              lastSuccess: Boolean(lastDetail.success),
+              whatsappSentAt: lastDetail.whatsappSentAt || '',
+            });
           },
+          { spreadsheetId: guestSheetId },
         );
         console.log(
           `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
         );
-        res.write(`${JSON.stringify({ type: 'done', success: true, ...summary })}\n`);
-        res.end();
+        writeNdjsonLine(res, { type: 'done', success: true, ...summary });
       } catch (error) {
         console.error('Error sending RSVP reminders (stream):', error);
-        res.write(
-          `${JSON.stringify({
-            type: 'error',
-            success: false,
-            error: error.message || 'Failed to send RSVP reminders',
-          })}\n`,
-        );
+        writeNdjsonLine(res, {
+          type: 'error',
+          success: false,
+          error: error.message || 'Failed to send RSVP reminders',
+        });
+      }
+      try {
         res.end();
+      } catch {
+        /* client already gone */
       }
       return;
     }
 
-    const summary = await sendRsvpRemindersSequential(sender, targetGuests, messageTemplate);
+    const summary = await sendRsvpRemindersSequential(
+      sender,
+      targetGuests,
+      messageTemplate,
+      undefined,
+      { spreadsheetId: guestSheetId },
+    );
     console.log(
       `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
     );

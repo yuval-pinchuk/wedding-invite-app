@@ -132,6 +132,7 @@ function mapDataRowsToGuests(rows) {
       addons: row[11] || '',
       sendConfirmation: (row[13] || '').toString().toLowerCase().trim(),
       sender: row[14] || '',
+      whatsappSentAt: (row[15] || '').toString().trim(),
       phoneTo: findPhoneNumber(row),
       rsvpGuestCount: (row[7] || '').toString().trim(),
       rsvpRemarks: (row[12] || '').toString().trim(),
@@ -142,6 +143,30 @@ function mapDataRowsToGuests(rows) {
 /** @param {{ rsvpGuestCount?: string }} guest */
 export function hasRsvpResponded(guest) {
   return Boolean((guest.rsvpGuestCount || '').trim());
+}
+
+/** @param {{ whatsappSentAt?: string }} guest */
+export function hasWhatsappSent(guest) {
+  return Boolean((guest?.whatsappSentAt || '').trim());
+}
+
+/**
+ * @param {'invite' | 'reminder'} kind
+ * @returns {string} e.g. "invite 2026-09-09 22:10" in Asia/Jerusalem
+ */
+export function formatWhatsappSentStamp(kind) {
+  const label = kind === 'invite' ? 'invite' : 'reminder';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${label} ${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
 /**
@@ -236,6 +261,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column H: RSVP guest count (empty = pending)
  * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
+ * Column P: WhatsApp last sent stamp ("invite …" or "reminder …"; empty = not sent)
  * Phone number: detected by scanning the row (often in a column after O)
  */
 export async function getGuestList(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
@@ -271,6 +297,7 @@ function normalizePhoneCell(raw) {
 function findPhoneNumber(row) {
   const phonePattern = /[\d\s\-\+\(\)]{8,}/;
   for (let i = 0; i < row.length; i++) {
+    if (i === 15) continue; // column P is the WhatsApp sent stamp, not a phone
     const cell = normalizePhoneCell((row[i] || '').toString());
     const digitsOnlyLen = cell.replace(/\D/g, '').length;
     if (digitsOnlyLen >= 8 && phonePattern.test(cell)) {
@@ -479,6 +506,43 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
     return { success: true, rowNumber };
   } catch (error) {
     console.error('Error updating send confirmation:', error);
+    throw error;
+  }
+}
+
+/**
+ * Record a successful WhatsApp send on column P.
+ * @param {string} spreadsheetId
+ * @param {string} phone
+ * @param {'invite' | 'reminder'} kind
+ */
+export async function updateWhatsappSentAt(spreadsheetId, phone, kind, range = GUEST_SHEET_READ_RANGE) {
+  if (!sheets) {
+    await configureSheets();
+  }
+
+  const stamp = formatWhatsappSentStamp(kind);
+
+  try {
+    const rowIndex = await findGuestRowIndexByPhone(spreadsheetId, phone, range);
+    if (rowIndex === -1) {
+      throw new Error('Guest with this phone number not found');
+    }
+
+    const rowNumber = rowIndex + 1;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${GUEST_SHEET_TAB}!P${rowNumber}`,
+      valueInputOption: 'RAW',
+      resource: {
+        values: [[stamp]],
+      },
+    });
+
+    return { success: true, rowNumber, stamp };
+  } catch (error) {
+    console.error('Error updating WhatsApp sent stamp:', error);
     throw error;
   }
 }
