@@ -77,11 +77,7 @@ async function sendInvitations() {
     const unsentGuests = filteredGuests.filter((guest) => !hasWhatsappSent(guest));
     const alreadySent = filteredGuests.length - unsentGuests.length;
     if (filteredGuests.length === 0) {
-      console.log('No guests for this sender.');
-      process.exit(0);
-    }
-    if (unsentGuests.length === 0) {
-      console.log(`All ${alreadySent} guest(s) for this sender already have V in column N.`);
+      console.log('No guests with send flag "v" for this sender.');
       process.exit(0);
     }
     if (unsentGuests.length === 0) {
@@ -114,9 +110,9 @@ async function sendInvitations() {
       if (res.success) {
         results.successful++;
         try {
-          await updateWhatsappSentAt(guestSheetId, guest.phoneTo);
+          await updateWhatsappSentAt(guestSheetId, guest.phoneTo, 'invite');
         } catch (sheetError) {
-          console.error(`Sent OK but failed to write column N for ${guest.name}: ${sheetError.message}`);
+          console.error(`Sent OK but failed to write column P for ${guest.name}: ${sheetError.message}`);
         }
         console.log(`OK  ${guest.name} ${guest.phoneTo}`);
       } else {

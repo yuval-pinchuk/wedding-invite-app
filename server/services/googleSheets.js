@@ -130,9 +130,9 @@ function mapDataRowsToGuests(rows) {
       name: firstName,
       fullName: fullName || firstName,
       addons: row[11] || '',
-      sendConfirmation: (row[13] || '').toString().trim(),
+      sendConfirmation: (row[13] || '').toString().toLowerCase().trim(),
       sender: row[14] || '',
-      whatsappSentAt: (row[13] || '').toString().trim(),
+      whatsappSentAt: (row[15] || '').toString().trim(),
       phoneTo: findPhoneNumber(row),
       rsvpGuestCount: (row[7] || '').toString().trim(),
       rsvpRemarks: (row[12] || '').toString().trim(),
@@ -145,13 +145,29 @@ export function hasRsvpResponded(guest) {
   return Boolean((guest.rsvpGuestCount || '').trim());
 }
 
-/** @param {{ whatsappSentAt?: string, sendConfirmation?: string }} guest */
+/** @param {{ whatsappSentAt?: string }} guest */
 export function hasWhatsappSent(guest) {
-  const raw = (guest?.whatsappSentAt || guest?.sendConfirmation || '').toString().trim();
-  return raw.toLowerCase() === 'v';
+  return Boolean((guest?.whatsappSentAt || '').trim());
 }
 
-const WHATSAPP_SENT_MARK = 'V';
+/**
+ * @param {'invite' | 'reminder'} kind
+ * @returns {string} e.g. "invite 2026-09-09 22:10" in Asia/Jerusalem
+ */
+export function formatWhatsappSentStamp(kind) {
+  const label = kind === 'invite' ? 'invite' : 'reminder';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${label} ${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+}
 
 /**
  * Parse stored RSVP columns H + M into structured fields.
@@ -243,7 +259,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column B: Family name (Hebrew)
  * Column L: Addons (optional, Hebrew name)
  * Column H: RSVP guest count (empty = pending)
- * Column N: WhatsApp sent mark ("V" = sent, empty = not sent)
+ * Column N: לשלוח אישורי הגעה (Send confirmation - filter by "v")
  * Column O: Sender (Hebrew name - filter by selected sender)
  * Column P: WhatsApp last sent stamp ("invite …" or "reminder …"; empty = not sent)
  * Phone number: detected by scanning the row (often in a column after O)
@@ -483,7 +499,7 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
       range: `${GUEST_SHEET_TAB}!N${rowNumber}`,
       valueInputOption: 'RAW',
       resource: {
-        values: [[shouldSend ? WHATSAPP_SENT_MARK : '']],
+        values: [[shouldSend ? 'v' : '']],
       },
     });
 
@@ -495,15 +511,17 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
 }
 
 /**
- * Record a successful WhatsApp send on column N as "V".
+ * Record a successful WhatsApp send on column P.
  * @param {string} spreadsheetId
  * @param {string} phone
- * @param {'invite' | 'reminder'} [_kind]
+ * @param {'invite' | 'reminder'} kind
  */
-export async function updateWhatsappSentAt(spreadsheetId, phone, _kind, range = GUEST_SHEET_READ_RANGE) {
+export async function updateWhatsappSentAt(spreadsheetId, phone, kind, range = GUEST_SHEET_READ_RANGE) {
   if (!sheets) {
     await configureSheets();
   }
+
+  const stamp = formatWhatsappSentStamp(kind);
 
   try {
     const rowIndex = await findGuestRowIndexByPhone(spreadsheetId, phone, range);
@@ -515,29 +533,33 @@ export async function updateWhatsappSentAt(spreadsheetId, phone, _kind, range = 
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${GUEST_SHEET_TAB}!N${rowNumber}`,
+      range: `${GUEST_SHEET_TAB}!P${rowNumber}`,
       valueInputOption: 'RAW',
       resource: {
-        values: [[WHATSAPP_SENT_MARK]],
+        values: [[stamp]],
       },
     });
 
-    return { success: true, rowNumber, stamp: WHATSAPP_SENT_MARK };
+    return { success: true, rowNumber, stamp };
   } catch (error) {
-    console.error('Error updating WhatsApp sent mark:', error);
+    console.error('Error updating WhatsApp sent stamp:', error);
     throw error;
   }
 }
 
 /**
- * Filter guests by sender (CLI then skips those already marked sent in column N).
+ * Filter guests by sender and send confirmation status
  * @param {Array} guests - Array of guest objects
  * @param {string} senderName - Name of sender to filter by (Hebrew)
  * @returns {Array} Filtered guests
  */
 export function filterGuestsBySender(guests, senderName) {
   return guests.filter(guest => {
-    return guest.sender && guest.sender.trim() === senderName.trim();
+    // Filter by sender
+    const matchesSender = guest.sender && guest.sender.trim() === senderName.trim();
+    // Filter by send confirmation (column N must have "v")
+    const shouldSend = guest.sendConfirmation === 'v' || guest.sendConfirmation === 'V';
+    return matchesSender && shouldSend;
   });
 }
 
