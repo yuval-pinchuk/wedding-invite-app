@@ -229,7 +229,7 @@ export function parseStoredRsvp(guest) {
 }
 
 /** Guest list worksheet name (must match the Google Sheet tab exactly). */
-const GUEST_SHEET_TAB = 'חינה';
+const GUEST_SHEET_TAB = 'חתונה';
 
 /** Response log worksheet name (separate GOOGLE_RESPONSE_SHEET_ID spreadsheet). */
 const RESPONSE_SHEET_TAB = 'חתונה';
@@ -245,6 +245,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column H: RSVP guest count (empty = pending)
  * Column N: WhatsApp sent mark ("V" = sent, empty = not sent)
  * Column O: Sender (Hebrew name - filter by selected sender)
+ * Column P: WhatsApp last sent stamp ("invite …" or "reminder …"; empty = not sent)
  * Phone number: detected by scanning the row (often in a column after O)
  */
 export async function getGuestList(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
@@ -280,6 +281,7 @@ function normalizePhoneCell(raw) {
 function findPhoneNumber(row) {
   const phonePattern = /[\d\s\-\+\(\)]{8,}/;
   for (let i = 0; i < row.length; i++) {
+    if (i === 15) continue; // column P is the WhatsApp sent stamp, not a phone
     const cell = normalizePhoneCell((row[i] || '').toString());
     const digitsOnlyLen = cell.replace(/\D/g, '').length;
     if (digitsOnlyLen >= 8 && phonePattern.test(cell)) {

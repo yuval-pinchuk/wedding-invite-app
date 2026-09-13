@@ -84,6 +84,10 @@ async function sendInvitations() {
       console.log(`All ${alreadySent} guest(s) for this sender already have V in column N.`);
       process.exit(0);
     }
+    if (unsentGuests.length === 0) {
+      console.log(`All ${alreadySent} flagged guest(s) already have a WhatsApp sent stamp (column P).`);
+      process.exit(0);
+    }
 
     console.log(`\n${unsentGuests.length} guest(s) to invite.` + (alreadySent ? ` Skipping ${alreadySent} already marked sent.` : ''));
     console.log('Connecting WhatsApp (scan QR if prompted on server / use admin first)…');
