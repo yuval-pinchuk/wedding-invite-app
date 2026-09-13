@@ -282,7 +282,7 @@
         <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
       <div class="guest-list" id="guestList"></div>
-      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה P = נשלח בוואטסאפ (ריק = לא נשלח). אורחים שכבר מסומנים כנשלח ידולגו כברירת מחדל.</p>
+      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה N = נשלח בוואטסאפ (V = נשלח, ריק = לא נשלח). אורחים שכבר מסומנים כנשלח ידולגו כברירת מחדל.</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
       <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
       <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
@@ -376,7 +376,7 @@
     }
 
     function hasWhatsappSent(guest) {
-      return Boolean((guest.whatsappSentAt || '').trim());
+      return String(guest.whatsappSentAt || '').trim().toLowerCase() === 'v';
     }
 
     function getPendingGuests() {
@@ -733,7 +733,7 @@
         const badgeText = responded ? 'RSVP received' : 'Pending';
         const waBadgeClass = waSent ? 'sent' : 'unsent';
         const waBadgeText = waSent ? 'נשלח' : 'לא נשלח';
-        const waTitle = waSent ? escapeHtml(guest.whatsappSentAt) : 'עמודה P ריקה';
+        const waTitle = waSent ? 'עמודה N: V' : 'עמודה N ריקה';
         const div = document.createElement('div');
         div.className = 'guest-item' + (isSelected ? '' : ' unselected');
         div.innerHTML =
@@ -905,7 +905,7 @@
       const toSend = selected.filter((g) => !hasWhatsappSent(g));
       const skippedSent = selected.length - toSend.length;
       if (!toSend.length) {
-        toast('All selected guests are already marked sent (column P)', true);
+        toast('All selected guests are already marked sent (column N)', true);
         return;
       }
       let confirmMsg = 'לשלוח תזכורת RSVP ל-' + toSend.length + ' אורחים?';
@@ -987,7 +987,7 @@
               total: totals.total,
             });
             if (ev.lastSuccess && ev.lastPhone) {
-              applyLocalSentStamp(ev.lastPhone, ev.whatsappSentAt || 'reminder');
+              applyLocalSentStamp(ev.lastPhone, ev.whatsappSentAt || 'V');
             }
           });
 
@@ -1000,7 +1000,7 @@
           totals.completed += lastDone.total || chunk.length;
           if (Array.isArray(lastDone.details)) {
             lastDone.details.forEach((d) => {
-              if (d.success && d.phone) applyLocalSentStamp(d.phone, d.whatsappSentAt || 'reminder');
+              if (d.success && d.phone) applyLocalSentStamp(d.phone, d.whatsappSentAt || 'V');
             });
           }
           progress.textContent = totals.successful + ' / ' + totals.total + ' reminders delivered' +
@@ -1013,14 +1013,14 @@
           'Done: ' + totals.successful + ' delivered' +
           (totals.failed ? ', ' + totals.failed + ' failed' : '') +
           (skippedSent ? ', ' + skippedSent + ' already sent skipped' : '') +
-          '. Refresh from sheet to confirm column P.';
+          '. Refresh from sheet to confirm column N.';
         toast('Reminders finished');
       } catch (e) {
         progress.classList.remove('hidden');
         banner.className = 'banner show error';
         banner.textContent =
           (e && e.message ? e.message : 'Network error') +
-          '. Sending may still continue on the server. Refresh from sheet to see who was marked sent in column P.';
+          '. Sending may still continue on the server. Refresh from sheet to see who was marked sent in column N.';
         toast(e.message || 'Network error', true);
         try {
           await refreshGuestsFromSheet();

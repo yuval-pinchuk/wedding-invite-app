@@ -679,29 +679,55 @@
 
     .rsvp-logged-summary {
       background: #fff;
-      border: 2px solid var(--cream-dark);
+      border: 1px solid var(--envelope);
       border-radius: var(--radius);
-      padding: 12px 14px;
+      padding: 4px 4px 6px;
       text-align: right;
-      margin: 0 auto 16px;
-      width: 68%;
-      max-width: 300px;
+      margin: 0 auto 18px;
+      width: 82%;
+      max-width: 340px;
       box-sizing: border-box;
+      box-shadow: 0 6px 18px rgba(61, 54, 48, 0.06);
     }
 
-    .rsvp-logged-summary p {
-      font-size: 0.92rem;
-      color: var(--text);
-      margin: 0 0 6px;
+    .rsvp-summary-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 14px;
+      font-size: 0.95rem;
       line-height: 1.4;
     }
 
-    .rsvp-logged-summary p:last-child {
-      margin-bottom: 0;
+    .rsvp-summary-row + .rsvp-summary-row {
+      border-top: 1px solid var(--cream-dark);
     }
 
-    .rsvp-logged-summary strong {
+    .rsvp-summary-label {
+      color: var(--text-muted);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .rsvp-summary-value {
+      color: var(--text);
       font-weight: 600;
+      text-align: left;
+    }
+
+    .rsvp-summary-value.is-attend {
+      color: var(--attend-green);
+    }
+
+    .rsvp-summary-value.is-decline {
+      color: var(--decline-red);
+    }
+
+    .rsvp-summary-notes {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-weight: 500;
     }
 
     .rsvp-hub-actions {
@@ -1534,21 +1560,36 @@
       return el.innerHTML;
     }
 
+    function summaryRow(label, valueHtml, valueClass) {
+      const extra = valueClass ? ' ' + valueClass : '';
+      return (
+        '<div class="rsvp-summary-row">' +
+          '<span class="rsvp-summary-label">' + escapeHtml(label) + '</span>' +
+          '<span class="rsvp-summary-value' + extra + '">' + valueHtml + '</span>' +
+        '</div>'
+      );
+    }
+
     function buildRsvpSummaryHtml(rsvp) {
       if (!rsvp) return '';
       if (!rsvp.isAttending) {
-        return '<p><strong>בחירה:</strong> לא מגיעים</p>';
+        return summaryRow('בחירה', 'לא מגיעים', 'is-decline');
       }
+      const babies = Number(rsvp.numberOfBabies) || 0;
+      const vegan = Number(rsvp.numberOfVegan) || 0;
       const lines = [
-        '<p><strong>בחירה:</strong> מגיעים</p>',
-        '<p><strong>מספר אנשים:</strong> ' + escapeHtml(rsvp.numberOfGuests) + '</p>',
-        '<p><strong>ילדים עד גיל 6:</strong> ' + escapeHtml(rsvp.numberOfBabies || 0) + '</p>',
+        summaryRow('בחירה', 'מגיעים', 'is-attend'),
+        summaryRow('מספר אנשים', escapeHtml(rsvp.numberOfGuests)),
       ];
-      if (rsvp.numberOfVegan > 0) {
-        lines.push('<p><strong>טבעונים/צמחונים:</strong> ' + escapeHtml(rsvp.numberOfVegan) + '</p>');
+      if (babies > 0) {
+        lines.push(summaryRow('ילדים עד גיל 6', escapeHtml(babies)));
       }
-      if (rsvp.additionalNotes) {
-        lines.push('<p><strong>מידע נוסף:</strong> ' + escapeHtml(rsvp.additionalNotes) + '</p>');
+      if (vegan > 0) {
+        lines.push(summaryRow('טבעונים/צמחונים', escapeHtml(vegan)));
+      }
+      const notes = (rsvp.additionalNotes || '').trim();
+      if (notes) {
+        lines.push(summaryRow('מידע נוסף', escapeHtml(notes), 'rsvp-summary-notes'));
       }
       return lines.join('');
     }
