@@ -342,19 +342,18 @@ function guestPhone(guest) {
 }
 
 /**
- * Persist a successful WhatsApp send to column P. Sheet errors must not fail the send.
+ * Persist a successful WhatsApp send to column N as "V". Sheet errors must not fail the send.
  * @param {string | undefined} spreadsheetId
  * @param {string} phone
- * @param {'invite' | 'reminder'} kind
  * @returns {Promise<string | ''>}
  */
-async function persistWhatsappSent(spreadsheetId, phone, kind) {
+async function persistWhatsappSent(spreadsheetId, phone) {
   if (!spreadsheetId || !phone) return '';
   try {
-    const result = await updateWhatsappSentAt(spreadsheetId, phone, kind);
-    return result.stamp || '';
+    const result = await updateWhatsappSentAt(spreadsheetId, phone);
+    return result.stamp || 'V';
   } catch (error) {
-    console.error(`[whatsapp-sent] failed to write column P for ${phone}:`, error.message || error);
+    console.error(`[whatsapp-sent] failed to write column N for ${phone}:`, error.message || error);
     return '';
   }
 }
@@ -393,7 +392,7 @@ async function sendInvitationsSequential(sender, guests, afterEach, options = {}
     let whatsappSentAt = '';
     if (result.success) {
       summary.successful++;
-      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone, 'invite');
+      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone);
       console.log(`[send-invitations] OK ${guest.name || ''} ${phone}`);
     } else {
       summary.failed++;
@@ -545,7 +544,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
     let whatsappSentAt = '';
     if (result.success) {
       summary.successful++;
-      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone, 'reminder');
+      whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone);
       console.log(`[send-rsvp-reminders] OK ${guest.name || ''} ${phone}`);
     } else {
       summary.failed++;
