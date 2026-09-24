@@ -493,7 +493,7 @@ router.post('/send-invitations', async (req, res) => {
  * @param {Array<{ name?: string, fullName?: string, phoneTo: string }>} guests
  * @param {string} messageTemplate
  * @param {(completed: number, guest: object, summary: object) => void} [afterEach]
- * @param {{ spreadsheetId?: string }} [options]
+ * @param {{ spreadsheetId?: string, includeImage?: boolean }} [options]
  */
 async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afterEach, options = {}) {
   await waitForReady(sender, SEND_READY_TIMEOUT_MS);
@@ -536,6 +536,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
         to: phone,
         senderName: sender,
         text,
+        includeImage: options.includeImage !== false,
       });
     } catch (error) {
       result = { success: false, error: error.message, to: phone };
@@ -580,7 +581,8 @@ router.get('/rsvp-reminder-defaults', (_req, res) => {
  */
 router.post('/send-rsvp-reminders', async (req, res) => {
   try {
-    const { sender, message, guests: requestedGuests } = req.body || {};
+    const { sender, message, guests: requestedGuests, includeImage } = req.body || {};
+    const withImage = includeImage !== false;
     const guestSheetId = envGuestSheetId();
 
     if (!guestSheetId) {
@@ -649,7 +651,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
       });
     }
 
-    console.log(`[send-rsvp-reminders] sender=${sender} targets=${targetGuests.length}`);
+    console.log(`[send-rsvp-reminders] sender=${sender} targets=${targetGuests.length} includeImage=${withImage}`);
 
     const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
 
@@ -677,7 +679,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
               whatsappSentAt: lastDetail.whatsappSentAt || '',
             });
           },
-          { spreadsheetId: guestSheetId },
+          { spreadsheetId: guestSheetId, includeImage: withImage },
         );
         console.log(
           `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
@@ -704,7 +706,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
       targetGuests,
       messageTemplate,
       undefined,
-      { spreadsheetId: guestSheetId },
+      { spreadsheetId: guestSheetId, includeImage: withImage },
     );
     console.log(
       `[send-rsvp-reminders] done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
