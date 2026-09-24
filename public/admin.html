@@ -158,6 +158,26 @@
     }
     .guest-item.unselected { opacity: 0.55; }
     .guest-item input { width: 20px; height: 20px; accent-color: var(--accent); }
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 16px 0 0;
+    }
+    .check-row input {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      accent-color: var(--accent);
+    }
+    .check-row label {
+      display: inline;
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+    }
     .guest-meta { flex: 1; min-width: 0; }
     .guest-name { font-weight: 600; font-size: 0.95rem; }
     .guest-phone { font-size: 0.85rem; color: var(--muted); }
@@ -288,6 +308,10 @@
       <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
       <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
       <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
+      <div class="check-row">
+        <input type="checkbox" id="sendWithImage" checked>
+        <label for="sendWithImage">שלח עם תמונת ההזמנה</label>
+      </div>
       <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>
         שליחת תזכורת RSVP (0)
       </button>
@@ -912,6 +936,9 @@
       if (skippedSent) {
         confirmMsg += '\n\n' + skippedSent + ' כבר מסומנים כנשלח וידולגו.';
       }
+      if (!document.getElementById('sendWithImage').checked) {
+        confirmMsg += '\n\nההודעה תישלח ללא תמונת ההזמנה.';
+      }
       if (!confirm(confirmMsg)) return;
 
       const btn = document.getElementById('sendBtn');
@@ -963,6 +990,7 @@
             body: JSON.stringify({
               sender: currentSender,
               message,
+              includeImage: document.getElementById('sendWithImage').checked,
               guests: chunk.map((g) => ({
                 name: g.name,
                 fullName: g.fullName,
