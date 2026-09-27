@@ -378,10 +378,10 @@ export function renderReminderTemplate(template, { name, fullName, phone, addons
 }
 
 /**
- * @param {{ to: string, senderName: string, text: string }} payload
+ * @param {{ to: string, senderName: string, text: string, includeImage?: boolean }} payload
  */
 export async function sendWhatsAppText(payload) {
-  const { to, senderName, text } = payload;
+  const { to, senderName, text, includeImage = true } = payload;
   if (!to || !senderName) {
     return { success: false, error: 'Missing to or senderName', to: to || '' };
   }
@@ -399,7 +399,7 @@ export async function sendWhatsAppText(payload) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
 
-    const imageBuf = readInviteImageBuffer();
+    const imageBuf = includeImage ? readInviteImageBuffer() : null;
     if (imageBuf) {
       await sock.sendMessage(jid, { image: imageBuf, caption });
     } else {
