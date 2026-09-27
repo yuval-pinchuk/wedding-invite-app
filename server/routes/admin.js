@@ -1,6 +1,6 @@
 import express from 'express';
 import { envGuestSheetId } from '../config/loadEnv.js';
-import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded, hasWhatsappSent, updateWhatsappSentAt } from '../services/googleSheets.js';
+import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded, hasWhatsappSent, updateWhatsappSentAt, clearWhatsappSentMarks } from '../services/googleSheets.js';
 import {
   initializeWhatsApp,
   waitForReady,
@@ -156,6 +156,43 @@ router.post('/update-send-status', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to update send status',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/clear-whatsapp-sent
+ * Body: { phones: string[] } — clears V from column N for those guests.
+ */
+router.post('/clear-whatsapp-sent', async (req, res) => {
+  try {
+    const guestSheetId = envGuestSheetId();
+    if (!guestSheetId) {
+      return res.status(500).json({
+        success: false,
+        error: 'Guest sheet not configured',
+      });
+    }
+
+    const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
+    if (!phones.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'phones array is required',
+      });
+    }
+
+    const result = await clearWhatsappSentMarks(guestSheetId, phones);
+    res.json({
+      success: true,
+      message: `Cleared sent mark for ${result.cleared} guest(s)`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error clearing WhatsApp sent marks:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to clear sent marks',
     });
   }
 });

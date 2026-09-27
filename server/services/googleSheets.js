@@ -493,6 +493,57 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
 }
 
 /**
+ * Clear column N (WhatsApp sent mark) for many phones in one sheet read + batch write.
+ * @param {string} spreadsheetId
+ * @param {string[]} phones
+ * @param {string} [range]
+ * @returns {Promise<{ success: true, cleared: number, phones: string[] }>}
+ */
+export async function clearWhatsappSentMarks(spreadsheetId, phones, range = GUEST_SHEET_READ_RANGE) {
+  if (!sheets) {
+    await configureSheets();
+  }
+
+  const wanted = [...new Set((phones || []).map((p) => String(p || '').trim()).filter(Boolean))];
+  if (!wanted.length) {
+    return { success: true, cleared: 0, phones: [] };
+  }
+
+  try {
+    const rows = await fetchSheetRows(spreadsheetId, range);
+    const data = [];
+    const clearedPhones = [];
+
+    for (const phone of wanted) {
+      const rowIndex = findGuestRowIndexInRows(rows, phone);
+      if (rowIndex === -1) {
+        continue;
+      }
+      data.push({
+        range: `${GUEST_SHEET_TAB}!N${rowIndex + 1}`,
+        values: [['']],
+      });
+      clearedPhones.push(phone);
+    }
+
+    if (data.length) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        resource: {
+          valueInputOption: 'RAW',
+          data,
+        },
+      });
+    }
+
+    return { success: true, cleared: data.length, phones: clearedPhones };
+  } catch (error) {
+    console.error('Error clearing WhatsApp sent marks:', error);
+    throw error;
+  }
+}
+
+/**
  * Record a successful WhatsApp send on column N as "V".
  * @param {string} spreadsheetId
  * @param {string} phone
