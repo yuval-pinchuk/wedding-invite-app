@@ -88,6 +88,10 @@
       background: rgba(34, 197, 94, 0.15);
       color: #86efac;
     }
+    .guest-rsvp-badge.declined {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fda4af;
+    }
     .guest-badges {
       display: flex;
       flex-direction: column;
@@ -184,6 +188,45 @@
     .guest-addons { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
     .toolbar button { padding: 8px 14px; font-size: 0.85rem; }
+    .filter-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .filter-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .filter-group-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      min-width: 72px;
+    }
+    .filter-chip {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 999px;
+      border: 1px solid var(--surface2);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .filter-chip:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+    .filter-chip.is-active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #042f2e;
+    }
+    .filter-hidden-hint {
+      font-size: 0.8rem;
+      color: #fbbf24;
+      margin: 0 0 10px;
+    }
     .banner {
       display: none;
       padding: 14px 16px;
@@ -294,13 +337,28 @@
         <div class="stat"><b id="pendingRsvpGuestsStat">0</b><span>Pending RSVP</span></div>
         <div class="stat"><b id="unsentWaGuestsStat">0</b><span>WA not sent</span></div>
       </div>
+      <div class="filter-bar" dir="rtl">
+        <div class="filter-group" role="group" aria-label="סינון RSVP">
+          <span class="filter-group-label">RSVP</span>
+          <button type="button" class="filter-chip is-active" data-rsvp-filter="all">הכל</button>
+          <button type="button" class="filter-chip" data-rsvp-filter="pending">ממתין</button>
+          <button type="button" class="filter-chip" data-rsvp-filter="yes">מגיעים</button>
+          <button type="button" class="filter-chip" data-rsvp-filter="no">לא מגיעים</button>
+        </div>
+        <div class="filter-group" role="group" aria-label="סינון WhatsApp">
+          <span class="filter-group-label">WhatsApp</span>
+          <button type="button" class="filter-chip is-active" data-wa-filter="all">הכל</button>
+          <button type="button" class="filter-chip" data-wa-filter="unsent">לא נשלח</button>
+          <button type="button" class="filter-chip" data-wa-filter="sent">נשלח</button>
+        </div>
+      </div>
       <div class="toolbar">
-        <button type="button" class="btn-ghost" id="selectAllBtn">Select all</button>
-        <button type="button" class="btn-ghost" id="deselectAllBtn">Deselect all</button>
-        <button type="button" class="btn-ghost" id="selectAllPendingBtn">Select all pending</button>
-        <button type="button" class="btn-ghost" id="selectUnsentBtn">Select unsent</button>
+        <button type="button" class="btn-ghost" id="markAllBtn">סמן הכל</button>
+        <button type="button" class="btn-ghost" id="unmarkAllBtn">בטל סימון</button>
+        <button type="button" class="btn-ghost" id="markUnsentBtn" disabled>סמן כלא נשלח</button>
         <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
+      <p id="filterHiddenHint" class="filter-hidden-hint hidden"></p>
       <div class="guest-list" id="guestList"></div>
       <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה N = נשלח בוואטסאפ (V = נשלח, ריק = לא נשלח). אפשר לשלוח שוב גם למי שכבר מסומן כנשלח.</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
@@ -325,6 +383,8 @@
     const KEY_STORAGE = 'wedding_admin_key';
     let currentSender = '';
     let guests = [];
+    let rsvpFilter = 'all';
+    let waFilter = 'all';
     let rsvpBaseUrl = '';
     let reminderTemplateLoaded = false;
     let pollingInterval = null;
@@ -365,11 +425,16 @@
       loadSenders();
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
       document.getElementById('senderSelect').addEventListener('change', onSenderChange);
-      document.getElementById('selectAllBtn').addEventListener('click', selectAll);
-      document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
-      document.getElementById('selectAllPendingBtn').addEventListener('click', selectAllPending);
-      document.getElementById('selectUnsentBtn').addEventListener('click', selectUnsent);
+      document.getElementById('markAllBtn').addEventListener('click', markAllVisible);
+      document.getElementById('unmarkAllBtn').addEventListener('click', unmarkAllVisible);
+      document.getElementById('markUnsentBtn').addEventListener('click', markSelectedAsUnsent);
       document.getElementById('refreshSheetBtn').addEventListener('click', refreshGuestsFromSheet);
+      document.querySelectorAll('[data-rsvp-filter]').forEach((btn) => {
+        btn.addEventListener('click', () => setRsvpFilter(btn.dataset.rsvpFilter));
+      });
+      document.querySelectorAll('[data-wa-filter]').forEach((btn) => {
+        btn.addEventListener('click', () => setWaFilter(btn.dataset.waFilter));
+      });
       document.getElementById('sendBtn').addEventListener('click', confirmAndSendRsvpReminders);
       document.getElementById('rsvpReminderMessage').addEventListener('input', updateReminderPreview);
       document.getElementById('clearSessionBtn').addEventListener('click', clearSession);
@@ -403,12 +468,52 @@
       return String(guest.whatsappSentAt || '').trim().toLowerCase() === 'v';
     }
 
+    function rsvpStatus(guest) {
+      const raw = (guest.rsvpGuestCount || '').trim();
+      if (!raw) return 'pending';
+      if (raw === '0') return 'no';
+      return 'yes';
+    }
+
+    function guestMatchesFilters(guest) {
+      if (rsvpFilter !== 'all' && rsvpStatus(guest) !== rsvpFilter) return false;
+      if (waFilter === 'sent' && !hasWhatsappSent(guest)) return false;
+      if (waFilter === 'unsent' && hasWhatsappSent(guest)) return false;
+      return true;
+    }
+
+    function getVisibleGuests() {
+      return guests.filter(guestMatchesFilters);
+    }
+
+    function setRsvpFilter(value) {
+      rsvpFilter = value || 'all';
+      document.querySelectorAll('[data-rsvp-filter]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.rsvpFilter === rsvpFilter);
+      });
+      displayGuests();
+      updateStats();
+    }
+
+    function setWaFilter(value) {
+      waFilter = value || 'all';
+      document.querySelectorAll('[data-wa-filter]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.waFilter === waFilter);
+      });
+      displayGuests();
+      updateStats();
+    }
+
     function getPendingGuests() {
       return guests.filter((g) => !hasRsvpResponded(g) && g.phoneTo);
     }
 
     function getUnsentGuests() {
       return guests.filter((g) => g.phoneTo && !hasWhatsappSent(g));
+    }
+
+    function getSelectedSentGuests() {
+      return getSelectedGuests().filter(hasWhatsappSent);
     }
 
     function buildPreviewLink(phone) {
@@ -478,13 +583,24 @@
       const selected = getSelectedGuests();
       const pending = getPendingGuests();
       const unsent = getUnsentGuests();
+      const hiddenSelected = selected.filter((g) => !guestMatchesFilters(g)).length;
       document.getElementById('totalGuests').textContent = guests.length;
       document.getElementById('selectedGuests').textContent = selected.length;
       document.getElementById('pendingRsvpGuestsStat').textContent = pending.length;
       document.getElementById('unsentWaGuestsStat').textContent = unsent.length;
+      const hint = document.getElementById('filterHiddenHint');
+      if (hiddenSelected) {
+        hint.textContent = hiddenSelected + ' selected are outside the current filter';
+        hint.classList.remove('hidden');
+      } else {
+        hint.textContent = '';
+        hint.classList.add('hidden');
+      }
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.textContent = 'שליחת תזכורת RSVP (' + selected.length + ')';
       sendBtn.disabled = selected.length === 0 || !wa.ready;
+      const markUnsentBtn = document.getElementById('markUnsentBtn');
+      if (markUnsentBtn) markUnsentBtn.disabled = getSelectedSentGuests().length === 0;
     }
 
     async function loadReminderDefaults() {
@@ -521,6 +637,8 @@
       setWaConnectedUi(false);
       currentSender = v || '';
       guests = [];
+      setRsvpFilter('all');
+      setWaFilter('all');
     }
 
     async function loadSenders() {
@@ -749,12 +867,20 @@
         list.innerHTML = '<p style="padding:20px;color:var(--muted);text-align:center;">No guests.</p>';
         return;
       }
+      const visible = [];
       guests.forEach((guest, index) => {
+        if (guestMatchesFilters(guest)) visible.push({ guest, index });
+      });
+      if (!visible.length) {
+        list.innerHTML = '<p style="padding:20px;color:var(--muted);text-align:center;">No guests match the current filters.</p>';
+        return;
+      }
+      visible.forEach(({ guest, index }) => {
         const isSelected = Boolean(guest.selected);
-        const responded = hasRsvpResponded(guest);
+        const status = rsvpStatus(guest);
         const waSent = hasWhatsappSent(guest);
-        const badgeClass = responded ? 'done' : 'pending';
-        const badgeText = responded ? 'RSVP received' : 'Pending';
+        const badgeClass = status === 'pending' ? 'pending' : (status === 'yes' ? 'done' : 'declined');
+        const badgeText = status === 'pending' ? 'ממתין' : (status === 'yes' ? 'מגיעים' : 'לא מגיעים');
         const waBadgeClass = waSent ? 'sent' : 'unsent';
         const waBadgeText = waSent ? 'נשלח' : 'לא נשלח';
         const waTitle = waSent ? 'עמודה N: V' : 'עמודה N ריקה';
@@ -789,58 +915,64 @@
       updateReminderPreview();
     }
 
-    function selectAll() {
+    function markAllVisible() {
       for (let i = 0; i < guests.length; i++) {
+        if (!guestMatchesFilters(guests[i]) || !guests[i].phoneTo) continue;
         guests[i].selected = true;
-        const cb = document.getElementById('g-' + i);
-        if (cb) {
-          cb.checked = true;
-          cb.closest('.guest-item').classList.remove('unselected');
-        }
       }
+      displayGuests();
       updateStats();
       updateReminderPreview();
     }
 
-    function deselectAll() {
+    function unmarkAllVisible() {
       for (let i = 0; i < guests.length; i++) {
+        if (!guestMatchesFilters(guests[i])) continue;
         guests[i].selected = false;
-        const cb = document.getElementById('g-' + i);
-        if (cb) {
-          cb.checked = false;
-          cb.closest('.guest-item').classList.add('unselected');
-        }
       }
+      displayGuests();
       updateStats();
       updateReminderPreview();
     }
 
-    function selectAllPending() {
-      for (let i = 0; i < guests.length; i++) {
-        const pending = !hasRsvpResponded(guests[i]);
-        guests[i].selected = pending;
-        const cb = document.getElementById('g-' + i);
-        if (cb) {
-          cb.checked = pending;
-          cb.closest('.guest-item').classList.toggle('unselected', !pending);
-        }
+    async function markSelectedAsUnsent() {
+      const toClear = getSelectedSentGuests();
+      if (!toClear.length) {
+        toast('No selected guests are marked sent', true);
+        return;
       }
-      updateStats();
-      updateReminderPreview();
-    }
-
-    function selectUnsent() {
-      for (let i = 0; i < guests.length; i++) {
-        const unsent = Boolean(guests[i].phoneTo) && !hasWhatsappSent(guests[i]);
-        guests[i].selected = unsent;
-        const cb = document.getElementById('g-' + i);
-        if (cb) {
-          cb.checked = unsent;
-          cb.closest('.guest-item').classList.toggle('unselected', !unsent);
+      if (!confirm('לנקות V מ-עמודה N ל-' + toClear.length + ' אורחים נבחרים?')) return;
+      const btn = document.getElementById('markUnsentBtn');
+      btn.disabled = true;
+      try {
+        const res = await noStoreFetch('/api/admin/clear-whatsapp-sent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phones: toClear.map((g) => g.phoneTo) }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to clear sent marks');
         }
+        const cleared = new Set(
+          (data.phones && data.phones.length ? data.phones : toClear.map((g) => g.phoneTo))
+            .map((p) => String(p)),
+        );
+        guests.forEach((guest) => {
+          if (guest.phoneTo && cleared.has(guest.phoneTo)) {
+            guest.whatsappSentAt = '';
+          }
+        });
+        displayGuests();
+        updateStats();
+        updateReminderPreview();
+        toast(data.message || ('Cleared sent mark for ' + (data.cleared || toClear.length) + ' guest(s)'));
+      } catch (e) {
+        toast(e.message, true);
+      } finally {
+        const stillSent = getSelectedSentGuests().length;
+        btn.disabled = stillSent === 0;
       }
-      updateStats();
-      updateReminderPreview();
     }
 
     function formatReminderProgressLine(ev, extras) {
