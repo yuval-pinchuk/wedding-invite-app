@@ -1260,32 +1260,6 @@
       transform: scale(0.98);
     }
 
-    .section-dots {
-      position: fixed;
-      left: 50%;
-      bottom: 20px;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 8px;
-      z-index: 10;
-    }
-
-    .section-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      border: none;
-      padding: 0;
-      background: var(--cream-dark);
-      cursor: pointer;
-      transition: background 0.2s, transform 0.2s;
-    }
-
-    .section-dot.is-active {
-      background: var(--accent);
-      transform: scale(1.2);
-    }
-
     .venue-link {
       display: flex;
       flex-direction: column;
@@ -1492,11 +1466,6 @@
       </section>
     </div>
 
-    <nav class="section-dots hidden" id="sectionDots" aria-label="ניווט בין חלקי הדף">
-      <button type="button" class="section-dot is-active" data-goto="0" aria-label="הזמנה"></button>
-      <button type="button" class="section-dot" data-goto="1" aria-label="אישור הגעה"></button>
-    </nav>
-
     <div class="gift-modal hidden" id="giftFaqModal" role="dialog" aria-modal="true" aria-labelledby="giftFaqTitle">
       <div class="gift-modal-backdrop" id="giftFaqBackdrop"></div>
       <div class="gift-modal-card">
@@ -1671,7 +1640,6 @@
     function initSectionScroller() {
       const viewport = document.getElementById('sectionsViewport');
       const sections = [...viewport.querySelectorAll('.page-section')];
-      const dots = [...document.querySelectorAll('.section-dot')];
       const rsvpScroll = document.getElementById('rsvpScroll');
       const scrollHints = [...viewport.querySelectorAll('.scroll-hint')];
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1695,17 +1663,6 @@
       const RSVP_WHEEL_IDLE_MS = 280;
       const DEFAULT_SWIPE_PX = 50;
       const DEFAULT_WHEEL_PX = 30;
-
-      function updateDots(index) {
-        const dotsNav = document.getElementById('sectionDots');
-        if (dotsNav) {
-          dotsNav.classList.toggle('hidden', index === 0 || index > SWIPEABLE_MAX_SECTION);
-        }
-        dots.forEach((dot) => {
-          const target = parseInt(dot.dataset.goto, 10);
-          dot.classList.toggle('is-active', target === Math.min(index, SWIPEABLE_MAX_SECTION));
-        });
-      }
 
       function resetSectionClasses(section) {
         section.classList.remove(
@@ -1750,7 +1707,6 @@
           resetSectionClasses(to);
           to.classList.add('is-active');
           current = index;
-          updateDots(index);
           animating = false;
           setTimeout(() => { wheelLocked = false; }, 300);
           return;
@@ -1767,7 +1723,6 @@
           resetSectionClasses(to);
           to.classList.add('is-active');
           current = index;
-          updateDots(index);
           animating = false;
           if (current === 1) {
             clearRsvpArmed();
@@ -2005,13 +1960,6 @@
         }
       });
 
-      dots.forEach((dot) => {
-        dot.addEventListener('click', () => {
-          const target = parseInt(dot.dataset.goto, 10);
-          if (!Number.isNaN(target) && target <= SWIPEABLE_MAX_SECTION) goTo(target);
-        });
-      });
-
       scrollHints.forEach((hint) => {
         hint.addEventListener('click', () => {
           const target = parseInt(hint.dataset.goto, 10);
@@ -2025,8 +1973,6 @@
           if (!Number.isNaN(target)) goTo(target);
         });
       });
-
-      updateDots(0);
     }
 
     function sanitizeGiftAmount(value) {
