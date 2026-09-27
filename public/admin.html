@@ -302,7 +302,7 @@
         <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
       </div>
       <div class="guest-list" id="guestList"></div>
-      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה N = נשלח בוואטסאפ (V = נשלח, ריק = לא נשלח). אורחים שכבר מסומנים כנשלח ידולגו כברירת מחדל.</p>
+      <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה N = נשלח בוואטסאפ (V = נשלח, ריק = לא נשלח). אפשר לשלוח שוב גם למי שכבר מסומן כנשלח.</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
       <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
       <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
@@ -926,15 +926,15 @@
         toast('No guests selected', true);
         return;
       }
-      const toSend = selected.filter((g) => !hasWhatsappSent(g));
-      const skippedSent = selected.length - toSend.length;
+      const toSend = selected.filter((g) => g.phoneTo);
       if (!toSend.length) {
-        toast('All selected guests are already marked sent (column N)', true);
+        toast('Selected guests have no phone number', true);
         return;
       }
+      const alreadySent = toSend.filter((g) => hasWhatsappSent(g)).length;
       let confirmMsg = 'לשלוח תזכורת RSVP ל-' + toSend.length + ' אורחים?';
-      if (skippedSent) {
-        confirmMsg += '\n\n' + skippedSent + ' כבר מסומנים כנשלח וידולגו.';
+      if (alreadySent) {
+        confirmMsg += '\n\n' + alreadySent + ' כבר מסומנים כנשלח ויישלח אליהם שוב.';
       }
       if (!document.getElementById('sendWithImage').checked) {
         confirmMsg += '\n\nההודעה תישלח ללא תמונת ההזמנה.';
@@ -959,7 +959,7 @@
       const totals = {
         successful: 0,
         failed: 0,
-        skipped: skippedSent,
+        skipped: 0,
         completed: 0,
         total: toSend.length,
       };
@@ -1040,7 +1040,6 @@
         banner.textContent =
           'Done: ' + totals.successful + ' delivered' +
           (totals.failed ? ', ' + totals.failed + ' failed' : '') +
-          (skippedSent ? ', ' + skippedSent + ' already sent skipped' : '') +
           '. Refresh from sheet to confirm column N.';
         toast('Reminders finished');
       } catch (e) {
