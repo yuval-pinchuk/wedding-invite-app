@@ -6,6 +6,9 @@
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
  * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite/reminder text as caption.
  *   If unset, looks for `henna.png` in the project root (not cwd). If the file is missing, sends text only.
+ * - WHATSAPP_CLEANUP_INTERVAL_MS — how often to log heap and idle-close sessions (default 900000 = 15m).
+ * - WHATSAPP_SESSION_IDLE_MS — soft-close sockets unused longer than this (default 2700000 = 45m). Auth folders stay.
+ * - WHATSAPP_HEAP_SOFT_LIMIT_MB — if heapUsed exceeds this, soft-close all open sockets (default 220).
  *
  * Auth data per sender: `.baileys_auth_<urlencoded_sender>/` under server/ (see authDirForSender).
  * Unofficial clients may violate WhatsApp ToS; use at your own risk.
@@ -24,7 +27,7 @@ const __dirname = path.dirname(__filename);
 /** Project root (this file lives in server/services/). */
 const repoRoot = path.join(__dirname, '..', '..');
 
-/** @typedef {{ sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean }} SenderSession */
+/** @typedef {{ sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean, lastUsedAt: number, suppressReconnect: boolean }} SenderSession */
 
 /** @type {Map<string, SenderSession>} */
 const sessions = new Map();
@@ -32,6 +35,13 @@ const sessions = new Map();
 const silentLogger = pino({ level: 'silent' });
 
 const DEFAULT_INVITE_IMAGE_NAME = 'henna.png';
+
+const DEFAULT_CLEANUP_INTERVAL_MS = 900000;
+const DEFAULT_SESSION_IDLE_MS = 2700000;
+const DEFAULT_HEAP_SOFT_LIMIT_MB = 220;
+
+/** @type {ReturnType<typeof setInterval> | null} */
+let maintenanceTimer = null;
 
 function sessionKey(senderName) {
   return (senderName || '').trim();
@@ -47,9 +57,29 @@ function getSession(senderName) {
       isReady: false,
       connecting: null,
       userStopped: false,
+      lastUsedAt: Date.now(),
+      suppressReconnect: false,
     });
   }
   return sessions.get(key);
+}
+
+function touchSession(senderName) {
+  const key = sessionKey(senderName);
+  const s = sessions.get(key);
+  if (s) {
+    s.lastUsedAt = Date.now();
+  }
+}
+
+function envPositiveMs(name, fallback) {
+  const n = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function envPositiveMb(name, fallback) {
+  const n = parseFloat(process.env[name] || '');
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function authDirForSender(senderName) {
@@ -110,6 +140,7 @@ export function isSenderConfigured(_senderName) {
  */
 async function connectSocket(senderName) {
   const s = getSession(senderName);
+  s.suppressReconnect = false;
   if (s.userStopped) {
     return;
   }
@@ -160,7 +191,7 @@ async function connectSocket(senderName) {
       if (connection === 'close') {
         s.isReady = false;
         s.sock = null;
-        if (s.userStopped) {
+        if (s.userStopped || s.suppressReconnect) {
           return;
         }
         const err = lastDisconnect?.error;
@@ -169,7 +200,8 @@ async function connectSocket(senderName) {
         if (!loggedOut) {
           const delayMs = code === DisconnectReason.restartRequired ? 1000 : 3000;
           setTimeout(() => {
-            if (getSession(senderName).userStopped) {
+            const cur = getSession(senderName);
+            if (cur.userStopped || cur.suppressReconnect) {
               return;
             }
             s.connecting = null;
@@ -193,6 +225,7 @@ async function connectSocket(senderName) {
 export async function initializeWhatsApp(senderName = 'default') {
   const s = getSession(senderName);
   s.userStopped = false;
+  touchSession(senderName);
   await connectSocket(senderName);
   return getSession(senderName).sock;
 }
@@ -209,6 +242,7 @@ export async function waitForReady(senderName = 'default', maxWaitTime = 300000)
   while (true) {
     const s = getSession(senderName);
     if (s.isReady && s.sock) {
+      touchSession(senderName);
       return s.sock;
     }
     if (maxWaitTime != null && Date.now() - start > maxWaitTime) {
@@ -249,6 +283,34 @@ export async function baileysPairingToQrDataUrl(pairingString) {
     width: 420,
     color: { dark: '#000000', light: '#ffffff' },
   });
+}
+
+/**
+ * End the socket but keep auth on disk so the next connect can restore without a new QR.
+ * @param {string} senderName
+ * @param {string} [reason]
+ */
+export function softCloseSession(senderName, reason = 'idle') {
+  const key = sessionKey(senderName);
+  const s = sessions.get(key);
+  if (!s?.sock) {
+    return;
+  }
+
+  const sock = s.sock;
+  s.sock = null;
+  s.qrCode = null;
+  s.isReady = false;
+  s.connecting = null;
+  // Block Baileys connection.close from auto-reconnecting after this intentional end.
+  s.suppressReconnect = true;
+  try {
+    sock.end(undefined);
+  } catch {
+    /* ignore */
+  }
+
+  console.log(`[WhatsApp] soft-closed ${key || senderName} (${reason})`);
 }
 
 /**
@@ -405,6 +467,7 @@ export async function sendWhatsAppText(payload) {
     } else {
       await sock.sendMessage(jid, { text: caption });
     }
+    touchSession(senderName);
     const delayMs = getSendDelayMs();
     if (delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
@@ -445,6 +508,7 @@ export async function sendWhatsAppInvitation(payload) {
     } else {
       await sock.sendMessage(jid, { text });
     }
+    touchSession(senderName);
     const delayMs = getSendDelayMs();
     if (delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
@@ -460,6 +524,65 @@ export async function sendWhatsAppInvitation(payload) {
   }
 }
 
+function runSessionMaintenanceTick() {
+  const mem = process.memoryUsage();
+  const heapUsedMb = mem.heapUsed / (1024 * 1024);
+  const heapTotalMb = mem.heapTotal / (1024 * 1024);
+  const rssMb = mem.rss / (1024 * 1024);
+  let ready = 0;
+  let withSock = 0;
+  for (const s of sessions.values()) {
+    if (s.isReady) ready += 1;
+    if (s.sock) withSock += 1;
+  }
+  console.log(
+    `[WhatsApp] memory heapUsed=${heapUsedMb.toFixed(1)}MB heapTotal=${heapTotalMb.toFixed(1)}MB rss=${rssMb.toFixed(1)}MB sessions=${sessions.size} ready=${ready} withSock=${withSock}`,
+  );
+
+  const heapSoftLimitMb = envPositiveMb('WHATSAPP_HEAP_SOFT_LIMIT_MB', DEFAULT_HEAP_SOFT_LIMIT_MB);
+  const idleMs = envPositiveMs('WHATSAPP_SESSION_IDLE_MS', DEFAULT_SESSION_IDLE_MS);
+  const now = Date.now();
+
+  if (heapUsedMb >= heapSoftLimitMb) {
+    for (const [name, s] of sessions) {
+      if (s.sock) {
+        softCloseSession(name, `heap-pressure ${heapUsedMb.toFixed(1)}MB>=${heapSoftLimitMb}MB`);
+      }
+    }
+    return;
+  }
+
+  for (const [name, s] of sessions) {
+    if (!s.sock) continue;
+    if (now - (s.lastUsedAt || 0) >= idleMs) {
+      softCloseSession(name, `idle ${Math.round((now - s.lastUsedAt) / 60000)}m`);
+    }
+  }
+}
+
+/**
+ * Periodic heap logging and idle/pressure soft-close of Baileys sockets (auth folders kept).
+ */
+export function startSessionMaintenance() {
+  if (maintenanceTimer) {
+    return;
+  }
+  const intervalMs = envPositiveMs('WHATSAPP_CLEANUP_INTERVAL_MS', DEFAULT_CLEANUP_INTERVAL_MS);
+  maintenanceTimer = setInterval(() => {
+    try {
+      runSessionMaintenanceTick();
+    } catch (e) {
+      console.warn('[WhatsApp] session maintenance failed:', e?.message || e);
+    }
+  }, intervalMs);
+  if (typeof maintenanceTimer.unref === 'function') {
+    maintenanceTimer.unref();
+  }
+  console.log(
+    `[WhatsApp] session maintenance every ${Math.round(intervalMs / 60000)}m (idle ${Math.round(envPositiveMs('WHATSAPP_SESSION_IDLE_MS', DEFAULT_SESSION_IDLE_MS) / 60000)}m, heap soft limit ${envPositiveMb('WHATSAPP_HEAP_SOFT_LIMIT_MB', DEFAULT_HEAP_SOFT_LIMIT_MB)}MB)`,
+  );
+}
+
 /**
  * Optional: connect listed senders after server starts (hides QR cold start during event).
  */
@@ -471,6 +594,7 @@ export async function warmWhatsAppSessions() {
     .filter(Boolean);
   for (const name of names) {
     try {
+      touchSession(name);
       void connectSocket(name);
     } catch (e) {
       console.warn(`[WhatsApp] warm failed for ${name}:`, e.message);
