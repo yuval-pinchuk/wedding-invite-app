@@ -9,7 +9,7 @@ import adminRouter from './routes/admin.js';
 import adminPayRouter from './routes/adminPay.js';
 import payRouter from './routes/pay.js';
 import { configureSheets } from './services/googleSheets.js';
-import { warmWhatsAppSessions } from './services/whatsapp.js';
+import { warmWhatsAppSessions, startSessionMaintenance } from './services/whatsapp.js';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -43,6 +43,7 @@ async function start() {
     app.listen(port, () => {
       console.log(`Wedding invite server running on http://localhost:${port}`);
       void warmWhatsAppSessions();
+      startSessionMaintenance();
     });
   } catch (error) {
     console.error('Failed to initialize Google Sheets integration:', error);
