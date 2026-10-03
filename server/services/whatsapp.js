@@ -5,7 +5,7 @@
  * - WHATSAPP_SEND_DELAY_MS — pause after each successful send (default 600). Lower = faster, higher ban risk.
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
  * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite/reminder text as caption.
- *   If unset, looks for `wedding.png` in the project root (not cwd). If the file is missing, sends text only.
+ *   If unset, looks for `WEDDING.png` in the project root (not cwd). If the file is missing, sends text only.
  * - WHATSAPP_CLEANUP_INTERVAL_MS — how often to log heap and idle-close sessions (default 900000 = 15m).
  * - WHATSAPP_SESSION_IDLE_MS — soft-close sockets unused longer than this (default 2700000 = 45m). Auth folders stay.
  * - WHATSAPP_HEAP_SOFT_LIMIT_MB — if heapUsed exceeds this, soft-close all open sockets (default 220).
@@ -34,7 +34,7 @@ const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
 
-const DEFAULT_INVITE_IMAGE_NAME = 'wedding.png';
+const DEFAULT_INVITE_IMAGE_NAME = 'WEDDING.png';
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 900000;
 const DEFAULT_SESSION_IDLE_MS = 2700000;
