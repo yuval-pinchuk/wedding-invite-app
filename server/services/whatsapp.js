@@ -34,7 +34,7 @@ const sessions = new Map();
 
 const silentLogger = pino({ level: 'silent' });
 
-const DEFAULT_INVITE_IMAGE_NAME = 'wedding.png';
+const DEFAULT_INVITE_IMAGE_NAME = 'henna.png';
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 900000;
 const DEFAULT_SESSION_IDLE_MS = 2700000;
