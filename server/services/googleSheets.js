@@ -245,6 +245,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column H: RSVP guest count (empty = pending)
  * Column N: WhatsApp sent mark ("V" = sent, empty = not sent)
  * Column O: Sender (Hebrew name - filter by selected sender)
+ * Column P: gift total (number). Column Q: payment link label
  * Phone number: detected by scanning the row (often in a column after O)
  */
 export async function getGuestList(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
@@ -458,6 +459,71 @@ export async function updateGuestRsvpOnGuestSheet(
 
     throw error;
   }
+}
+
+function parseGiftAmountCell(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = String(value ?? '').trim();
+  if (!text) return 0;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeGiftLinkLabel(existing, label) {
+  const next = String(label || '').trim();
+  const current = String(existing ?? '').trim();
+  if (!next) return current;
+  if (!current) return next;
+  const parts = current.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.includes(next)) return current;
+  return `${current}, ${next}`;
+}
+
+/**
+ * Add a gift payment to column P (numeric total) and record the link label in column Q.
+ * @param {string} spreadsheetId
+ * @param {string} phone
+ * @param {number} amount
+ * @param {string} linkLabel
+ */
+export async function addGuestGiftAmount(spreadsheetId, phone, amount, linkLabel) {
+  if (!sheets) {
+    await configureSheets();
+  }
+
+  const payment = Number(amount);
+  if (!Number.isFinite(payment) || payment <= 0) {
+    throw new Error('Gift amount must be a positive number');
+  }
+
+  const guest = await getGuestByPhone(spreadsheetId, phone);
+  if (!guest) {
+    console.warn(`[gift] no guest row for phone ${phone}`);
+    return { success: false, reason: 'not_found' };
+  }
+
+  const rowNumber = guest.rowNumber;
+  const current = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${GUEST_SHEET_TAB}!P${rowNumber}:Q${rowNumber}`,
+  });
+  const cells = current.data.values?.[0] || [];
+  const total = parseGiftAmountCell(cells[0]) + payment;
+  const links = mergeGiftLinkLabel(cells[1], linkLabel);
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    resource: {
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        { range: `${GUEST_SHEET_TAB}!P${rowNumber}`, values: [[total]] },
+        { range: `${GUEST_SHEET_TAB}!Q${rowNumber}`, values: [[links]] },
+      ],
+    },
+  });
+
+  console.log(`[gift] row ${rowNumber} phone ${phone} P=${total} Q=${links}`);
+  return { success: true, rowNumber, total, linkLabel: links };
 }
 
 /**

@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { envGuestSheetId } from '../config/loadEnv.js';
 import { getSenders, getGuestList, updateSendConfirmation, hasRsvpResponded, hasWhatsappSent, updateWhatsappSentAt, clearWhatsappSentMarks } from '../services/googleSheets.js';
 import {
@@ -39,6 +40,38 @@ function requireAdminKey(req, res, next) {
 }
 
 router.use(requireAdminKey);
+
+/** @type {Map<string, object>} job id → in-memory reminder send */
+const sendJobs = new Map();
+/** @type {Map<string, string>} sender → running job id */
+const runningJobBySender = new Map();
+
+function publicSendJob(job) {
+  return {
+    id: job.id,
+    sender: job.sender,
+    status: job.status,
+    total: job.total,
+    completed: job.completed,
+    successful: job.successful,
+    failed: job.failed,
+    skipped: job.skipped,
+    lastPhone: job.lastPhone,
+    lastName: job.lastName,
+    lastSuccess: job.lastSuccess,
+    currentName: job.currentName,
+    currentPhone: job.currentPhone,
+    whatsappSentAt: job.whatsappSentAt,
+    error: job.error,
+  };
+}
+
+function pruneSendJobs() {
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  for (const [id, job] of sendJobs) {
+    if (job.finishedAt && job.finishedAt < cutoff) sendJobs.delete(id);
+  }
+}
 
 /** @type {Map<string, string>} raw pairing string → PNG data URL */
 const qrPngByPairing = new Map();
@@ -566,6 +599,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
       phone,
       addons: guest.addons,
     });
+    options.beforeEach?.(i, guest);
 
     let result;
     try {
@@ -599,6 +633,62 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
 
   return summary;
 }
+
+function runReminderJob(job, guests, messageTemplate, options) {
+  void sendRsvpRemindersSequential(
+    job.sender,
+    guests,
+    messageTemplate,
+    (completed, guest, summary) => {
+      const lastDetail = summary.details[summary.details.length - 1] || {};
+      job.completed = completed;
+      job.successful = summary.successful;
+      job.failed = summary.failed;
+      job.skipped = summary.skipped;
+      job.lastPhone = guestPhone(guest);
+      job.lastName = guest.name || guest.fullName || '';
+      job.lastSuccess = Boolean(lastDetail.success);
+      job.whatsappSentAt = lastDetail.whatsappSentAt || '';
+    },
+    {
+      ...options,
+      beforeEach(_index, guest) {
+        job.currentName = guest.name || guest.fullName || '';
+        job.currentPhone = guestPhone(guest);
+      },
+    },
+  ).then((summary) => {
+    job.status = 'done';
+    job.completed = summary.total;
+    job.successful = summary.successful;
+    job.failed = summary.failed;
+    job.skipped = summary.skipped;
+    job.finishedAt = Date.now();
+    console.log(
+      `[send-rsvp-reminders] job ${job.id} done success=${summary.successful} failed=${summary.failed} skipped=${summary.skipped}`,
+    );
+  }).catch((error) => {
+    job.status = 'error';
+    job.error = error.message || 'Failed to send RSVP reminders';
+    job.finishedAt = Date.now();
+    console.error(`[send-rsvp-reminders] job ${job.id} failed:`, error);
+  }).finally(() => {
+    if (runningJobBySender.get(job.sender) === job.id) {
+      runningJobBySender.delete(job.sender);
+    }
+  });
+}
+
+router.get('/send-jobs/:id', (req, res) => {
+  const job = sendJobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Send job not found. The server may have restarted.',
+    });
+  }
+  return res.json({ success: true, job: publicSendJob(job) });
+});
 
 router.get('/rsvp-reminder-defaults', (_req, res) => {
   res.json({
@@ -689,6 +779,46 @@ router.post('/send-rsvp-reminders', async (req, res) => {
     }
 
     console.log(`[send-rsvp-reminders] sender=${sender} targets=${targetGuests.length} includeImage=${withImage}`);
+
+    if (req.body?.background) {
+      pruneSendJobs();
+      const senderKey = sender.trim();
+      const existingId = runningJobBySender.get(senderKey);
+      const existing = existingId ? sendJobs.get(existingId) : null;
+      if (existing && existing.status === 'running') {
+        return res.status(202).json({
+          success: true,
+          alreadyRunning: true,
+          job: publicSendJob(existing),
+        });
+      }
+
+      const job = {
+        id: randomUUID(),
+        sender: senderKey,
+        status: 'running',
+        total: targetGuests.length,
+        completed: 0,
+        successful: 0,
+        failed: 0,
+        skipped: 0,
+        lastPhone: '',
+        lastName: '',
+        lastSuccess: false,
+        currentName: '',
+        currentPhone: '',
+        whatsappSentAt: '',
+        error: '',
+        finishedAt: 0,
+      };
+      sendJobs.set(job.id, job);
+      runningJobBySender.set(senderKey, job.id);
+      runReminderJob(job, targetGuests, messageTemplate, {
+        spreadsheetId: guestSheetId,
+        includeImage: withImage,
+      });
+      return res.status(202).json({ success: true, job: publicSendJob(job) });
+    }
 
     const wantsNdjson = (req.get('accept') || '').includes('application/x-ndjson');
 

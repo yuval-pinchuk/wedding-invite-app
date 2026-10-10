@@ -422,7 +422,7 @@
       });
 
       loadReminderDefaults();
-      loadSenders();
+      loadSenders().then(() => resumeSendJob());
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
       document.getElementById('senderSelect').addEventListener('change', onSenderChange);
       document.getElementById('markAllBtn').addEventListener('click', markAllVisible);
@@ -598,7 +598,7 @@
       }
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.textContent = 'שליחת תזכורת RSVP (' + selected.length + ')';
-      sendBtn.disabled = selected.length === 0 || !wa.ready;
+      sendBtn.disabled = sendJobActive || selected.length === 0 || !wa.ready;
       const markUnsentBtn = document.getElementById('markUnsentBtn');
       if (markUnsentBtn) markUnsentBtn.disabled = getSelectedSentGuests().length === 0;
     }
@@ -975,81 +975,116 @@
       }
     }
 
-    function formatReminderProgressLine(ev, extras) {
-      const successful = extras && extras.successful != null ? extras.successful : ev.successful;
-      const failed = extras && extras.failed != null ? extras.failed : ev.failed;
-      const completed = extras && extras.completed != null ? extras.completed : ev.completed;
-      const total = extras && extras.total != null ? extras.total : ev.total;
-      let s = successful + ' / ' + total + ' reminders delivered';
-      if (failed > 0) {
-        s += ' (' + failed + ' failed)';
-      }
-      if (ev.lastName || ev.lastPhone) {
-        s += ' — last: ' + (ev.lastName || ev.lastPhone);
-        if (ev.lastPhone && ev.lastName) s += ' (' + ev.lastPhone + ')';
-      }
-      if (completed < total) {
-        s += '…';
-      }
-      return s;
-    }
+    let sendJobActive = false;
+    let sendPollTimer = null;
 
-    const SEND_CHUNK_SIZE = 15;
-
-    function chunkArray(items, size) {
-      const chunks = [];
-      for (let i = 0; i < items.length; i += size) {
-        chunks.push(items.slice(i, i + size));
-      }
-      return chunks;
-    }
-
-    async function readNdjsonSendStream(res, onProgress) {
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let lastDone = null;
-      let lastProgress = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        let nl;
-        while ((nl = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          const ev = JSON.parse(line);
-          if (ev.type === 'progress') {
-            lastProgress = ev;
-            onProgress(ev);
-          } else if (ev.type === 'done') {
-            lastDone = ev;
-          } else if (ev.type === 'error') {
-            throw new Error(ev.error || 'Send failed');
-          }
-        }
-        if (done) {
-          if (buffer.trim()) {
-            const ev = JSON.parse(buffer.trim());
-            if (ev.type === 'progress') {
-              lastProgress = ev;
-              onProgress(ev);
-            }
-            if (ev.type === 'done') lastDone = ev;
-            if (ev.type === 'error') throw new Error(ev.error || 'Send failed');
-          }
-          break;
-        }
-      }
-
-      return { lastDone, lastProgress };
+    function sendJobStorageKey() {
+      return 'waSendJobId';
     }
 
     function applyLocalSentStamp(phone, stamp) {
       if (!phone || !stamp) return;
       const guest = guests.find((g) => (g.phoneTo || '') === phone);
       if (guest) guest.whatsappSentAt = stamp;
+    }
+
+    function guestSendLabel(name, phone) {
+      if (name && phone) return name + ' (' + phone + ')';
+      return name || phone || '';
+    }
+
+    function alreadySentLine(job) {
+      let line = (job.successful || 0) + ' / ' + (job.total || 0) + ' already sent';
+      if ((job.failed || 0) > 0) line += ' (' + job.failed + ' failed)';
+      return line;
+    }
+
+    function showSendJobProgress(job) {
+      const banner = document.getElementById('sendBanner');
+      const progress = document.getElementById('sendProgress');
+      progress.classList.remove('hidden');
+      progress.textContent = alreadySentLine(job);
+      if (job.lastSuccess && job.lastPhone) {
+        applyLocalSentStamp(job.lastPhone, job.whatsappSentAt || 'V');
+        displayGuests();
+      }
+      if (job.status === 'running') {
+        const who = guestSendLabel(job.currentName, job.currentPhone);
+        banner.className = 'banner show info';
+        banner.textContent = who
+          ? 'Sending now to ' + who
+          : 'Sending on the server. You can leave this page and it will keep going.';
+      }
+    }
+
+    function finishSendJob(job) {
+      const banner = document.getElementById('sendBanner');
+      const progress = document.getElementById('sendProgress');
+      sendJobActive = false;
+      clearInterval(sendPollTimer);
+      sendPollTimer = null;
+      sessionStorage.removeItem(sendJobStorageKey());
+      progress.classList.remove('hidden');
+      progress.textContent = alreadySentLine(job);
+      if (job.status === 'error') {
+        banner.className = 'banner show error';
+        banner.textContent = job.error || 'Send failed';
+        toast(job.error || 'Send failed', true);
+      } else {
+        banner.className = 'banner show success';
+        banner.textContent =
+          'Done: ' + (job.successful || 0) + ' delivered' +
+          ((job.failed || 0) ? ', ' + job.failed + ' failed' : '') +
+          '. Refresh from sheet to confirm column N.';
+        toast('Reminders finished');
+      }
+      displayGuests();
+      updateStats();
+    }
+
+    function watchSendJob(jobId) {
+      sendJobActive = true;
+      sessionStorage.setItem(sendJobStorageKey(), jobId);
+      clearInterval(sendPollTimer);
+      const tick = async () => {
+        try {
+          const res = await noStoreFetch('/api/admin/send-jobs/' + encodeURIComponent(jobId));
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 404) {
+            throw new Error(data.error || 'Send job not found');
+          }
+          if (!res.ok || !data.job) return;
+          if (data.job.status === 'running') {
+            showSendJobProgress(data.job);
+            return;
+          }
+          finishSendJob(data.job);
+        } catch (e) {
+          sendJobActive = false;
+          clearInterval(sendPollTimer);
+          sendPollTimer = null;
+          sessionStorage.removeItem(sendJobStorageKey());
+          const banner = document.getElementById('sendBanner');
+          banner.className = 'banner show error';
+          banner.textContent = (e && e.message ? e.message : 'Lost contact with the send') +
+            '. If the server is still up, sending continues. Refresh from sheet to see column N.';
+          updateStats();
+        }
+      };
+      tick();
+      sendPollTimer = setInterval(tick, 2000);
+      updateStats();
+    }
+
+    async function resumeSendJob() {
+      const jobId = sessionStorage.getItem(sendJobStorageKey());
+      if (!jobId || sendPollTimer) return;
+      const banner = document.getElementById('sendBanner');
+      const progress = document.getElementById('sendProgress');
+      banner.className = 'banner show info';
+      banner.textContent = 'Checking an in-progress send…';
+      progress.classList.remove('hidden');
+      watchSendJob(jobId);
     }
 
     async function confirmAndSendRsvpReminders() {
@@ -1088,14 +1123,6 @@
       banner.className = 'banner show info';
       banner.textContent = 'Checking WhatsApp…';
 
-      const totals = {
-        successful: 0,
-        failed: 0,
-        skipped: 0,
-        completed: 0,
-        total: toSend.length,
-      };
-
       try {
         const st = await noStoreFetch('/api/admin/whatsapp-status/' + encodeURIComponent(currentSender)).then((r) => r.json());
         if (!st.ready) {
@@ -1105,88 +1132,37 @@
           return;
         }
 
-        banner.className = 'banner show info';
-        banner.textContent = 'Sending reminders in batches of ' + SEND_CHUNK_SIZE + '…';
-        progress.textContent = '0 / ' + toSend.length + ' reminders delivered…';
-
-        const chunks = chunkArray(toSend, SEND_CHUNK_SIZE);
-        for (let c = 0; c < chunks.length; c++) {
-          const chunk = chunks[c];
-          banner.textContent = 'Sending batch ' + (c + 1) + ' / ' + chunks.length + '…';
-          const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/x-ndjson',
-            },
-            body: JSON.stringify({
-              sender: currentSender,
-              message,
-              includeImage: document.getElementById('sendWithImage').checked,
-              guests: chunk.map((g) => ({
-                name: g.name,
-                fullName: g.fullName,
-                phoneTo: g.phoneTo,
-                addons: g.addons,
-              })),
-            }),
-          });
-
-          if (!res.ok) {
-            const errJson = await res.json().catch(() => ({}));
-            throw new Error(errJson.error || res.statusText || 'Send failed');
-          }
-
-          const { lastDone } = await readNdjsonSendStream(res, (ev) => {
-            const chunkSuccessful = ev.successful || 0;
-            const chunkFailed = ev.failed || 0;
-            progress.textContent = formatReminderProgressLine(ev, {
-              successful: totals.successful + chunkSuccessful,
-              failed: totals.failed + chunkFailed,
-              completed: totals.completed + (ev.completed || 0),
-              total: totals.total,
-            });
-            if (ev.lastSuccess && ev.lastPhone) {
-              applyLocalSentStamp(ev.lastPhone, ev.whatsappSentAt || 'V');
-            }
-          });
-
-          if (!lastDone || !lastDone.success) {
-            throw new Error((lastDone && lastDone.error) || 'Incomplete send response');
-          }
-
-          totals.successful += lastDone.successful || 0;
-          totals.failed += lastDone.failed || 0;
-          totals.completed += lastDone.total || chunk.length;
-          if (Array.isArray(lastDone.details)) {
-            lastDone.details.forEach((d) => {
-              if (d.success && d.phone) applyLocalSentStamp(d.phone, d.whatsappSentAt || 'V');
-            });
-          }
-          progress.textContent = totals.successful + ' / ' + totals.total + ' reminders delivered' +
-            (totals.failed ? ' (' + totals.failed + ' failed)' : '');
+        banner.textContent = 'Starting send on the server…';
+        progress.textContent = '0 / ' + toSend.length + ' already sent';
+        const res = await noStoreFetch('/api/admin/send-rsvp-reminders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sender: currentSender,
+            message,
+            background: true,
+            includeImage: document.getElementById('sendWithImage').checked,
+            guests: toSend.map((g) => ({
+              name: g.name,
+              fullName: g.fullName,
+              phoneTo: g.phoneTo,
+              addons: g.addons,
+            })),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.job) {
+          throw new Error(data.error || res.statusText || 'Send failed');
         }
-
-        displayGuests();
-        banner.className = 'banner show success';
-        banner.textContent =
-          'Done: ' + totals.successful + ' delivered' +
-          (totals.failed ? ', ' + totals.failed + ' failed' : '') +
-          '. Refresh from sheet to confirm column N.';
-        toast('Reminders finished');
+        if (data.alreadyRunning) {
+          toast('A send is already running for this sender');
+        }
+        watchSendJob(data.job.id);
       } catch (e) {
         progress.classList.remove('hidden');
         banner.className = 'banner show error';
-        banner.textContent =
-          (e && e.message ? e.message : 'Network error') +
-          '. Sending may still continue on the server. Refresh from sheet to see who was marked sent in column N.';
+        banner.textContent = e && e.message ? e.message : 'Network error';
         toast(e.message || 'Network error', true);
-        try {
-          await refreshGuestsFromSheet();
-        } catch {
-          displayGuests();
-        }
-      } finally {
         updateStats();
       }
     }

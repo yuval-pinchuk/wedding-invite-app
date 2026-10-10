@@ -1,4 +1,6 @@
 import express from 'express';
+import { envGuestSheetId } from '../config/loadEnv.js';
+import { addGuestGiftAmount } from '../services/googleSheets.js';
 import { getPaymentStatus, recordGiftAndGetLink } from '../services/paymentRouting.js';
 
 const router = express.Router();
@@ -37,10 +39,23 @@ router.get('/status', (_req, res) => {
  * and returns its URL. Cascades to the next link when the active one would overflow.
  * Amounts >= 1000 require a Bit link.
  */
-router.post('/checkout', (req, res) => {
+router.post('/checkout', async (req, res) => {
   try {
     const { amount, guestPhone, guestName } = req.body || {};
     const result = recordGiftAndGetLink(amount, { guestPhone, guestName });
+    const phone = String(guestPhone || '').trim();
+    const spreadsheetId = envGuestSheetId();
+    if (!phone) {
+      console.warn('[pay/checkout] no guest phone; skipped gift sheet update');
+    } else if (!spreadsheetId) {
+      console.warn('[pay/checkout] guest sheet not configured; skipped gift sheet update');
+    } else {
+      try {
+        await addGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
+      } catch (sheetError) {
+        console.error('[pay/checkout] gift sheet update failed:', sheetError.message || sheetError);
+      }
+    }
     res.json({
       success: true,
       url: result.url,

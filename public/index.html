@@ -740,7 +740,7 @@
 
     .rsvp-hub-row {
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
       gap: 10px;
       width: 100%;
     }
@@ -757,8 +757,8 @@
     }
 
     .rsvp-hub-row .rsvp-hub-btn {
-      flex: 1 1 50%;
-      width: auto;
+      flex: 0 0 auto;
+      width: 100%;
       min-width: 0;
       display: flex;
       flex-direction: column;
@@ -767,10 +767,6 @@
       gap: 6px;
       line-height: 1.25;
       text-align: center;
-    }
-
-    .rsvp-hub-row #rsvpDirectionsBtn:not(.hidden) {
-      flex: 1 1 100%;
     }
 
     .rsvp-hub-btn-emoji {
@@ -1350,13 +1346,13 @@
               <div class="rsvp-hub-actions" id="rsvpHubActions">
                 <button type="button" class="rsvp-hub-btn rsvp-hub-btn-secondary" id="rsvpChangeBtn">עריכת תשובה</button>
                 <div class="rsvp-hub-row">
-                  <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">
-                    <span>לשליחת מתנה ב-PAYBOX</span>
-                    <span class="rsvp-hub-btn-emoji" aria-hidden="true">🎁</span>
-                  </button>
                   <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpDirectionsBtn">
                     <span>ניווט לאולם</span>
                     <span class="rsvp-hub-btn-emoji" aria-hidden="true">🚗</span>
+                  </button>
+                  <button type="button" class="rsvp-hub-btn rsvp-hub-btn-primary hidden" id="rsvpPayBtn">
+                    <span>לשליחת מתנה ב-PAYBOX</span>
+                    <span class="rsvp-hub-btn-emoji" aria-hidden="true">🎁</span>
                   </button>
                 </div>
               </div>
@@ -1605,7 +1601,7 @@
         ? 'תודה! אישור ההגעה נשלח בהצלחה.<br>מחכים לראותכם! 🎉'
         : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
       rsvpLoggedText.classList.toggle('rsvp-logged-success', attending);
-      rsvpPayBtn.classList.add('hidden');
+      rsvpPayBtn.classList.toggle('hidden', !attending);
       rsvpDirectionsBtn.classList.toggle('hidden', !attending);
       rsvpLogged.classList.remove('hidden');
       form.classList.add('hidden');
@@ -2030,6 +2026,18 @@
         giftPayBtn.textContent = previousLabel;
       }
     });
+
+    function resetGiftPayButton() {
+      if (giftPayBtn.textContent !== 'פותח...') return;
+      giftPayBtn.disabled = false;
+      giftPayBtn.textContent = 'שליחת מתנה';
+      giftAmountInput.value = '';
+      giftError.classList.remove('show');
+    }
+
+    document.addEventListener('visibilitychange', resetGiftPayButton);
+    window.addEventListener('pagehide', resetGiftPayButton);
+    window.addEventListener('pageshow', resetGiftPayButton);
 
     giftAmountInput.addEventListener('input', () => {
       giftError.classList.remove('show');
