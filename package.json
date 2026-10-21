@@ -1,7 +1,7 @@
 {
-  "name": "wedding-invite-app",
+  "name": "easywed",
   "version": "1.0.0",
-  "description": "Automated WhatsApp wedding invitation sender with RSVP landing page and Google Sheets tracking.",
+  "description": "easyWed — WhatsApp wedding invitations, RSVP landing page, and Google Sheets tracking.",
   "main": "server/app.js",
   "type": "module",
   "engines": {
@@ -21,6 +21,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "googleapis": "^131.0.0",
+    "nodemailer": "^6.10.1",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "uuid": "^9.0.1"

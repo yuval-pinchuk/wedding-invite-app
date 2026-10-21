@@ -2,7 +2,10 @@
  * WhatsApp via Baileys (unofficial; personal WhatsApp / multi-device).
  *
  * Environment (optional):
- * - WHATSAPP_SEND_DELAY_MS — pause after each successful send (default 600). Lower = faster, higher ban risk.
+ * - WHATSAPP_SEND_DELAY_MS — base pause after each successful send (default 2000).
+ * - WHATSAPP_SEND_JITTER_MS — random extra 0..N ms added to the base (default 1200). Max gap = base+jitter.
+ * - WHATSAPP_BATCH_SIZE — successful sends between longer pauses (default 25).
+ * - WHATSAPP_BATCH_PAUSE_MS — extra pause after each batch (default 5000).
  * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
  * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite/reminder text as caption.
  *   If unset, looks for `WEDDING.png` in the project root (not cwd). If the file is missing, sends text only.
@@ -17,6 +20,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getDataDir } from '../config/dataDir.js';
+import { currentAccount } from './accountContext.js';
+import { inviteImagePath } from './accounts.js';
 import makeWASocket, { DisconnectReason, fetchLatestWaWebVersion, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -83,16 +89,95 @@ function envPositiveMb(name, fallback) {
 }
 
 export function authDirForSender(senderName) {
-  return path.resolve(__dirname, `../.baileys_auth_${encodeURIComponent(sessionKey(senderName))}`);
+  const owner = currentAccount()?.id || 'legacy';
+  return path.join(getDataDir(), 'wa', owner, encodeURIComponent(sessionKey(senderName)));
 }
 
-function getSendDelayMs() {
-  const n = parseInt(process.env.WHATSAPP_SEND_DELAY_MS || '600', 10);
-  return Number.isFinite(n) && n >= 0 ? n : 600;
+const DEFAULT_SEND_DELAY_MS = 2000;
+const DEFAULT_SEND_JITTER_MS = 1200;
+const DEFAULT_BATCH_SIZE = 25;
+const DEFAULT_BATCH_PAUSE_MS = 5000;
+
+function envNonNegInt(name, fallback) {
+  const n = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+export function getSendPacingConfig() {
+  return {
+    delayMs: envNonNegInt('WHATSAPP_SEND_DELAY_MS', DEFAULT_SEND_DELAY_MS),
+    jitterMs: envNonNegInt('WHATSAPP_SEND_JITTER_MS', DEFAULT_SEND_JITTER_MS),
+    batchSize: Math.max(1, envNonNegInt('WHATSAPP_BATCH_SIZE', DEFAULT_BATCH_SIZE) || DEFAULT_BATCH_SIZE),
+    batchPauseMs: envNonNegInt('WHATSAPP_BATCH_PAUSE_MS', DEFAULT_BATCH_PAUSE_MS),
+  };
+}
+
+/** Random delay in [base, base+jitter] after each successful send. */
+export function getSendDelayMs() {
+  const { delayMs, jitterMs } = getSendPacingConfig();
+  if (delayMs <= 0 && jitterMs <= 0) return 0;
+  const extra = jitterMs > 0 ? Math.floor(Math.random() * (jitterMs + 1)) : 0;
+  return delayMs + extra;
+}
+
+export async function sleepSendDelay() {
+  const delayMs = getSendDelayMs();
+  if (delayMs > 0) {
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+}
+
+export async function sleepBatchPause() {
+  const { batchPauseMs } = getSendPacingConfig();
+  if (batchPauseMs > 0) {
+    await new Promise((r) => setTimeout(r, batchPauseMs));
+  }
+}
+
+/** Upper-bound remaining time for UI (max gap + future batch pauses). */
+export function estimateSendRemainingMs(remainingCount, alreadySuccessfulInJob = 0) {
+  const { delayMs, jitterMs, batchSize, batchPauseMs } = getSendPacingConfig();
+  const maxGap = delayMs + jitterMs;
+  let ms = remainingCount * maxGap;
+  if (batchPauseMs > 0 && remainingCount > 0) {
+    const nextBatchAt = batchSize - (alreadySuccessfulInJob % batchSize);
+    let successesLeft = remainingCount;
+    let untilPause = nextBatchAt;
+    while (successesLeft > 0) {
+      if (successesLeft >= untilPause) {
+        successesLeft -= untilPause;
+        if (successesLeft > 0) ms += batchPauseMs;
+        untilPause = batchSize;
+      } else {
+        break;
+      }
+    }
+  }
+  return ms;
+}
+
+/**
+ * @param {any} sock
+ * @param {string} digits
+ * @returns {Promise<boolean>} false when Baileys says the number is not on WhatsApp
+ */
+export async function isPhoneOnWhatsApp(sock, digits) {
+  if (!sock || typeof sock.onWhatsApp !== 'function' || !digits) return true;
+  try {
+    const results = await sock.onWhatsApp(digits);
+    const row = Array.isArray(results) ? results[0] : null;
+    if (!row) return false;
+    return Boolean(row.exists);
+  } catch (error) {
+    console.warn(`[WhatsApp] onWhatsApp check failed for ${digits}:`, error?.message || error);
+    return true;
+  }
 }
 
 /** Resolved path to optional invite image (JPEG/PNG). */
 function resolveInviteImagePath() {
+  const accountImage = inviteImagePath(currentAccount());
+  if (accountImage && fs.existsSync(accountImage)) return accountImage;
   const raw = (process.env.WHATSAPP_INVITE_IMAGE_PATH || DEFAULT_INVITE_IMAGE_NAME).trim();
   if (!raw) {
     return path.join(repoRoot, DEFAULT_INVITE_IMAGE_NAME);
@@ -392,16 +477,49 @@ export function openingLineWithAddons(name, addonsRaw) {
   return `שלום ${formatNameWithAddons(name, addonsRaw)}`;
 }
 
+function coupleLabel(full) {
+  const account = currentAccount();
+  if (account && (account.brideName || account.groomName)) {
+    return [account.brideName, account.groomName].filter(Boolean).join(' ו');
+  }
+  return full ? 'דניאל אביטל ויובל פינצ׳וק' : 'דניאל ויובל';
+}
+
+function pickVariant(options) {
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 function composeMessageText(name, addons) {
   const opener = openingLineWithAddons(name, addons);
+  const custom = String(currentAccount()?.invitationMessage || '').trim();
+  if (custom) return `${opener}\n${custom}`;
+  const inviteLine = pickVariant([
+    `מתרגשים להזמינכם לחתונה של ${coupleLabel(true)}!`,
+    `שמחים להזמין אתכם לחתונה של ${coupleLabel(true)}!`,
+  ]);
+  const dateLine = pickVariant([
+    'שריינו את התאריך- פרטים נוספים יישלחו בהמשך',
+    'שמרו את התאריך- פרטים נוספים בדרך אליכם',
+  ]);
+  const closeLine = pickVariant(['מחכים לחגוג איתכם❤️', 'מחכים לחגוג יחד❤️']);
   return `${opener}
-מתרגשים להזמינכם לחתונה של דניאל אביטל ויובל פינצ׳וק!
-שריינו את התאריך- פרטים נוספים יישלחו בהמשך
-מחכים לחגוג איתכם❤️`;
+${inviteLine}
+${dateLine}
+${closeLine}`;
 }
 
 function stripEnvQuotes(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+export function defaultReminderTemplate() {
+  const custom = String(currentAccount()?.reminderTemplate || '').trim();
+  if (custom) return custom;
+  return `{{greeting}}
+{{rsvpLine}}
+{{askLine}}
+{{link}}
+{{thanksLine}}`;
 }
 
 export const DEFAULT_RSVP_REMINDER_TEMPLATE = `{{greeting}}
@@ -415,7 +533,15 @@ export function buildRsvpLink(phone) {
   if (!base) {
     return '';
   }
-  return `${base}/?phone=${encodeURIComponent(phone)}`;
+  const account = currentAccount();
+  const phoneQuery = `phone=${encodeURIComponent(phone)}`;
+  if (account?.publicToken && !account.legacy) {
+    return `${base}/i/${account.publicToken}?${phoneQuery}`;
+  }
+  if (account?.publicToken) {
+    return `${base}/i/${account.publicToken}?${phoneQuery}`;
+  }
+  return `${base}/?${phoneQuery}`;
 }
 
 export function getRsvpBaseUrl() {
@@ -432,11 +558,34 @@ export function renderReminderTemplate(template, { name, fullName, phone, addons
   const displayName = formatNameWithAddons(name || '', addons);
   const displayFullName = formatNameWithAddons(fullName || name || '', addons);
   const greeting = openingLineWithAddons(name || fullName || '', addons);
-  return String(template || '')
+  const couple = coupleLabel(false);
+  const rsvpLine = pickVariant([
+    `טרם קיבלנו את אישור ההגעה שלכם לחתונה של ${couple}.`,
+    `עדיין לא קיבלנו מכם אישור הגעה לחתונה של ${couple}.`,
+  ]);
+  const askLine = pickVariant([
+    'נשמח אם תוכלו למלא את הטופס כאן:',
+    'נשמח אם תמלאו את הטופס בקישור הזה:',
+  ]);
+  const thanksLine = pickVariant(['תודה!', 'תודה רבה!']);
+  let text = String(template || '');
+  // Legacy default body: inject a random middle-line variant when the template is fixed.
+  if (text.includes('טרם קיבלנו את אישור ההגעה שלכם לחתונה של') && !text.includes('{{rsvpLine}}')) {
+    text = text.replace(
+      /טרם קיבלנו את אישור ההגעה שלכם לחתונה של[^\n]*/,
+      rsvpLine,
+    );
+    text = text.replace('נשמח אם תוכלו למלא את הטופס כאן:', askLine);
+    text = text.replace(/^תודה!$/m, thanksLine);
+  }
+  return text
     .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{name\}\}/g, displayName)
     .replace(/\{\{fullName\}\}/g, displayFullName)
-    .replace(/\{\{link\}\}/g, link);
+    .replace(/\{\{link\}\}/g, link)
+    .replace(/\{\{rsvpLine\}\}/g, rsvpLine)
+    .replace(/\{\{askLine\}\}/g, askLine)
+    .replace(/\{\{thanksLine\}\}/g, thanksLine);
 }
 
 /**
@@ -460,6 +609,9 @@ export async function sendWhatsAppText(payload) {
     if (!sock || !sock.user) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
+    if (!(await isPhoneOnWhatsApp(sock, digits))) {
+      return { success: false, skipped: true, error: 'Number is not on WhatsApp', to: digits };
+    }
 
     const imageBuf = includeImage ? readInviteImageBuffer() : null;
     if (imageBuf) {
@@ -468,10 +620,7 @@ export async function sendWhatsAppText(payload) {
       await sock.sendMessage(jid, { text: caption });
     }
     touchSession(senderName);
-    const delayMs = getSendDelayMs();
-    if (delayMs > 0) {
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
+    await sleepSendDelay();
 
     return { success: true, to: digits, jid };
   } catch (error) {
@@ -501,6 +650,9 @@ export async function sendWhatsAppInvitation(payload) {
     if (!sock || !sock.user) {
       return { success: false, error: 'WhatsApp not connected', to: digits };
     }
+    if (!(await isPhoneOnWhatsApp(sock, digits))) {
+      return { success: false, skipped: true, error: 'Number is not on WhatsApp', to: digits };
+    }
 
     const imageBuf = readInviteImageBuffer();
     if (imageBuf) {
@@ -509,10 +661,7 @@ export async function sendWhatsAppInvitation(payload) {
       await sock.sendMessage(jid, { text });
     }
     touchSession(senderName);
-    const delayMs = getSendDelayMs();
-    if (delayMs > 0) {
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
+    await sleepSendDelay();
 
     return { success: true, to: digits, jid };
   } catch (error) {

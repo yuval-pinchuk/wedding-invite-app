@@ -2,11 +2,20 @@ services:
   - type: web
     name: wedding-invite-app
     env: node
+    plan: starter
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+    disk:
+      name: wedding-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PORT
+        sync: false
+      - key: DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_KEY
         sync: false
@@ -16,7 +25,32 @@ services:
         sync: false
       - key: RSVP_BASE_URL
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: LEGACY_ADMIN_EMAIL
+        sync: false
+      - key: LEGACY_ADMIN_PASSWORD
+        sync: false
       - key: INVITATION_MESSAGE
         sync: false
         optional: true
-
+  - type: cron
+    name: wedding-invite-keepalive
+    env: node
+    schedule: "*/15 * * * *"
+    buildCommand: node -e "process.exit(0)"
+    startCommand: node scripts/pingHealth.js
+    envVars:
+      - key: KEEPALIVE_URL
+        fromService:
+          name: wedding-invite-app
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

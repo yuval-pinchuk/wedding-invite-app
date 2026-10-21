@@ -2,6 +2,8 @@ import express from 'express';
 import { envGuestSheetId } from '../config/loadEnv.js';
 import { addGuestGiftAmount } from '../services/googleSheets.js';
 import { getPaymentStatus, recordGiftAndGetLink } from '../services/paymentRouting.js';
+import { findByPublicToken, findLegacyAccount } from '../services/accounts.js';
+import { runAsAccount } from '../services/accountContext.js';
 
 const router = express.Router();
 
@@ -39,6 +41,13 @@ router.get('/status', (_req, res) => {
  * and returns its URL. Cascades to the next link when the active one would overflow.
  * Amounts >= 1000 require a Bit link.
  */
+router.use((req, res, next) => {
+  const token = String(req.query.token || req.body?.inviteToken || '').trim();
+  const account = (token && findByPublicToken(token)) || findLegacyAccount();
+  if (!account) return next();
+  return runAsAccount(account, () => next());
+});
+
 router.post('/checkout', async (req, res) => {
   try {
     const { amount, guestPhone, guestName } = req.body || {};

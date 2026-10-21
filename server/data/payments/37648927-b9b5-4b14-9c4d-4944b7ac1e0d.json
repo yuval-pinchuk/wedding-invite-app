@@ -1,0 +1,156 @@
+{
+  "mode": "auto",
+  "manualLinkId": null,
+  "links": [
+    {
+      "id": "danielle-paybox",
+      "label": "Danielle's PayBox",
+      "provider": "paybox",
+      "owner": "danielle",
+      "url": "https://links.payboxapp.com/4Yn6uDXwWUb",
+      "threshold": 100,
+      "currentSum": 100
+    },
+    {
+      "id": "yuval-paybox",
+      "label": "Yuval's PayBox",
+      "provider": "paybox",
+      "owner": "yuval",
+      "url": "https://links.payboxapp.com/AdfUleihXUb",
+      "threshold": 1000,
+      "currentSum": 152
+    },
+    {
+      "id": "danielle-bit",
+      "label": "Danielle's Bit",
+      "provider": "bit",
+      "owner": "danielle",
+      "url": "https://www.bitpay.co.il/app/me/8583B20C-F2B6-1E4E-0480-7EAEBE6D88D33F2A",
+      "threshold": 2000,
+      "currentSum": 1000
+    },
+    {
+      "id": "yuval-bit",
+      "label": "Yuval's Bit",
+      "provider": "bit",
+      "owner": "yuval",
+      "url": "https://www.bitpay.co.il/app/me/B2959BBF-6DA3-CCA7-E778-A221BAE7B7D3A173",
+      "threshold": 10000,
+      "currentSum": 2002
+    }
+  ],
+  "history": [
+    {
+      "id": "1784379402768-6e0l7h",
+      "timestamp": "2026-07-18T12:56:42.768Z",
+      "linkId": "danielle-paybox",
+      "amount": 500,
+      "source": "guest",
+      "note": "Test"
+    },
+    {
+      "id": "1784379417759-0ib6lb",
+      "timestamp": "2026-07-18T12:56:57.759Z",
+      "linkId": "danielle-paybox",
+      "amount": 0,
+      "source": "admin-edit",
+      "note": "Updated: threshold=20000, currentSum=0"
+    },
+    {
+      "id": "1791624139269-bqoibk",
+      "timestamp": "2026-10-10T09:22:19.269Z",
+      "linkId": "danielle-paybox",
+      "amount": 0,
+      "source": "admin-edit",
+      "note": "Updated: threshold=100, currentSum=0"
+    },
+    {
+      "id": "1791624152998-l33lb8",
+      "timestamp": "2026-10-10T09:22:32.998Z",
+      "linkId": "yuval-paybox",
+      "amount": 0,
+      "source": "admin-edit",
+      "note": "Updated: threshold=1000, currentSum=0"
+    },
+    {
+      "id": "1791624173616-0oeef1",
+      "timestamp": "2026-10-10T09:22:53.616Z",
+      "linkId": "danielle-bit",
+      "amount": 0,
+      "source": "admin-edit",
+      "note": "Updated: threshold=2000, currentSum=0"
+    },
+    {
+      "id": "1791624193602-1fzpbh",
+      "timestamp": "2026-10-10T09:23:13.604Z",
+      "linkId": "danielle-paybox",
+      "amount": 50,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791624995169-talo7x",
+      "timestamp": "2026-10-10T09:36:35.169Z",
+      "linkId": "yuval-paybox",
+      "amount": 51,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791625221332-9qf0bz",
+      "timestamp": "2026-10-10T09:40:21.332Z",
+      "linkId": "danielle-bit",
+      "amount": 1000,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791625260821-rdkziu",
+      "timestamp": "2026-10-10T09:41:00.821Z",
+      "linkId": "yuval-bit",
+      "amount": 1001,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791625880410-aa1sh7",
+      "timestamp": "2026-10-10T09:51:20.411Z",
+      "linkId": "yuval-bit",
+      "amount": 1001,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791626098978-su1fnz",
+      "timestamp": "2026-10-10T09:54:58.978Z",
+      "linkId": "danielle-paybox",
+      "amount": 49,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791626188541-7u4nip",
+      "timestamp": "2026-10-10T09:56:28.541Z",
+      "linkId": "danielle-paybox",
+      "amount": 1,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791626201139-tpg1pr",
+      "timestamp": "2026-10-10T09:56:41.139Z",
+      "linkId": "yuval-paybox",
+      "amount": 1,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    },
+    {
+      "id": "1791626271551-b8im10",
+      "timestamp": "2026-10-10T09:57:51.551Z",
+      "linkId": "yuval-paybox",
+      "amount": 100,
+      "source": "guest",
+      "note": "ארזה פינצ'וק · 0547628265"
+    }
+  ]
+}

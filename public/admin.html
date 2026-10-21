@@ -1,25 +1,57 @@
 <!DOCTYPE html>
-<html lang="he">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wedding Invitation Manager</title>
+  <title>easyWed · הזמנות</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    @property --bg { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    @property --surface { syntax: '<color>'; inherits: true; initial-value: #3a322e; }
+    @property --surface2 { syntax: '<color>'; inherits: true; initial-value: #6b5b54; }
+    @property --text { syntax: '<color>'; inherits: true; initial-value: #f7f4f0; }
+    @property --muted { syntax: '<color>'; inherits: true; initial-value: #c9b8af; }
+    @property --accent { syntax: '<color>'; inherits: true; initial-value: #c4a99a; }
+    @property --accent-dim { syntax: '<color>'; inherits: true; initial-value: #a89084; }
+    @property --accent-contrast { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
     :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --surface2: #334155;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --accent: #14b8a6;
-      --accent-dim: #0d9488;
-      --danger: #f43f5e;
-      --ok: #22c55e;
+      --bg: #2a2421;
+      --surface: #3a322e;
+      --surface2: #6b5b54;
+      --text: #f7f4f0;
+      --muted: #c9b8af;
+      --input-bg: #231e1b;
+      --accent: #c4a99a;
+      --accent-dim: #a89084;
+      --accent-contrast: #2a2421;
+      --danger: #c47b73;
+      --ok: #9aab8e;
       --radius: 12px;
       --font: 'Heebo', 'DM Sans', system-ui, sans-serif;
+      transition:
+        --bg 0.4s ease,
+        --surface 0.4s ease,
+        --surface2 0.4s ease,
+        --text 0.4s ease,
+        --muted 0.4s ease,
+        --input-bg 0.4s ease,
+        --accent 0.4s ease,
+        --accent-dim 0.4s ease,
+        --accent-contrast 0.4s ease;
+    }
+    :root[data-theme="light"] {
+      --bg: #f7f4f0;
+      --surface: #fffcfa;
+      --surface2: #c9b8af;
+      --text: #4a3f3a;
+      --muted: #8e7c76;
+      --input-bg: #fffcfa;
+      --accent: #8e7c76;
+      --accent-dim: #6d5952;
+      --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -28,17 +60,24 @@
       color: var(--text);
       min-height: 100vh;
       line-height: 1.5;
+      transition: background-color 0.4s ease, color 0.4s ease;
     }
-    .layout { max-width: 920px; margin: 0 auto; padding: 32px 20px 48px; }
+    .layout { max-width: 920px; margin: 0 auto; padding: 64px 20px 48px; }
     header { margin-bottom: 32px; }
-    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+    header h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
     header p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
     .card {
       background: var(--surface);
       border-radius: var(--radius);
       padding: 24px;
       margin-bottom: 20px;
-      border: 1px solid var(--surface2);
+      border: 2px solid var(--surface2);
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
     }
     .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
     label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
@@ -46,26 +85,32 @@
       width: 100%;
       padding: 12px 14px;
       border-radius: 8px;
-      border: 1px solid var(--surface2);
-      background: var(--bg);
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
       color: var(--text);
       font-family: inherit;
       font-size: 1rem;
+      font-weight: 500;
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.2s ease;
     }
     textarea {
       min-height: 140px;
       resize: vertical;
       line-height: 1.6;
     }
-    select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
     .hint {
       font-size: 0.85rem;
       color: var(--muted);
       margin-bottom: 16px;
     }
     .preview-box {
-      background: var(--bg);
-      border: 1px solid var(--surface2);
+      background: var(--input-bg);
+      border: 2px solid var(--surface2);
       border-radius: 8px;
       padding: 14px;
       white-space: pre-wrap;
@@ -85,12 +130,12 @@
       color: #fbbf24;
     }
     .guest-rsvp-badge.done {
-      background: rgba(34, 197, 94, 0.15);
-      color: #86efac;
+      background: rgba(154, 171, 142, 0.22);
+      color: #9aab8e;
     }
     .guest-rsvp-badge.declined {
-      background: rgba(244, 63, 94, 0.15);
-      color: #fda4af;
+      background: rgba(196, 123, 115, 0.18);
+      color: #e0b5b0;
     }
     .guest-badges {
       display: flex;
@@ -100,12 +145,12 @@
       flex-shrink: 0;
     }
     .guest-rsvp-badge.sent {
-      background: rgba(20, 184, 166, 0.15);
-      color: #5eead4;
+      background: rgba(196, 169, 154, 0.22);
+      color: #c4a99a;
     }
     .guest-rsvp-badge.unsent {
-      background: rgba(148, 163, 184, 0.18);
-      color: #94a3b8;
+      background: rgba(107, 91, 84, 0.28);
+      color: #c9b8af;
     }
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .row .grow { flex: 1; min-width: 200px; }
@@ -117,18 +162,184 @@
       border-radius: 8px;
       border: none;
       cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, transform 0.1s;
     }
     button:active:not(:disabled) { transform: scale(0.98); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-primary { background: var(--accent); color: #042f2e; }
-    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border: 2px solid var(--accent);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-dim); }
     .btn-ghost {
+      background: var(--input-bg);
+      color: var(--accent);
+      border: 2px solid var(--accent);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, var(--input-bg));
+    }
+    .corner-logout {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+    .corner-logout:hover:not(:disabled) {
+      color: var(--accent-contrast);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .corner-logout svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+    .corner-menu {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+    }
+    .corner-menu:hover {
+      color: var(--accent-contrast);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .corner-menu svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+    .nav-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 290;
+      background: rgba(42, 36, 33, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.32s ease;
+    }
+    .nav-backdrop.is-open { opacity: 1; pointer-events: auto; }
+    .nav-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 300;
+      width: min(320px, 88vw);
+      height: 100%;
+      background: var(--surface);
+      border-left: 2px solid var(--surface2);
+      box-shadow: -12px 0 40px rgba(0,0,0,0.25);
+      transform: translateX(105%);
+      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 18px 28px;
+    }
+    .nav-drawer.is-open { transform: translateX(0); }
+    .nav-drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .nav-drawer-head strong {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.35rem;
+    }
+    .nav-close {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+    .nav-links {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 600;
+      padding: 14px 14px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      background: var(--bg);
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+    .nav-links a:hover { border-color: var(--accent); }
+    .nav-links a.is-active {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border-color: var(--accent);
+    }
+    .nav-theme {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--surface2);
+    }
+    .nav-theme p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .theme-switch {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      border-radius: 12px;
+      background: var(--bg);
+      border: 2px solid var(--surface2);
+      width: fit-content;
+    }
+    .theme-opt {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      border: none;
       background: transparent;
       color: var(--muted);
-      border: 1px solid var(--surface2);
+      cursor: pointer;
     }
-    .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+    .theme-opt svg { width: 18px; height: 18px; display: block; }
+    .theme-opt[aria-checked="true"] {
+      background: var(--accent);
+      color: var(--accent-contrast);
+    }
+    .theme-opt:hover:not([aria-checked="true"]) { color: var(--text); }
+    body.nav-open { overflow: hidden; }
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -211,8 +422,8 @@
       font-size: 0.8rem;
       font-weight: 600;
       border-radius: 999px;
-      border: 1px solid var(--surface2);
-      background: transparent;
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
       color: var(--muted);
       cursor: pointer;
     }
@@ -220,7 +431,7 @@
     .filter-chip.is-active {
       background: var(--accent);
       border-color: var(--accent);
-      color: #042f2e;
+      color: var(--accent-contrast);
     }
     .filter-hidden-hint {
       font-size: 0.8rem;
@@ -235,9 +446,9 @@
       font-size: 0.9rem;
     }
     .banner.show { display: block; }
-    .banner.info { background: rgba(20, 184, 166, 0.12); color: #5eead4; }
-    .banner.success { background: rgba(34, 197, 94, 0.12); color: #86efac; }
-    .banner.error { background: rgba(244, 63, 94, 0.12); color: #fda4af; }
+    .banner.info { background: rgba(196, 169, 154, 0.18); color: #c4a99a; }
+    .banner.success { background: rgba(154, 171, 142, 0.18); color: #9aab8e; }
+    .banner.error { background: rgba(196, 123, 115, 0.18); color: #e0b5b0; }
     .hidden { display: none !important; }
     .qr-wrap {
       text-align: center;
@@ -285,68 +496,97 @@
   </style>
 </head>
 <body>
-  <div class="layout">
-    <header>
-      <h1>Wedding Invitation Manager</h1>
-      <p>Google Sheet guests and WhatsApp (Baileys / personal account — unofficial).</p>
-      <p style="margin-top:10px"><a href="/admin-pay.html" style="color:#14b8a6;text-decoration:none;font-weight:600">ניהול מתנות / תשלומים →</a></p>
-    </header>
-
-    <div class="card" id="authCard">
-      <h2>מפתח מנהל (אופציונלי)</h2>
-      <p class="hint">אם הוגדר <code>ADMIN_API_KEY</code> בשרת, הזינו אותו כאן. נשמר רק בדפדפן זה.</p>
-      <div class="row">
-        <div class="grow">
-          <label for="adminKey">Admin API Key</label>
-          <input type="password" id="adminKey" autocomplete="off" placeholder="x-admin-key">
-        </div>
-        <button type="button" class="btn-primary" id="saveKeyBtn">שמירה ורענון</button>
+  <button type="button" id="logoutBtn" class="corner-logout" title="יציאה" aria-label="יציאה למסך התחברות" onclick="void logoutToLogin()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+  <button type="button" id="navMenuBtn" class="corner-menu" aria-label="תפריט" aria-expanded="false" aria-controls="navDrawer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <line x1="4" y1="7" x2="20" y2="7"/>
+      <line x1="4" y1="12" x2="20" y2="12"/>
+      <line x1="4" y1="17" x2="20" y2="17"/>
+    </svg>
+  </button>
+  <div id="navBackdrop" class="nav-backdrop" hidden></div>
+  <aside id="navDrawer" class="nav-drawer" aria-hidden="true">
+    <div class="nav-drawer-head">
+      <strong>easyWed</strong>
+      <button type="button" class="nav-close" id="navCloseBtn" aria-label="סגירת תפריט">×</button>
+    </div>
+    <nav class="nav-links">
+      <a href="/manage" data-nav="home">בית</a>
+      <a href="/manage/invites" data-nav="invites" class="is-active">הזמנות / וואטסאפ</a>
+      <a href="/manage/pay" data-nav="pay">מתנות / תשלומים</a>
+    </nav>
+    <div class="nav-theme">
+      <p>מצב תצוגה</p>
+      <div class="theme-switch" role="radiogroup" aria-label="מצב תצוגה">
+        <button type="button" class="theme-opt" role="radio" data-theme-value="light" aria-checked="false" title="מצב בהיר" aria-label="מצב בהיר">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <button type="button" class="theme-opt" role="radio" data-theme-value="dark" aria-checked="false" title="מצב כהה" aria-label="מצב כהה">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/>
+          </svg>
+        </button>
       </div>
     </div>
+  </aside>
+  <div class="layout">
+    <header>
+      <h1>easyWed</h1>
+      <p>ניהול הזמנות — אורחים, וואטסאפ ומעקב RSVP.</p>
+    </header>
 
     <div class="card" id="stepSender">
-      <h2>1. Sender</h2>
+      <h2>1. מי שולח</h2>
       <div class="row">
         <div class="grow">
 
-          <select id="senderSelect"><option value="">Loading…</option></select>
+          <select id="senderSelect"><option value="">טוען…</option></select>
         </div>
-        <button type="button" class="btn-primary" id="loadGuestsBtn" disabled>Load guests</button>
+        <button type="button" class="btn-primary" id="loadGuestsBtn" disabled>טעינת אורחים</button>
       </div>
     </div>
 
     <div class="card hidden" id="stepQr">
-      <h2>2. WhatsApp session</h2>
+      <h2>2. חיבור וואטסאפ</h2>
       <div id="waPairingUi">
-        <p id="qrStatus" class="qr-status-line">Waiting…</p>
+        <p id="qrStatus" class="qr-status-line">ממתינים…</p>
         <div class="qr-wrap">
           <div id="qrCanvasHost"></div>
         </div>
       </div>
       <div id="waConnectedUi" class="hidden">
-        <p class="wa-connected-notice">WhatsApp connected</p>
+        <p class="wa-connected-notice">וואטסאפ מחובר</p>
       </div>
-      <button type="button" class="btn-ghost" id="clearSessionBtn" style="margin-top:4px;">Clear session &amp; new QR</button>
+      <button type="button" class="btn-ghost" id="clearSessionBtn" style="margin-top:4px;">ניתוק וקוד QR חדש</button>
     </div>
 
     <div class="card hidden" id="stepGuests">
-      <h2>3. Guests</h2>
+      <h2>3. אורחים</h2>
       <div class="stats">
-        <div class="stat"><b id="totalGuests">0</b><span>Total</span></div>
-        <div class="stat"><b id="selectedGuests">0</b><span>Selected</span></div>
-        <div class="stat"><b id="pendingRsvpGuestsStat">0</b><span>Pending RSVP</span></div>
-        <div class="stat"><b id="unsentWaGuestsStat">0</b><span>WA not sent</span></div>
+        <div class="stat"><b id="totalGuests">0</b><span>סה״כ</span></div>
+        <div class="stat"><b id="selectedGuests">0</b><span>נבחרו</span></div>
+        <div class="stat"><b id="pendingRsvpGuestsStat">0</b><span>ממתינים לאישור</span></div>
+        <div class="stat"><b id="unsentWaGuestsStat">0</b><span>טרם נשלח</span></div>
       </div>
       <div class="filter-bar" dir="rtl">
         <div class="filter-group" role="group" aria-label="סינון RSVP">
-          <span class="filter-group-label">RSVP</span>
+          <span class="filter-group-label">אישור הגעה</span>
           <button type="button" class="filter-chip is-active" data-rsvp-filter="all">הכל</button>
           <button type="button" class="filter-chip" data-rsvp-filter="pending">ממתין</button>
           <button type="button" class="filter-chip" data-rsvp-filter="yes">מגיעים</button>
           <button type="button" class="filter-chip" data-rsvp-filter="no">לא מגיעים</button>
         </div>
         <div class="filter-group" role="group" aria-label="סינון WhatsApp">
-          <span class="filter-group-label">WhatsApp</span>
+          <span class="filter-group-label">וואטסאפ</span>
           <button type="button" class="filter-chip is-active" data-wa-filter="all">הכל</button>
           <button type="button" class="filter-chip" data-wa-filter="unsent">לא נשלח</button>
           <button type="button" class="filter-chip" data-wa-filter="sent">נשלח</button>
@@ -356,7 +596,7 @@
         <button type="button" class="btn-ghost" id="markAllBtn">סמן הכל</button>
         <button type="button" class="btn-ghost" id="unmarkAllBtn">בטל סימון</button>
         <button type="button" class="btn-ghost" id="markUnsentBtn" disabled>סמן כלא נשלח</button>
-        <button type="button" class="btn-ghost" id="refreshSheetBtn">Refresh from sheet</button>
+        <button type="button" class="btn-ghost" id="refreshSheetBtn">רענון מהגיליון</button>
       </div>
       <p id="filterHiddenHint" class="filter-hidden-hint hidden"></p>
       <div class="guest-list" id="guestList"></div>
@@ -367,7 +607,7 @@
       <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
       <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
       <div class="check-row">
-        <input type="checkbox" id="sendWithImage" checked>
+        <input type="checkbox" id="sendWithImage">
         <label for="sendWithImage">שלח עם תמונת ההזמנה</label>
       </div>
       <button type="button" class="btn-primary" id="sendBtn" style="width:100%;margin-top:16px;" disabled>
@@ -380,7 +620,6 @@
   <div id="toast"></div>
 
   <script>
-    const KEY_STORAGE = 'wedding_admin_key';
     let currentSender = '';
     let guests = [];
     let rsvpFilter = 'all';
@@ -411,16 +650,51 @@
       if (connectedBox) connectedBox.classList.toggle('hidden', !connected);
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
-      const adminKeyInput = document.getElementById('adminKey');
-      adminKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || '';
-      document.getElementById('saveKeyBtn').addEventListener('click', async () => {
-        sessionStorage.setItem(KEY_STORAGE, adminKeyInput.value.trim());
-        toast('Admin key saved');
-        await loadReminderDefaults();
-        await loadSenders();
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('adminTheme', next);
+      document.querySelectorAll('.theme-opt').forEach((btn) => {
+        btn.setAttribute('aria-checked', btn.dataset.themeValue === next ? 'true' : 'false');
       });
+    }
 
+    async function logoutToLogin() {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* still leave */ }
+      window.location.assign('/login');
+    }
+
+    applyTheme(localStorage.getItem('adminTheme') || 'dark');
+    document.querySelectorAll('.theme-opt').forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.themeValue));
+    });
+    document.getElementById('logoutBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      void logoutToLogin();
+    });
+
+    const navBtn = document.getElementById('navMenuBtn');
+    const navDrawer = document.getElementById('navDrawer');
+    const navBackdrop = document.getElementById('navBackdrop');
+    const navCloseBtn = document.getElementById('navCloseBtn');
+    function setNavOpen(open) {
+      navDrawer.classList.toggle('is-open', open);
+      navBackdrop.classList.toggle('is-open', open);
+      navBackdrop.hidden = !open;
+      navDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('nav-open', open);
+    }
+    navBtn.addEventListener('click', () => setNavOpen(true));
+    navCloseBtn.addEventListener('click', () => setNavOpen(false));
+    navBackdrop.addEventListener('click', () => setNavOpen(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
       loadReminderDefaults();
       loadSenders().then(() => resumeSendJob());
       document.getElementById('loadGuestsBtn').addEventListener('click', loadGuests);
@@ -443,10 +717,7 @@
     window.addEventListener('beforeunload', () => stopPolling());
 
     function adminHeaders(extra = {}) {
-      const headers = { ...(extra || {}) };
-      const key = (sessionStorage.getItem(KEY_STORAGE) || '').trim();
-      if (key) headers['x-admin-key'] = key;
-      return headers;
+      return { ...(extra || {}) };
     }
 
     function noStoreFetch(input, init) {
@@ -454,7 +725,7 @@
       merged.headers = adminHeaders(merged.headers || {});
       return fetch(input, merged).then((res) => {
         if (res.status === 401) {
-          toast('Unauthorized — enter Admin API Key above', true);
+          location.href = '/login';
         }
         return res;
       });
@@ -996,14 +1267,23 @@
     function alreadySentLine(job) {
       let line = (job.successful || 0) + ' / ' + (job.total || 0) + ' already sent';
       if ((job.failed || 0) > 0) line += ' (' + job.failed + ' failed)';
+      if ((job.skipped || 0) > 0) line += ' (' + job.skipped + ' skipped)';
       return line;
+    }
+
+    function remainingTimeLabel(job) {
+      const ms = Number(job.remainingMsEstimate);
+      if (!Number.isFinite(ms) || ms <= 0) return '';
+      const minutes = Math.max(1, Math.ceil(ms / 60000));
+      return 'Up to about ' + minutes + ' min left';
     }
 
     function showSendJobProgress(job) {
       const banner = document.getElementById('sendBanner');
       const progress = document.getElementById('sendProgress');
       progress.classList.remove('hidden');
-      progress.textContent = alreadySentLine(job);
+      const eta = remainingTimeLabel(job);
+      progress.textContent = alreadySentLine(job) + (eta ? ' — ' + eta : '');
       if (job.lastSuccess && job.lastPhone) {
         applyLocalSentStamp(job.lastPhone, job.whatsappSentAt || 'V');
         displayGuests();
@@ -1012,7 +1292,7 @@
         const who = guestSendLabel(job.currentName, job.currentPhone);
         banner.className = 'banner show info';
         banner.textContent = who
-          ? 'Sending now to ' + who
+          ? 'Sending now to ' + who + (eta ? '. ' + eta : '')
           : 'Sending on the server. You can leave this page and it will keep going.';
       }
     }
@@ -1100,13 +1380,19 @@
       }
       const alreadySent = toSend.filter((g) => hasWhatsappSent(g)).length;
       let confirmMsg = 'לשלוח תזכורת RSVP ל-' + toSend.length + ' אורחים?';
-      if (alreadySent) {
-        confirmMsg += '\n\n' + alreadySent + ' כבר מסומנים כנשלח ויישלח אליהם שוב.';
-      }
       if (!document.getElementById('sendWithImage').checked) {
         confirmMsg += '\n\nההודעה תישלח ללא תמונת ההזמנה.';
+      } else {
+        confirmMsg += '\n\nההודעה תישלח עם תמונת ההזמנה.';
       }
       if (!confirm(confirmMsg)) return;
+      if (alreadySent) {
+        const resendOk = confirm(
+          alreadySent + ' מהנבחרים כבר מסומנים כנשלח בעמודה N.\n\n' +
+          'לשלוח אליהם שוב בכל זאת?',
+        );
+        if (!resendOk) return;
+      }
 
       const btn = document.getElementById('sendBtn');
       const banner = document.getElementById('sendBanner');

@@ -1,8 +1,21 @@
 import express from 'express';
 import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
 import { saveRSVPResponse, initializeResponseSheet, updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
+import { findByPublicToken, findLegacyAccount } from '../services/accounts.js';
+import { runAsAccount } from '../services/accountContext.js';
 
 const router = express.Router();
+
+function accountForRequest(req) {
+  const token = String(req.query.token || req.body?.inviteToken || '').trim();
+  return (token && findByPublicToken(token)) || findLegacyAccount();
+}
+
+router.use((req, res, next) => {
+  const account = accountForRequest(req);
+  if (!account) return next();
+  return runAsAccount(account, () => next());
+});
 
 /**
  * POST /api/rsvp

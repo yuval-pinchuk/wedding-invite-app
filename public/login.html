@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>easyWed</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'light';</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @property --bg { syntax: '<color>'; inherits: true; initial-value: #f7f4f0; }
+    @property --card { syntax: '<color>'; inherits: true; initial-value: #fffcfa; }
+    @property --text { syntax: '<color>'; inherits: true; initial-value: #4a3f3a; }
+    @property --muted { syntax: '<color>'; inherits: true; initial-value: #8e7c76; }
+    @property --line { syntax: '<color>'; inherits: true; initial-value: #c9b8af; }
+    @property --accent { syntax: '<color>'; inherits: true; initial-value: #8e7c76; }
+    @property --accent-contrast { syntax: '<color>'; inherits: true; initial-value: #fffcfa; }
+    @property --wash { syntax: '<color>'; inherits: true; initial-value: rgba(247, 244, 240, 0.88); }
+    :root {
+      color-scheme: light;
+      --bg: #f7f4f0;
+      --card: #fffcfa;
+      --text: #4a3f3a;
+      --muted: #8e7c76;
+      --line: #c9b8af;
+      --input-bg: #fffcfa;
+      --accent: #8e7c76;
+      --accent-contrast: #fffcfa;
+      --wash: rgba(247, 244, 240, 0.9);
+      --font-display: 'Fraunces', Georgia, serif;
+      --font-body: 'Heebo', sans-serif;
+      transition:
+        --bg 0.4s ease,
+        --card 0.4s ease,
+        --text 0.4s ease,
+        --muted 0.4s ease,
+        --line 0.4s ease,
+        --accent 0.4s ease,
+        --accent-contrast 0.4s ease,
+        --wash 0.4s ease;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #2a2421;
+      --card: #3a322e;
+      --text: #f7f4f0;
+      --muted: #c9b8af;
+      --line: #6b5b54;
+      --input-bg: #231e1b;
+      --accent: #c4a99a;
+      --accent-contrast: #2a2421;
+      --wash: rgba(42, 36, 33, 0.9);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--text);
+      background: var(--bg);
+      transition: background-color 0.4s ease, color 0.4s ease;
+      overflow-x: hidden;
+    }
+
+    .hero-plane {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .hero-plane img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 28%;
+      transform: scale(1.08);
+      animation: heroDrift 22s ease-in-out infinite alternate;
+      filter: saturate(0.92) contrast(0.96);
+    }
+    .hero-plane::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 55% at 70% 20%, rgba(142, 124, 118, 0.2), transparent 55%),
+        radial-gradient(ellipse 55% 45% at 15% 80%, rgba(201, 184, 175, 0.22), transparent 50%),
+        linear-gradient(160deg, var(--wash), rgba(247, 244, 240, 0.55) 45%, var(--wash));
+      transition: background 0.4s ease;
+    }
+    :root[data-theme="dark"] .hero-plane::after {
+      background:
+        radial-gradient(ellipse 70% 55% at 70% 20%, rgba(196, 169, 154, 0.16), transparent 55%),
+        radial-gradient(ellipse 55% 45% at 15% 80%, rgba(74, 63, 58, 0.4), transparent 50%),
+        linear-gradient(160deg, var(--wash), rgba(42, 36, 33, 0.55) 45%, var(--wash));
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(40px);
+      opacity: 0.4;
+      animation: orbFloat 14s ease-in-out infinite alternate;
+    }
+    .orb-a {
+      width: 280px;
+      height: 280px;
+      background: #c9b8af;
+      top: 12%;
+      left: -60px;
+    }
+    .orb-b {
+      width: 220px;
+      height: 220px;
+      background: #d8c4b8;
+      bottom: 8%;
+      right: -40px;
+      animation-delay: -4s;
+    }
+    :root[data-theme="dark"] .orb-a { background: #8e7c76; opacity: 0.28; }
+    :root[data-theme="dark"] .orb-b { background: #6b5b54; opacity: 0.32; }
+
+    .theme-switch {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 60;
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 2px solid var(--line);
+      transition: background-color 0.4s ease, border-color 0.4s ease;
+    }
+    .theme-opt {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+    }
+    .theme-switch .theme-opt { margin-top: 0; width: 36px; }
+    .theme-opt svg { width: 18px; height: 18px; display: block; }
+    .theme-opt[aria-checked="true"] {
+      background: var(--accent);
+      color: var(--accent-contrast);
+    }
+    .theme-opt:hover:not([aria-checked="true"]) { color: var(--text); }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 72px 20px 48px;
+    }
+    .stage {
+      width: min(440px, 100%);
+      text-align: center;
+    }
+    .brand {
+      font-family: var(--font-display);
+      font-size: clamp(3rem, 10vw, 4.25rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 0.95;
+      margin: 0 0 18px;
+      color: var(--text);
+      animation: riseIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .brand span {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 650;
+    }
+    .headline {
+      font-family: var(--font-body);
+      font-size: clamp(1.15rem, 3.2vw, 1.35rem);
+      font-weight: 600;
+      margin: 0 0 8px;
+      animation: riseIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+    }
+    .lede {
+      margin: 0 auto 28px;
+      max-width: 28ch;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 1rem;
+      animation: riseIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+    }
+
+    .panel {
+      text-align: right;
+      background: var(--card);
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 12px 40px rgba(15, 31, 26, 0.14);
+      animation: riseIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.24s both;
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+    }
+    :root[data-theme="dark"] .panel {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      border-color: #94a3b8;
+    }
+    .panel h2 {
+      font-size: 1.05rem;
+      margin: 0 0 4px;
+      font-weight: 700;
+    }
+    .panel > p:not(.error):not(.hint) {
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.9rem;
+      margin: 0 0 8px;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+    input, select {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 10px;
+      border: 2px solid var(--line);
+      background: var(--input-bg);
+      color: var(--text);
+      font: inherit;
+      font-weight: 500;
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.2s ease;
+    }
+    input::placeholder, select::placeholder { color: var(--muted); opacity: 0.85; }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .password-field {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .password-field input {
+      padding-left: 48px;
+    }
+    .password-field .password-toggle {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 36px;
+      height: 36px;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      box-shadow: none;
+    }
+    .password-field .password-toggle:hover { color: var(--text); filter: none; }
+    .password-field .password-toggle svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+    .password-field input.is-invalid {
+      border-color: #c43c3c;
+      box-shadow: 0 0 0 3px rgba(196, 60, 60, 0.22);
+    }
+    .password-field input.is-invalid:focus {
+      border-color: #c43c3c;
+      box-shadow: 0 0 0 3px rgba(196, 60, 60, 0.28);
+    }
+    :root[data-theme="dark"] .password-field input.is-invalid {
+      border-color: #f87171;
+      box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.25);
+    }
+    .password-rules {
+      list-style: none;
+      margin: 10px 0 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 70%, var(--card));
+      text-align: right;
+    }
+    .password-rules li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      margin: 0;
+      padding: 4px 0;
+      font-weight: 500;
+    }
+    .password-rules .mark {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      display: inline-grid;
+      place-items: center;
+      flex-shrink: 0;
+      font-size: 0.7rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .password-rules li.is-ok {
+      color: #6d5952;
+    }
+    :root[data-theme="dark"] .password-rules li.is-ok { color: #c4a99a; }
+    .password-rules li.is-ok .mark {
+      background: currentColor;
+      color: var(--card);
+      border-color: transparent;
+    }
+    .password-rules li.is-bad {
+      color: #c43c3c;
+    }
+    :root[data-theme="dark"] .password-rules li.is-bad { color: #f87171; }
+    button, .linkish {
+      margin-top: 14px;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px solid var(--accent);
+      background: var(--accent);
+      color: var(--accent-contrast);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, transform 0.15s ease;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:active { transform: scale(0.985); }
+    .row-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .row-buttons button {
+      background: var(--input-bg);
+      color: var(--accent);
+      border: 2px solid var(--accent);
+    }
+    .row-buttons button:hover {
+      background: color-mix(in srgb, var(--accent) 12%, var(--input-bg));
+      filter: none;
+    }
+    .ghost-btn {
+      background: var(--input-bg) !important;
+      color: var(--accent) !important;
+      border: 2px solid var(--accent) !important;
+    }
+    .hidden { display: none !important; }
+    .error { color: #9b2c2c; font-weight: 600; min-height: 1.2em; margin: 8px 0 0; }
+    :root[data-theme="dark"] .error { color: #fda4af; }
+    .hint { color: var(--muted); line-height: 1.5; font-size: 0.88rem; margin: 6px 0 0; }
+    .map-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .map-row span { flex: 1; }
+    a { color: var(--accent); }
+    .signup-scroll { max-height: min(70vh, 640px); overflow: auto; padding-left: 4px; }
+
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes heroDrift {
+      from { transform: scale(1.08) translate3d(0, 0, 0); }
+      to { transform: scale(1.14) translate3d(-1.5%, 1%, 0); }
+    }
+    @keyframes orbFloat {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(24px, -18px, 0); }
+    }
+
+    @media (max-width: 520px) {
+      .shell { align-items: flex-start; padding-top: 80px; }
+      .brand { font-size: 2.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="hero-plane" aria-hidden="true">
+    <img src="/WEDDING.png" alt="">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+  </div>
+
+  <div class="theme-switch" role="radiogroup" aria-label="מצב תצוגה">
+    <button type="button" class="theme-opt" role="radio" data-theme-value="light" aria-checked="false" title="מצב בהיר" aria-label="מצב בהיר">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+      </svg>
+    </button>
+    <button type="button" class="theme-opt" role="radio" data-theme-value="dark" aria-checked="false" title="מצב כהה" aria-label="מצב כהה">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="shell">
+    <div class="stage">
+      <h1 class="brand">easy<span>Wed</span></h1>
+      <p class="headline">החתונה שלכם, מסודרת בקלות</p>
+      <p class="lede" id="intro">הזמנות בוואטסאפ, אישורי הגעה ומתנות — במקום אחד.</p>
+
+      <div class="panel">
+        <form id="loginForm">
+          <h2>ברוכים הבאים</h2>
+          <label for="email">אימייל</label>
+          <input id="email" type="email" autocomplete="username" required>
+          <label for="password">סיסמה</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+          <p id="loginError" class="error"></p>
+          <button type="submit">כניסה ל־easyWed</button>
+          <div class="row-buttons">
+            <button type="button" id="showSignup">יצירת חשבון</button>
+            <button type="button" id="showForgot">שכחתי סיסמה</button>
+          </div>
+        </form>
+
+        <form id="unlockForm" class="hidden">
+          <h2>פתיחת חשבון</h2>
+          <p>אחרי 5 סיסמאות שגויות החשבון ננעל. הזינו את הקוד שנשלח לאימייל.</p>
+          <label for="unlockEmail">אימייל</label>
+          <input id="unlockEmail" type="email" required>
+          <label for="unlockCode">קוד מהאימייל</label>
+          <input id="unlockCode" inputmode="numeric" required>
+          <p id="unlockError" class="error"></p>
+          <button type="submit">פתיחה</button>
+        </form>
+
+        <form id="forgotForm" class="hidden">
+          <h2>שכחתי סיסמה</h2>
+          <label for="forgotEmail">אימייל</label>
+          <input id="forgotEmail" type="email" required>
+          <p id="forgotMsg"></p>
+          <button type="submit">שליחת קישור</button>
+          <button type="button" class="ghost-btn" id="forgotBack">חזרה</button>
+        </form>
+
+        <form id="resetForm" class="hidden">
+          <h2>סיסמה חדשה</h2>
+          <label for="newPassword">סיסמה חדשה</label>
+          <input id="newPassword" type="password" minlength="6" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}" title="אנגלית, לפחות 6 תווים, אות גדולה, אות קטנה ומספר" required>
+          <p class="hint">אנגלית בלבד, לפחות 6 תווים, אות גדולה, אות קטנה ומספר.</p>
+          <p id="resetError" class="error"></p>
+          <button type="submit">שמירה</button>
+        </form>
+
+        <form id="signupForm" class="hidden">
+          <div class="signup-scroll">
+            <h2>יצירת חשבון</h2>
+            <p>שתפו את גיליון האורחים עם: <strong id="serviceEmail">טוען…</strong></p>
+            <p><a href="/api/public/example.xlsx">הורדת גיליון אורחים לדוגמה</a> · <a href="/api/public/example-responses.xlsx">הורדת גיליון תשובות לדוגמה</a>. העתיקו אותם ל-Google Sheets.</p>
+            <label for="sEmail">אימייל</label>
+            <input id="sEmail" type="email" required>
+            <label for="sPassword">סיסמה</label>
+            <div class="password-field">
+              <input id="sPassword" type="password" autocomplete="new-password" minlength="6" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}" title="אנגלית, לפחות 6 תווים, אות גדולה, אות קטנה ומספר" spellcheck="false" autocapitalize="off" required>
+              <button type="button" class="password-toggle" id="sPasswordToggle" aria-label="הצגת סיסמה" aria-pressed="false" title="הצג / הסתר סיסמה">
+                <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="icon-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.5 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94"/>
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/>
+                  <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              </button>
+            </div>
+            <ul id="sPasswordRules" class="password-rules hidden" aria-live="polite">
+              <li data-rule="english"><span class="mark">!</span><span>אותיות באנגלית ומספרים בלבד</span></li>
+              <li data-rule="length"><span class="mark">!</span><span>לפחות 6 תווים</span></li>
+              <li data-rule="lower"><span class="mark">!</span><span>אות קטנה באנגלית (a–z)</span></li>
+              <li data-rule="upper"><span class="mark">!</span><span>אות גדולה באנגלית (A–Z)</span></li>
+              <li data-rule="digit"><span class="mark">!</span><span>לפחות ספרה אחת (0–9)</span></li>
+            </ul>
+            <label for="bride">שם הכלה</label>
+            <input id="bride" required>
+            <label for="groom">שם החתן</label>
+            <input id="groom" required>
+            <label for="date">תאריך החתונה</label>
+            <input id="date" type="date" required>
+            <label for="image">תמונת הזמנה</label>
+            <input id="image" type="file" accept="image/png,image/jpeg,image/webp" required>
+            <label for="waze">קישור Waze</label>
+            <input id="waze">
+            <label for="maps">קישור Google Maps</label>
+            <input id="maps">
+            <label for="pb1">PayBox של הכלה</label>
+            <input id="pb1" required>
+            <label for="pb2">PayBox של החתן</label>
+            <input id="pb2" required>
+            <label for="bit1">Bit של הכלה</label>
+            <input id="bit1" required>
+            <label for="bit2">Bit של החתן</label>
+            <input id="bit2" required>
+            <label for="guestSheet">קישור ל- Google Sheets</label>
+            <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן.</p>
+            <input id="guestSheet" required>
+            <label for="responseSheet">קישור ל- Google Sheets של התשובות</label>
+            <p class="hint">אותו דבר: פתחו את גיליון התשובות והעתיקו את הכתובת המלאה משורת הכתובת.</p>
+            <input id="responseSheet" required>
+            <label for="tab">שם הלשונית</label>
+            <input id="tab" required placeholder="חתונה">
+            <p id="signupError" class="error"></p>
+            <button type="submit">המשך למיפוי עמודות</button>
+            <button type="button" class="ghost-btn" id="backLogin">חזרה להתחברות</button>
+          </div>
+        </form>
+
+        <form id="mapForm" class="hidden">
+          <h2>איזה עמודה היא מה</h2>
+          <p>בחרו לכל שדה את הכותרת מהשורה הראשונה בגיליון.</p>
+          <div id="mapFields"></div>
+          <p id="mapError" class="error"></p>
+          <button type="submit">סיום ויצירת ההזמנה</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fields = [
+      ['firstName', 'שם פרטי'],
+      ['familyName', 'שם משפחה'],
+      ['phone', 'טלפון'],
+      ['rsvpCount', 'אישור הגעה'],
+      ['remarks', 'הערות'],
+      ['whatsappSent', 'נשלח בוואטסאפ'],
+      ['sender', 'שולח'],
+      ['giftAmount', 'סכום מתנה'],
+      ['giftLink', 'קישור תשלום'],
+      ['addons', 'מוזמנים נוספים (+1)'],
+    ];
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const mapForm = document.getElementById('mapForm');
+
+    function applyTheme(theme) {
+      const next = theme === 'dark' ? 'dark' : 'light';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('adminTheme', next);
+      document.querySelectorAll('.theme-opt').forEach((btn) => {
+        btn.setAttribute('aria-checked', btn.dataset.themeValue === next ? 'true' : 'false');
+      });
+    }
+    applyTheme(localStorage.getItem('adminTheme') || 'light');
+    document.querySelectorAll('.theme-opt').forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.themeValue));
+    });
+
+    function show(el) {
+      for (const node of document.querySelectorAll('.panel form')) node.classList.add('hidden');
+      el.classList.remove('hidden');
+    }
+
+    document.getElementById('showSignup').onclick = () => show(signupForm);
+    document.getElementById('showForgot').onclick = () => show(document.getElementById('forgotForm'));
+    document.getElementById('backLogin').onclick = () => show(loginForm);
+    document.getElementById('forgotBack').onclick = () => show(loginForm);
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('reset')) show(document.getElementById('resetForm'));
+
+    document.getElementById('date').min = new Date().toISOString().slice(0, 10);
+
+    (function setupSignupPassword() {
+      const input = document.getElementById('sPassword');
+      const toggle = document.getElementById('sPasswordToggle');
+      const rulesEl = document.getElementById('sPasswordRules');
+      if (!input || !toggle || !rulesEl) return;
+
+      const checks = {
+        english: (value) => /^[A-Za-z\d]+$/.test(value),
+        length: (value) => value.length >= 6,
+        lower: (value) => /[a-z]/.test(value),
+        upper: (value) => /[A-Z]/.test(value),
+        digit: (value) => /\d/.test(value),
+      };
+
+      function sanitize(value) {
+        return String(value || '').replace(/[^A-Za-z\d]/g, '');
+      }
+
+      let interacted = false;
+
+      function passwordOk(value) {
+        return Object.values(checks).every((fn) => fn(value));
+      }
+
+      function renderRules(value) {
+        rulesEl.querySelectorAll('[data-rule]').forEach((item) => {
+          const key = item.dataset.rule;
+          const ok = checks[key](value);
+          item.classList.toggle('is-ok', ok);
+          item.classList.toggle('is-bad', !ok);
+          const mark = item.querySelector('.mark');
+          if (mark) mark.textContent = ok ? '✓' : '!';
+        });
+        input.classList.toggle('is-invalid', interacted && !passwordOk(value));
+      }
+
+      function showRules() {
+        interacted = true;
+        rulesEl.classList.remove('hidden');
+        renderRules(input.value);
+      }
+
+      function hideRulesIfBlur() {
+        // Keep visible while interacting with toggle inside the field
+        window.setTimeout(() => {
+          if (document.activeElement === input || document.activeElement === toggle) return;
+          if (!passwordOk(input.value)) {
+            rulesEl.classList.remove('hidden');
+            return;
+          }
+          rulesEl.classList.add('hidden');
+        }, 0);
+      }
+
+      input.addEventListener('focus', showRules);
+      input.addEventListener('blur', hideRulesIfBlur);
+      toggle.addEventListener('blur', hideRulesIfBlur);
+
+      input.addEventListener('beforeinput', (event) => {
+        if (event.inputType && event.inputType.startsWith('delete')) return;
+        const data = event.data;
+        if (data == null) return;
+        if (/[^A-Za-z\d]/.test(data)) event.preventDefault();
+      });
+
+      input.addEventListener('input', () => {
+        const cleaned = sanitize(input.value);
+        if (cleaned !== input.value) input.value = cleaned;
+        renderRules(input.value);
+        if (document.activeElement === input) rulesEl.classList.remove('hidden');
+      });
+
+      input.addEventListener('paste', (event) => {
+        event.preventDefault();
+        const text = sanitize((event.clipboardData || window.clipboardData).getData('text'));
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        input.value = sanitize(input.value.slice(0, start) + text + input.value.slice(end));
+        const pos = start + text.length;
+        input.setSelectionRange(pos, pos);
+        renderRules(input.value);
+        rulesEl.classList.remove('hidden');
+      });
+
+      toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        toggle.setAttribute('aria-label', show ? 'הסתרת סיסמה' : 'הצגת סיסמה');
+        toggle.querySelector('.icon-eye').classList.toggle('hidden', show);
+        toggle.querySelector('.icon-eye-off').classList.toggle('hidden', !show);
+        input.focus();
+      });
+
+      renderRules(input.value);
+    })();
+
+    fetch('/api/auth/setup').then((r) => r.json()).then((data) => {
+      document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || 'האימייל של חשבון השירות';
+    }).catch(() => {});
+
+    async function post(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = new Error(data.error || 'שגיאה');
+        error.locked = data.locked;
+        throw error;
+      }
+      return data;
+    }
+
+    loginForm.onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('loginError').textContent = '';
+      try {
+        await post('/api/auth/login', {
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        });
+        location.href = '/manage';
+      } catch (error) {
+        document.getElementById('loginError').textContent = error.message;
+        if (error.locked) {
+          document.getElementById('unlockEmail').value = document.getElementById('email').value;
+          show(document.getElementById('unlockForm'));
+        }
+      }
+    };
+
+    document.getElementById('unlockForm').onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('unlockError').textContent = '';
+      try {
+        await post('/api/auth/unlock', {
+          email: document.getElementById('unlockEmail').value,
+          code: document.getElementById('unlockCode').value,
+        });
+        show(loginForm);
+        document.getElementById('loginError').textContent = 'החשבון נפתח. אפשר להתחבר.';
+      } catch (error) {
+        document.getElementById('unlockError').textContent = error.message;
+      }
+    };
+
+    document.getElementById('forgotForm').onsubmit = async (e) => {
+      e.preventDefault();
+      await post('/api/auth/forgot', { email: document.getElementById('forgotEmail').value });
+      document.getElementById('forgotMsg').textContent = 'אם החשבון קיים, נשלח קישור לאימייל.';
+    };
+
+    document.getElementById('resetForm').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await post('/api/auth/reset', { token: params.get('reset'), password: document.getElementById('newPassword').value });
+        show(loginForm);
+        document.getElementById('loginError').textContent = 'הסיסמה עודכנה. אפשר להתחבר.';
+      } catch (error) {
+        document.getElementById('resetError').textContent = error.message;
+      }
+    };
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('קריאת התמונה נכשלה'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    signupForm.onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('signupError').textContent = '';
+      const signupPassword = document.getElementById('sPassword').value;
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$/.test(signupPassword)) {
+        document.getElementById('signupError').textContent = 'הסיסמה לא עומדת בכללים';
+        document.getElementById('sPasswordRules').classList.remove('hidden');
+        document.getElementById('sPassword').classList.add('is-invalid');
+        document.getElementById('sPassword').focus();
+        return;
+      }
+      try {
+        const image = document.getElementById('image').files[0];
+        await post('/api/auth/register', {
+          email: document.getElementById('sEmail').value,
+          password: signupPassword,
+          brideName: document.getElementById('bride').value,
+          groomName: document.getElementById('groom').value,
+          weddingDate: document.getElementById('date').value,
+          wazeUrl: document.getElementById('waze').value,
+          mapsUrl: document.getElementById('maps').value,
+          daniellePaybox: document.getElementById('pb1').value,
+          yuvalPaybox: document.getElementById('pb2').value,
+          danielleBit: document.getElementById('bit1').value,
+          yuvalBit: document.getElementById('bit2').value,
+          guestSheetId: document.getElementById('guestSheet').value,
+          responseSheetId: document.getElementById('responseSheet').value,
+          sheetTab: document.getElementById('tab').value,
+          inviteImageDataUrl: await fileToDataUrl(image),
+        });
+        const headersRes = await fetch('/api/auth/headers');
+        const headersData = await headersRes.json();
+        if (!headersRes.ok) throw new Error(headersData.error || 'לא נמצאו כותרות');
+        const host = document.getElementById('mapFields');
+        host.innerHTML = '';
+        for (const [key, label] of fields) {
+          const row = document.createElement('div');
+          row.className = 'map-row';
+          const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+          const options = headersData.headers.map((col) => `<option value="${esc(col.letter)}">${esc(col.title)} (${esc(col.letter)})</option>`).join('');
+          row.innerHTML = `<span>${label}</span><select data-key="${key}"><option value="">—</option>${options}</select>`;
+          host.appendChild(row);
+        }
+        show(mapForm);
+      } catch (error) {
+        document.getElementById('signupError').textContent = error.message;
+      }
+    };
+
+    mapForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const columnMap = {};
+      document.querySelectorAll('#mapFields select').forEach((select) => {
+        if (select.value) columnMap[select.dataset.key] = select.value;
+      });
+      try {
+        await post('/api/auth/columns', { columnMap });
+        location.href = '/manage';
+      } catch (error) {
+        document.getElementById('mapError').textContent = error.message;
+      }
+    };
+  </script>
+</body>
+</html>

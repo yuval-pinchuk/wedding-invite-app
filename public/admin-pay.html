@@ -3,24 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payment Routing Admin</title>
+  <title>easyWed · מתנות</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    @property --bg { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    @property --surface { syntax: '<color>'; inherits: true; initial-value: #3a322e; }
+    @property --surface2 { syntax: '<color>'; inherits: true; initial-value: #6b5b54; }
+    @property --text { syntax: '<color>'; inherits: true; initial-value: #f7f4f0; }
+    @property --muted { syntax: '<color>'; inherits: true; initial-value: #c9b8af; }
+    @property --accent { syntax: '<color>'; inherits: true; initial-value: #c4a99a; }
+    @property --accent-dim { syntax: '<color>'; inherits: true; initial-value: #a89084; }
+    @property --accent-contrast { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
     :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --surface2: #334155;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --accent: #14b8a6;
-      --accent-dim: #0d9488;
-      --danger: #f43f5e;
-      --ok: #22c55e;
-      --warn: #f59e0b;
+      --bg: #2a2421;
+      --surface: #3a322e;
+      --surface2: #6b5b54;
+      --text: #f7f4f0;
+      --muted: #c9b8af;
+      --input-bg: #231e1b;
+      --accent: #c4a99a;
+      --accent-dim: #a89084;
+      --accent-contrast: #2a2421;
+      --danger: #c47b73;
+      --ok: #9aab8e;
+      --warn: #c4a574;
       --radius: 12px;
       --font: 'Heebo', 'DM Sans', system-ui, sans-serif;
+      transition:
+        --bg 0.4s ease,
+        --surface 0.4s ease,
+        --surface2 0.4s ease,
+        --text 0.4s ease,
+        --muted 0.4s ease,
+        --input-bg 0.4s ease,
+        --accent 0.4s ease,
+        --accent-dim 0.4s ease,
+        --accent-contrast 0.4s ease;
+    }
+    :root[data-theme="light"] {
+      --bg: #f7f4f0;
+      --surface: #fffcfa;
+      --surface2: #c9b8af;
+      --text: #4a3f3a;
+      --muted: #8e7c76;
+      --input-bg: #fffcfa;
+      --accent: #8e7c76;
+      --accent-dim: #6d5952;
+      --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -29,25 +61,24 @@
       color: var(--text);
       min-height: 100vh;
       line-height: 1.5;
+      transition: background-color 0.4s ease, color 0.4s ease;
     }
-    .layout { max-width: 980px; margin: 0 auto; padding: 32px 20px 48px; }
+    .layout { max-width: 980px; margin: 0 auto; padding: 64px 20px 48px; }
     header { margin-bottom: 28px; }
-    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
-    header p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
-    .nav-links { margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .nav-links a {
-      color: var(--accent);
-      text-decoration: none;
-      font-size: 0.9rem;
-      font-weight: 500;
+    header h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
     }
-    .nav-links a:hover { text-decoration: underline; }
+    header p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
     .card {
       background: var(--surface);
       border-radius: var(--radius);
       padding: 24px;
       margin-bottom: 20px;
-      border: 1px solid var(--surface2);
+      border: 2px solid var(--surface2);
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
     }
     .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
     .hint {
@@ -60,13 +91,19 @@
       width: 100%;
       padding: 12px 14px;
       border-radius: 8px;
-      border: 1px solid var(--surface2);
-      background: var(--bg);
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
       color: var(--text);
       font-family: inherit;
       font-size: 1rem;
+      font-weight: 500;
+      transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.2s ease;
     }
-    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .row .grow { flex: 1; min-width: 160px; }
     button {
@@ -77,20 +114,187 @@
       border-radius: 8px;
       border: none;
       cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, transform 0.1s;
     }
     button:active:not(:disabled) { transform: scale(0.98); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-primary { background: var(--accent); color: #042f2e; }
-    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border: 2px solid var(--accent);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-dim); }
     .btn-ghost {
+      background: var(--input-bg);
+      color: var(--accent);
+      border: 2px solid var(--accent);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, var(--input-bg));
+    }
+    .btn-danger { background: var(--danger); color: #fff; border: 2px solid var(--danger); }
+    .btn-sm { padding: 8px 12px; font-size: 0.85rem; }
+    .corner-logout {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+    .corner-logout:hover:not(:disabled) {
+      color: var(--accent-contrast);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .corner-logout svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+    .corner-menu {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+    }
+    .corner-menu:hover {
+      color: var(--accent-contrast);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .corner-menu svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+    .nav-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 290;
+      background: rgba(42, 36, 33, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.32s ease;
+    }
+    .nav-backdrop.is-open { opacity: 1; pointer-events: auto; }
+    .nav-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 300;
+      width: min(320px, 88vw);
+      height: 100%;
+      background: var(--surface);
+      border-left: 2px solid var(--surface2);
+      box-shadow: -12px 0 40px rgba(0,0,0,0.25);
+      transform: translateX(105%);
+      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 18px 28px;
+    }
+    .nav-drawer.is-open { transform: translateX(0); }
+    .nav-drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .nav-drawer-head strong {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.35rem;
+    }
+    .nav-close {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+    .nav-links {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 600;
+      padding: 14px 14px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      background: var(--bg);
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+    .nav-links a:hover { border-color: var(--accent); }
+    .nav-links a.is-active {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border-color: var(--accent);
+    }
+    .nav-theme {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--surface2);
+    }
+    .nav-theme p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .theme-switch {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      border-radius: 12px;
+      background: var(--bg);
+      border: 2px solid var(--surface2);
+      width: fit-content;
+    }
+    .theme-opt {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      border: none;
       background: transparent;
       color: var(--muted);
-      border: 1px solid var(--surface2);
+      cursor: pointer;
+      font: inherit;
     }
-    .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-sm { padding: 8px 12px; font-size: 0.85rem; }
+    .theme-opt svg { width: 18px; height: 18px; display: block; }
+    .theme-opt[aria-checked="true"] {
+      background: var(--accent);
+      color: var(--accent-contrast);
+    }
+    .theme-opt:hover:not([aria-checked="true"]) { color: var(--text); }
+    body.nav-open { overflow: hidden; }
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -114,7 +318,7 @@
     }
     .link-card.is-active {
       border-color: var(--accent);
-      box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.35);
+      box-shadow: 0 0 0 1px rgba(142, 124, 118, 0.35);
     }
     .link-card.is-full { border-color: var(--warn); }
     .link-head {
@@ -141,7 +345,7 @@
       background: var(--surface2);
       color: var(--text);
     }
-    .badge.active { background: rgba(20, 184, 166, 0.2); color: var(--accent); }
+    .badge.active { background: rgba(142, 124, 118, 0.2); color: var(--accent); }
     .badge.full { background: rgba(245, 158, 11, 0.2); color: var(--warn); }
     .progress {
       height: 8px;
@@ -173,6 +377,48 @@
     .meta .k { color: var(--muted); font-size: 0.75rem; }
     .meta .v { font-weight: 700; margin-top: 2px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .links-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .links-header h2 { margin-bottom: 0; }
+    .order-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-contrast);
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-left: 8px;
+    }
+    .add-card {
+      background: var(--bg);
+      border: 2px dashed var(--surface2);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .add-card h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .btn-danger-ghost {
+      background: var(--input-bg);
+      color: var(--danger);
+      border: 2px solid var(--danger);
+    }
+    .btn-danger-ghost:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--danger) 12%, var(--input-bg));
+    }
     .message {
       margin-top: 12px;
       padding: 12px 14px;
@@ -214,35 +460,62 @@
     .mode-pill.on {
       color: var(--accent);
       border-color: var(--accent);
-      background: rgba(20, 184, 166, 0.12);
+      background: rgba(142, 124, 118, 0.14);
     }
+    .hidden { display: none !important; }
     @media (max-width: 640px) {
       .meta { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <header>
-      <h1>ניהול מתנות / תשלומים</h1>
-      <p>מעקב אחרי סכומים, ספים, והקישור הפעיל לביט / פייבוקס</p>
-      <div class="nav-links">
-        <a href="/admin.html">← חזרה לניהול הזמנות</a>
-        <a href="/" target="_blank">דף האורחים</a>
-      </div>
-    </header>
-
-    <div class="card" id="authCard">
-      <h2>מפתח מנהל (אופציונלי)</h2>
-      <p class="hint">אם הוגדר <code>ADMIN_API_KEY</code> בשרת, הזינו אותו כאן. נשמר רק בדפדפן זה.</p>
-      <div class="row">
-        <div class="grow">
-          <label for="adminKey">Admin API Key</label>
-          <input type="password" id="adminKey" autocomplete="off" placeholder="x-admin-key">
-        </div>
-        <button type="button" class="btn-primary" id="saveKeyBtn">שמירה ורענון</button>
+  <button type="button" id="logoutBtn" class="corner-logout" title="יציאה" aria-label="יציאה למסך התחברות" onclick="void logoutToLogin()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+  <button type="button" id="navMenuBtn" class="corner-menu" aria-label="תפריט" aria-expanded="false" aria-controls="navDrawer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <line x1="4" y1="7" x2="20" y2="7"/>
+      <line x1="4" y1="12" x2="20" y2="12"/>
+      <line x1="4" y1="17" x2="20" y2="17"/>
+    </svg>
+  </button>
+  <div id="navBackdrop" class="nav-backdrop" hidden></div>
+  <aside id="navDrawer" class="nav-drawer" aria-hidden="true">
+    <div class="nav-drawer-head">
+      <strong>easyWed</strong>
+      <button type="button" class="nav-close" id="navCloseBtn" aria-label="סגירת תפריט">×</button>
+    </div>
+    <nav class="nav-links">
+      <a href="/manage" data-nav="home">בית</a>
+      <a href="/manage/invites" data-nav="invites">שליחת הזמנות</a>
+      <a href="/manage/pay" data-nav="pay" class="is-active">מתנות</a>
+    </nav>
+    <div class="nav-theme">
+      <p>מצב תצוגה</p>
+      <div class="theme-switch" role="radiogroup" aria-label="מצב תצוגה">
+        <button type="button" class="theme-opt" role="radio" data-theme-value="light" aria-checked="false" title="מצב בהיר" aria-label="מצב בהיר">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <button type="button" class="theme-opt" role="radio" data-theme-value="dark" aria-checked="false" title="מצב כהה" aria-label="מצב כהה">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/>
+          </svg>
+        </button>
       </div>
     </div>
+  </aside>
+  <div class="layout">
+    <header>
+      <h1>easyWed</h1>
+      <p>ניהול מתנות — סכומים, ספים והקישור הפעיל לביט / פייבוקס</p>
+    </header>
 
     <div class="card">
       <h2>מצב נוכחי</h2>
@@ -254,14 +527,52 @@
         <button type="button" class="btn-ghost btn-sm" id="refreshBtn">רענון</button>
       </div>
       <p class="hint">
-        בניתוב אוטומטי: Danielle PayBox → Yuval PayBox → Danielle Bit → Yuval Bit.
-        כשקישור מגיע לסף שלו, האורח הבא מועבר לקישור הבא.
+        בניתוב אוטומטי הסדר הוא לפי רשימת הקישורים למטה (מלמעלה למטה).
+        כשקישור מגיע לסף שלו, האורח הבא מועבר לקישור הבא. סכומים מ־₪1,000 ומעלה דורשים קישור Bit.
       </p>
       <div class="message" id="message"></div>
     </div>
 
     <div class="card">
-      <h2>קישורים</h2>
+      <div class="links-header">
+        <h2>קישורים</h2>
+        <button type="button" class="btn-primary btn-sm" id="toggleAddBtn">הוספת קישור</button>
+      </div>
+      <p class="hint">עריכה, מחיקה, והזזה למעלה/למטה משנים את סדר הניתוב האוטומטי.</p>
+      <div class="add-card hidden" id="addCard">
+        <h3>קישור חדש</h3>
+        <div class="row">
+          <div class="grow">
+            <label for="addLabel">שם לתצוגה</label>
+            <input id="addLabel" type="text" placeholder="לדוגמה: PayBox של דניאל">
+          </div>
+          <div class="grow">
+            <label for="addProvider">סוג</label>
+            <select id="addProvider">
+              <option value="paybox">PayBox</option>
+              <option value="bit">Bit</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div class="grow">
+            <label for="addUrl">קישור</label>
+            <input id="addUrl" type="url" placeholder="https://...">
+          </div>
+          <div class="grow">
+            <label for="addThreshold">סף</label>
+            <input id="addThreshold" type="number" min="0" step="1" value="10000">
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div class="grow">
+            <label for="addOwner">בעלים (אופציונלי)</label>
+            <input id="addOwner" type="text" placeholder="danielle / yuval / אחר">
+          </div>
+          <button type="button" class="btn-primary btn-sm" id="addLinkBtn">שמירת קישור חדש</button>
+          <button type="button" class="btn-ghost btn-sm" id="cancelAddBtn">ביטול</button>
+        </div>
+      </div>
       <div class="links" id="links"></div>
     </div>
 
@@ -273,8 +584,6 @@
   </div>
 
   <script>
-    const KEY_STORAGE = 'wedding_admin_pay_key';
-    const adminKeyInput = document.getElementById('adminKey');
     const messageEl = document.getElementById('message');
     const statsEl = document.getElementById('stats');
     const linksEl = document.getElementById('links');
@@ -282,7 +591,47 @@
     const modeAuto = document.getElementById('modeAuto');
     const modeManual = document.getElementById('modeManual');
 
-    adminKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || '';
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('adminTheme', next);
+      document.querySelectorAll('.theme-opt').forEach((btn) => {
+        btn.setAttribute('aria-checked', btn.dataset.themeValue === next ? 'true' : 'false');
+      });
+    }
+    async function logoutToLogin() {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* still leave */ }
+      window.location.assign('/login');
+    }
+    applyTheme(localStorage.getItem('adminTheme') || 'dark');
+    document.querySelectorAll('.theme-opt').forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.themeValue));
+    });
+    document.getElementById('logoutBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      void logoutToLogin();
+    });
+
+    const navBtn = document.getElementById('navMenuBtn');
+    const navDrawer = document.getElementById('navDrawer');
+    const navBackdrop = document.getElementById('navBackdrop');
+    const navCloseBtn = document.getElementById('navCloseBtn');
+    function setNavOpen(open) {
+      navDrawer.classList.toggle('is-open', open);
+      navBackdrop.classList.toggle('is-open', open);
+      navBackdrop.hidden = !open;
+      navDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('nav-open', open);
+    }
+    navBtn.addEventListener('click', () => setNavOpen(true));
+    navCloseBtn.addEventListener('click', () => setNavOpen(false));
+    navBackdrop.addEventListener('click', () => setNavOpen(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    });
 
     function showMessage(text, ok = true) {
       messageEl.textContent = text;
@@ -294,10 +643,7 @@
     }
 
     function adminHeaders(extra = {}) {
-      const headers = { ...extra };
-      const key = (adminKeyInput.value || '').trim();
-      if (key) headers['x-admin-key'] = key;
-      return headers;
+      return { ...extra };
     }
 
     async function api(path, options = {}) {
@@ -307,6 +653,7 @@
         headers: adminHeaders(options.headers || {}),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) location.href = '/login';
       if (!res.ok || data.success === false) {
         throw new Error(data.error || ('HTTP ' + res.status));
       }
@@ -324,15 +671,16 @@
         <div class="stat"><div class="label">מצב</div><div class="value" style="font-size:1rem">${status.mode === 'auto' ? 'אוטומטי' : 'ידני'}</div></div>
       `;
 
-      linksEl.innerHTML = status.links.map((link) => {
+      linksEl.innerHTML = status.links.map((link, index) => {
         const pct = link.threshold > 0
           ? Math.min(100, Math.round((link.currentSum / link.threshold) * 100))
           : 0;
+        const canRemove = status.links.length > 1;
         return `
-          <div class="link-card ${link.isActive ? 'is-active' : ''} ${link.isFull ? 'is-full' : ''}" data-id="${link.id}">
+          <div class="link-card ${link.isActive ? 'is-active' : ''} ${link.isFull ? 'is-full' : ''}" data-id="${escapeHtml(link.id)}">
             <div class="link-head">
               <div>
-                <div class="link-title">${escapeHtml(link.label)}</div>
+                <div class="link-title"><span class="order-badge">${index + 1}</span>${escapeHtml(link.label)}</div>
                 <div class="link-url">${escapeHtml(link.url)}</div>
               </div>
               <div class="badges">
@@ -349,6 +697,29 @@
             <div class="progress ${link.isFull ? 'full' : ''}"><span style="width:${pct}%"></span></div>
             <div class="row">
               <div class="grow">
+                <label>שם</label>
+                <input type="text" class="field-label" value="${escapeHtml(link.label)}">
+              </div>
+              <div class="grow">
+                <label>סוג</label>
+                <select class="field-provider">
+                  <option value="paybox" ${link.provider === 'paybox' ? 'selected' : ''}>PayBox</option>
+                  <option value="bit" ${link.provider === 'bit' ? 'selected' : ''}>Bit</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <div class="grow">
+                <label>קישור</label>
+                <input type="text" class="field-url" value="${escapeHtml(link.url)}">
+              </div>
+              <div class="grow">
+                <label>בעלים</label>
+                <input type="text" class="field-owner" value="${escapeHtml(link.owner || '')}">
+              </div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <div class="grow">
                 <label>סכום נוכחי</label>
                 <input type="number" min="0" step="1" class="field-sum" value="${link.currentSum}">
               </div>
@@ -356,7 +727,7 @@
                 <label>סף</label>
                 <input type="number" min="0" step="1" class="field-threshold" value="${link.threshold}">
               </div>
-              <button type="button" class="btn-primary btn-sm btn-save">שמירת ערכים</button>
+              <button type="button" class="btn-primary btn-sm btn-save">שמירת שינויים</button>
             </div>
             <div class="row" style="margin-top:12px">
               <div class="grow">
@@ -370,9 +741,12 @@
               <button type="button" class="btn-ghost btn-sm btn-adjust">החל התאמה</button>
             </div>
             <div class="actions">
+              <button type="button" class="btn-ghost btn-sm btn-move-up" ${index === 0 ? 'disabled' : ''} title="הזז למעלה בסדר">↑ למעלה</button>
+              <button type="button" class="btn-ghost btn-sm btn-move-down" ${index === status.links.length - 1 ? 'disabled' : ''} title="הזז למטה בסדר">↓ למטה</button>
               <button type="button" class="btn-primary btn-sm btn-activate" ${link.isActive && status.mode === 'manual' ? 'disabled' : ''}>
                 הפוך לקישור הפעיל
               </button>
+              <button type="button" class="btn-danger-ghost btn-sm btn-remove" ${canRemove ? '' : 'disabled'}>מחיקה</button>
             </div>
           </div>
         `;
@@ -410,14 +784,19 @@
         const linkId = card.dataset.id;
         card.querySelector('.btn-save').addEventListener('click', async () => {
           try {
-            const currentSum = Number(card.querySelector('.field-sum').value);
-            const threshold = Number(card.querySelector('.field-threshold').value);
             await api('/api/admin/pay/links/' + encodeURIComponent(linkId), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ currentSum, threshold }),
+              body: JSON.stringify({
+                label: card.querySelector('.field-label').value,
+                url: card.querySelector('.field-url').value,
+                provider: card.querySelector('.field-provider').value,
+                owner: card.querySelector('.field-owner').value,
+                currentSum: Number(card.querySelector('.field-sum').value),
+                threshold: Number(card.querySelector('.field-threshold').value),
+              }),
             });
-            showMessage('הערכים נשמרו');
+            showMessage('הקישור עודכן');
             await load();
           } catch (error) {
             showMessage(error.message, false);
@@ -453,6 +832,45 @@
             showMessage(error.message, false);
           }
         });
+
+        card.querySelector('.btn-move-up').addEventListener('click', async () => {
+          try {
+            await api('/api/admin/pay/links/' + encodeURIComponent(linkId) + '/move', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ direction: 'up' }),
+            });
+            showMessage('הסדר עודכן');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
+
+        card.querySelector('.btn-move-down').addEventListener('click', async () => {
+          try {
+            await api('/api/admin/pay/links/' + encodeURIComponent(linkId) + '/move', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ direction: 'down' }),
+            });
+            showMessage('הסדר עודכן');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
+
+        card.querySelector('.btn-remove').addEventListener('click', async () => {
+          if (!confirm('למחוק את הקישור הזה?')) return;
+          try {
+            await api('/api/admin/pay/links/' + encodeURIComponent(linkId), { method: 'DELETE' });
+            showMessage('הקישור נמחק');
+            await load();
+          } catch (error) {
+            showMessage(error.message, false);
+          }
+        });
       });
     }
 
@@ -482,12 +900,6 @@
       }
     }
 
-    document.getElementById('saveKeyBtn').addEventListener('click', async () => {
-      sessionStorage.setItem(KEY_STORAGE, adminKeyInput.value.trim());
-      showMessage('המפתח נשמר');
-      await load();
-    });
-
     document.getElementById('refreshBtn').addEventListener('click', () => load());
 
     document.getElementById('setAutoBtn').addEventListener('click', async () => {
@@ -498,6 +910,38 @@
           body: JSON.stringify({ mode: 'auto' }),
         });
         showMessage('חזרה לניתוב אוטומטי');
+        await load();
+      } catch (error) {
+        showMessage(error.message, false);
+      }
+    });
+
+    const addCard = document.getElementById('addCard');
+    document.getElementById('toggleAddBtn').addEventListener('click', () => {
+      addCard.classList.toggle('hidden');
+    });
+    document.getElementById('cancelAddBtn').addEventListener('click', () => {
+      addCard.classList.add('hidden');
+    });
+    document.getElementById('addLinkBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/admin/pay/links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: document.getElementById('addLabel').value,
+            url: document.getElementById('addUrl').value,
+            provider: document.getElementById('addProvider').value,
+            owner: document.getElementById('addOwner').value,
+            threshold: Number(document.getElementById('addThreshold').value),
+          }),
+        });
+        document.getElementById('addLabel').value = '';
+        document.getElementById('addUrl').value = '';
+        document.getElementById('addOwner').value = '';
+        document.getElementById('addThreshold').value = '10000';
+        addCard.classList.add('hidden');
+        showMessage('הקישור נוסף');
         await load();
       } catch (error) {
         showMessage(error.message, false);

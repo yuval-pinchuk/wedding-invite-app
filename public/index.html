@@ -9,28 +9,28 @@
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --cream: #FAF7F2;
-      --cream-dark: #F0EBE3;
-      --text: #3D3630;
-      --text-muted: #7A7168;
-      --accent: #C4A574;
-      --accent-dark: #A88B5E;
-      --envelope: #E8DFD0;
-      --envelope-flap: #DDD4C4;
+      --cream: #f7f4f0;
+      --cream-dark: #ebe4dc;
+      --text: #4a3f3a;
+      --text-muted: #8e7c76;
+      --accent: #8e7c76;
+      --accent-dark: #6d5952;
+      --envelope: #ebe4dc;
+      --envelope-flap: #ddd2c8;
       --error-bg: #FDF0EE;
       --error-text: #8B3A32;
-      --success-bg: #EEF5EE;
-      --success-text: #2D5A32;
-      --attend-green: #6B9B7A;
-      --attend-green-bg: #E8F2EB;
-      --attend-green-border: #A8C9B2;
+      --success-bg: #f3eee8;
+      --success-text: #6d5952;
+      --attend-green: #8e7c76;
+      --attend-green-bg: #f3eee8;
+      --attend-green-border: #c9b8af;
       --decline-red: #C47B73;
       --decline-red-bg: #F7EDEC;
       --decline-red-border: #E0B5B0;
       --radius: 14px;
       --font: 'Heebo', system-ui, sans-serif;
       --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
-      --header-h: 96px;
+      --header-h: 118px;
       --hint-h: 112px;
     }
 
@@ -100,14 +100,19 @@
       text-transform: none;
     }
 
-    .page-header-names {
+    .page-header-bride,
+    .page-header-groom {
       font-family: Tahoma, Geneva, sans-serif;
       font-size: clamp(1.28rem, 4.4vw, 1.7rem);
       font-weight: 400;
       color: var(--text);
-      line-height: 1.05;
+      line-height: 1.1;
       letter-spacing: 0.04em;
       margin-top: 4px;
+    }
+
+    .page-header-groom {
+      margin-top: 2px;
     }
 
     .page-header-date {
@@ -1304,14 +1309,16 @@
     <p id="gateErrorText"></p>
   </div>
 
+  <header class="page-header" aria-label="כותרת האירוע">
+    <div class="page-header-inner">
+      <p class="page-header-kicker">החתונה של</p>
+      <p class="page-header-bride" id="headerBride"></p>
+      <p class="page-header-groom" id="headerGroom"></p>
+      <p class="page-header-date" id="headerDate"></p>
+    </div>
+  </header>
+
   <div id="mainContent" class="hidden">
-    <header class="page-header" aria-label="כותרת האירוע">
-      <div class="page-header-inner">
-        <p class="page-header-kicker">החתונה של</p>
-        <p class="page-header-names">דניאל ויובל</p>
-        <p class="page-header-date">14.10.26</p>
-      </div>
-    </header>
     <div id="sectionsViewport" class="sections-viewport">
       <section class="page-section is-active" data-section="0" aria-label="הזמנה">
         <div class="section-inner no-scroll">
@@ -1482,6 +1489,42 @@
   <script>
     let guestName = '';
     let guestPhone = '';
+    let inviteToken = '';
+
+    function inviteTokenFromLocation() {
+      const match = window.location.pathname.match(/^\/i\/([^/]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    async function applyWeddingProfile() {
+      inviteToken = inviteTokenFromLocation();
+      const query = inviteToken ? `?token=${encodeURIComponent(inviteToken)}` : '';
+      try {
+        const res = await fetch(`/api/public/wedding${query}`);
+        const data = await res.json();
+        if (!data.success) return;
+        if (!inviteToken && data.token) inviteToken = data.token;
+        const brideEl = document.getElementById('headerBride');
+        const groomEl = document.getElementById('headerGroom');
+        const dateEl = document.getElementById('headerDate');
+        if (brideEl) brideEl.textContent = data.brideName || '';
+        if (groomEl) groomEl.textContent = data.groomName || '';
+        if (dateEl && data.weddingDate) {
+          const match = String(data.weddingDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          dateEl.textContent = match ? `${match[3]}.${match[2]}.${match[1].slice(2)}` : data.weddingDate;
+        }
+        const names = [data.brideName, data.groomName].filter(Boolean).join(' ו');
+        if (names) document.title = `החתונה של ${names}`;
+        const image = document.querySelector('.invite-card img');
+        if (image && data.imageUrl) image.src = data.imageUrl;
+        const waze = document.querySelector('a[aria-label="ניווט ב-Waze"]');
+        const maps = document.querySelector('a[aria-label="מיקום ב-Google Maps"]');
+        if (waze && data.wazeUrl) waze.href = data.wazeUrl;
+        if (maps && data.mapsUrl) maps.href = data.mapsUrl;
+      } catch (error) {
+        console.error('wedding profile', error);
+      }
+    }
     let existingRsvp = null;
     let navigateToSection = null;
 
@@ -2012,6 +2055,7 @@
           body: JSON.stringify({
             amount,
             guestPhone,
+            inviteToken,
             guestName,
           }),
         });
@@ -2140,6 +2184,7 @@
       const data = {
         name: guestName,
         phone: guestPhone,
+        inviteToken,
         isAttending,
         numberOfGuests,
         numberOfBabies,
@@ -2191,6 +2236,8 @@
     });
 
     async function init() {
+      void applyWeddingProfile();
+
       const urlParams = new URLSearchParams(window.location.search);
       const phoneParam = urlParams.get('phone');
 
@@ -2200,9 +2247,11 @@
       }
 
       guestPhone = phoneParam;
+      await applyWeddingProfile();
 
       try {
-        const response = await fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}`);
+        const tokenQuery = inviteToken ? `?token=${encodeURIComponent(inviteToken)}` : '';
+        const response = await fetch(`/api/rsvp/guest/${encodeURIComponent(phoneParam)}${tokenQuery}`);
         const result = await response.json();
 
         if (!result.success || !result.guest) {

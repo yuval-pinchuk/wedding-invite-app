@@ -9,14 +9,20 @@ import {
   sendWhatsAppInvitation,
   sendWhatsAppText,
   renderReminderTemplate,
-  DEFAULT_RSVP_REMINDER_TEMPLATE,
+  defaultReminderTemplate,
   getRsvpBaseUrl,
   getQRCode,
   getStatus,
   getClient,
   destroySession,
   baileysPairingToQrDataUrl,
+  getSendPacingConfig,
+  sleepBatchPause,
+  estimateSendRemainingMs,
 } from '../services/whatsapp.js';
+import { requireAccount } from '../services/sessions.js';
+import { getPaymentStatus } from '../services/paymentRouting.js';
+import { publicAccount } from '../services/accounts.js';
 const router = express.Router();
 
 router.use((_req, res, next) => {
@@ -24,22 +30,7 @@ router.use((_req, res, next) => {
   next();
 });
 
-function requireAdminKey(req, res, next) {
-  const expected = (process.env.ADMIN_API_KEY || '').trim();
-  if (!expected) {
-    return next();
-  }
-  const provided = String(req.get('x-admin-key') || req.query.key || '').trim();
-  if (provided !== expected) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized. Provide a valid x-admin-key header.',
-    });
-  }
-  return next();
-}
-
-router.use(requireAdminKey);
+router.use(requireAccount);
 
 /** @type {Map<string, object>} job id → in-memory reminder send */
 const sendJobs = new Map();
@@ -62,6 +53,7 @@ function publicSendJob(job) {
     currentName: job.currentName,
     currentPhone: job.currentPhone,
     whatsappSentAt: job.whatsappSentAt,
+    remainingMsEstimate: job.remainingMsEstimate,
     error: job.error,
   };
 }
@@ -125,6 +117,85 @@ router.get('/senders', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get senders',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/dashboard — aggregate guest + payment stats for the home page.
+ */
+router.get('/dashboard', async (req, res) => {
+  try {
+    const guestSheetId = envGuestSheetId();
+    let guests = [];
+    if (guestSheetId) {
+      try {
+        guests = await getGuestList(guestSheetId);
+      } catch (error) {
+        console.error('[admin/dashboard] guests', error);
+      }
+    }
+
+    let attending = 0;
+    let notAttending = 0;
+    let pendingRsvp = 0;
+    let waSent = 0;
+    let waUnsent = 0;
+    let withPhone = 0;
+
+    for (const guest of guests) {
+      const hasPhone = Boolean(String(guest.phoneTo || '').trim());
+      if (hasPhone) withPhone += 1;
+
+      const raw = String(guest.rsvpGuestCount || '').trim();
+      if (!raw) pendingRsvp += 1;
+      else if (raw === '0') notAttending += 1;
+      else attending += 1;
+
+      if (hasPhone) {
+        if (hasWhatsappSent(guest)) waSent += 1;
+        else waUnsent += 1;
+      }
+    }
+
+    let payment = {
+      totalReceived: 0,
+      totalCapacity: 0,
+      activeLinkLabel: '',
+      mode: 'auto',
+    };
+    try {
+      const status = getPaymentStatus();
+      const active = (status.links || []).find((l) => l.isActive);
+      payment = {
+        totalReceived: status.totalReceived || 0,
+        totalCapacity: status.totalCapacity || 0,
+        activeLinkLabel: active?.label || '',
+        mode: status.mode || 'auto',
+      };
+    } catch (error) {
+      console.error('[admin/dashboard] payment', error);
+    }
+
+    res.json({
+      success: true,
+      account: publicAccount(req.account),
+      guests: {
+        total: guests.length,
+        withPhone,
+        attending,
+        notAttending,
+        pendingRsvp,
+        waSent,
+        waUnsent,
+      },
+      payment,
+    });
+  } catch (error) {
+    console.error('[admin/dashboard]', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to load dashboard',
     });
   }
 });
@@ -437,12 +508,15 @@ async function persistWhatsappSent(spreadsheetId, phone) {
 async function sendInvitationsSequential(sender, guests, afterEach, options = {}) {
   await waitForReady(sender, SEND_READY_TIMEOUT_MS);
   const spreadsheetId = options.spreadsheetId || envGuestSheetId();
+  const { batchSize } = getSendPacingConfig();
   const summary = {
     total: guests.length,
     successful: 0,
     failed: 0,
+    skipped: 0,
     details: [],
   };
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
@@ -462,11 +536,31 @@ async function sendInvitationsSequential(sender, guests, afterEach, options = {}
     let whatsappSentAt = '';
     if (result.success) {
       summary.successful++;
+      consecutiveFailures = 0;
       whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone);
       console.log(`[send-invitations] OK ${guest.name || ''} ${phone}`);
+      if (summary.successful % batchSize === 0 && i < guests.length - 1) {
+        await sleepBatchPause();
+      }
+    } else if (result.skipped) {
+      summary.skipped++;
+      consecutiveFailures = 0;
+      console.log(`[send-invitations] SKIP ${guest.name || ''} ${phone}: ${result.error || 'skipped'}`);
     } else {
       summary.failed++;
+      consecutiveFailures += 1;
       console.log(`[send-invitations] ERR ${guest.name || ''} ${phone}: ${result.error || 'failed'}`);
+      if (consecutiveFailures >= 5) {
+        const stopped = new Error('Stopped after 5 consecutive send failures. Check the WhatsApp session.');
+        summary.details.push({
+          name: guest.name,
+          phone,
+          ...result,
+          whatsappSentAt,
+        });
+        afterEach?.(i + 1, guest, summary);
+        throw stopped;
+      }
     }
     summary.details.push({
       name: guest.name,
@@ -568,6 +662,7 @@ router.post('/send-invitations', async (req, res) => {
 async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afterEach, options = {}) {
   await waitForReady(sender, SEND_READY_TIMEOUT_MS);
   const spreadsheetId = options.spreadsheetId || envGuestSheetId();
+  const { batchSize } = getSendPacingConfig();
   const summary = {
     total: guests.length,
     successful: 0,
@@ -575,6 +670,7 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
     skipped: 0,
     details: [],
   };
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
@@ -616,11 +712,30 @@ async function sendRsvpRemindersSequential(sender, guests, messageTemplate, afte
     let whatsappSentAt = '';
     if (result.success) {
       summary.successful++;
+      consecutiveFailures = 0;
       whatsappSentAt = await persistWhatsappSent(spreadsheetId, phone);
       console.log(`[send-rsvp-reminders] OK ${guest.name || ''} ${phone}`);
+      if (summary.successful % batchSize === 0 && i < guests.length - 1) {
+        await sleepBatchPause();
+      }
+    } else if (result.skipped) {
+      summary.skipped++;
+      consecutiveFailures = 0;
+      console.log(`[send-rsvp-reminders] SKIP ${guest.name || ''} ${phone}: ${result.error || 'skipped'}`);
     } else {
       summary.failed++;
+      consecutiveFailures += 1;
       console.log(`[send-rsvp-reminders] ERR ${guest.name || ''} ${phone}: ${result.error || 'failed'}`);
+      if (consecutiveFailures >= 5) {
+        summary.details.push({
+          name: guest.name,
+          phone,
+          ...result,
+          whatsappSentAt,
+        });
+        afterEach?.(i + 1, guest, summary);
+        throw new Error('Stopped after 5 consecutive send failures. Check the WhatsApp session.');
+      }
     }
     summary.details.push({
       name: guest.name,
@@ -649,6 +764,10 @@ function runReminderJob(job, guests, messageTemplate, options) {
       job.lastName = guest.name || guest.fullName || '';
       job.lastSuccess = Boolean(lastDetail.success);
       job.whatsappSentAt = lastDetail.whatsappSentAt || '';
+      job.remainingMsEstimate = estimateSendRemainingMs(
+        Math.max(0, summary.total - completed),
+        summary.successful,
+      );
     },
     {
       ...options,
@@ -691,12 +810,14 @@ router.get('/send-jobs/:id', (req, res) => {
 });
 
 router.get('/rsvp-reminder-defaults', (_req, res) => {
+  const pacing = getSendPacingConfig();
   res.json({
     success: true,
-    template: DEFAULT_RSVP_REMINDER_TEMPLATE,
+    template: defaultReminderTemplate(),
     placeholders: ['{{greeting}}', '{{name}}', '{{fullName}}', '{{link}}'],
     rsvpBaseUrl: getRsvpBaseUrl(),
-    authRequired: Boolean((process.env.ADMIN_API_KEY || '').trim()),
+    authRequired: true,
+    pacing,
   });
 });
 
@@ -808,6 +929,7 @@ router.post('/send-rsvp-reminders', async (req, res) => {
         currentName: '',
         currentPhone: '',
         whatsappSentAt: '',
+        remainingMsEstimate: estimateSendRemainingMs(targetGuests.length, 0),
         error: '',
         finishedAt: 0,
       };

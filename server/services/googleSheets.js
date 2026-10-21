@@ -1,4 +1,61 @@
 import { google } from 'googleapis';
+import { currentAccount } from './accountContext.js';
+
+export const DEFAULT_COLUMN_MAP = {
+  firstName: 'A',
+  familyName: 'B',
+  phone: '',
+  addons: 'L',
+  rsvpCount: 'H',
+  remarks: 'M',
+  whatsappSent: 'N',
+  sender: 'O',
+  giftAmount: 'P',
+  giftLink: 'Q',
+};
+
+function columnMap() {
+  return { ...DEFAULT_COLUMN_MAP, ...(currentAccount()?.columnMap || {}) };
+}
+
+function guestTab() {
+  return String(currentAccount()?.sheetTab || 'חתונה').trim() || 'חתונה';
+}
+
+function letterIndex(letter) {
+  const text = String(letter || '').trim().toUpperCase();
+  if (!/^[A-Z]+$/.test(text)) return -1;
+  let n = 0;
+  for (const ch of text) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+export function indexToColumnLetter(index) {
+  let n = index + 1;
+  let out = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+function cellAt(row, key) {
+  const index = letterIndex(columnMap()[key]);
+  if (index < 0) return '';
+  return row[index] ?? '';
+}
+
+function rangeFor(key, rowNumber) {
+  const letter = String(columnMap()[key] || '').trim().toUpperCase();
+  if (!letter) throw new Error(`Column ${key} is not mapped`);
+  return `${guestTab()}!${letter}${rowNumber}`;
+}
+
+function guestReadRange() {
+  return `${guestTab()}!A:ZZ`;
+}
 
 let sheets = null;
 let auth = null;
@@ -113,6 +170,17 @@ async function fetchSheetRows(spreadsheetId, range) {
   return response.data.values || [];
 }
 
+/** First row headlines for the column-mapping step. */
+export async function readHeaderRow(spreadsheetId, tab) {
+  const name = String(tab || guestTab()).trim();
+  const rows = await fetchSheetRows(spreadsheetId, `${name}!1:1`);
+  const header = rows[0] || [];
+  return header.map((cell, index) => ({
+    letter: indexToColumnLetter(index),
+    title: String(cell || '').trim(),
+  })).filter((column) => column.title);
+}
+
 /**
  * Map data rows (excluding header) to guest objects; does not filter by name/phone.
  * @param {string[][]} rows full sheet including row 0 = header
@@ -122,20 +190,22 @@ function mapDataRowsToGuests(rows) {
     return [];
   }
   return rows.slice(1).map((row, index) => {
-    const firstName = (row[0] || '').trim();
-    const familyName = (row[1] || '').trim();
+    const firstName = String(cellAt(row, 'firstName') || '').trim();
+    const familyName = String(cellAt(row, 'familyName') || '').trim();
     const fullName = [firstName, familyName].filter((n) => n).join(' ').trim();
+    const mappedPhone = String(cellAt(row, 'phone') || '').trim();
+    const sent = String(cellAt(row, 'whatsappSent') || '').trim();
     return {
       rowNumber: index + 2,
       name: firstName,
       fullName: fullName || firstName,
-      addons: row[11] || '',
-      sendConfirmation: (row[13] || '').toString().trim(),
-      sender: row[14] || '',
-      whatsappSentAt: (row[13] || '').toString().trim(),
-      phoneTo: findPhoneNumber(row),
-      rsvpGuestCount: (row[7] || '').toString().trim(),
-      rsvpRemarks: (row[12] || '').toString().trim(),
+      addons: cellAt(row, 'addons') || '',
+      sendConfirmation: sent,
+      sender: cellAt(row, 'sender') || '',
+      whatsappSentAt: sent,
+      phoneTo: mappedPhone || findPhoneNumber(row),
+      rsvpGuestCount: String(cellAt(row, 'rsvpCount') || '').trim(),
+      rsvpRemarks: String(cellAt(row, 'remarks') || '').trim(),
     };
   });
 }
@@ -228,15 +298,6 @@ export function parseStoredRsvp(guest) {
   };
 }
 
-/** Guest list worksheet name (must match the Google Sheet tab exactly). */
-const GUEST_SHEET_TAB = 'חתונה';
-
-/** Response log worksheet name (separate GOOGLE_RESPONSE_SHEET_ID spreadsheet). */
-const RESPONSE_SHEET_TAB = 'חתונה';
-
-/** Read wide enough for phone cells placed after column O (API omits trailing empties only). */
-const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
-
 /**
  * Read guest list from Google Sheet with Hebrew columns
  * Column A: First name (Hebrew)
@@ -248,7 +309,7 @@ const GUEST_SHEET_READ_RANGE = `${GUEST_SHEET_TAB}!A:Z`;
  * Column P: gift total (number). Column Q: payment link label
  * Phone number: detected by scanning the row (often in a column after O)
  */
-export async function getGuestList(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
+export async function getGuestList(spreadsheetId, range = guestReadRange()) {
   try {
     const rows = await fetchSheetRows(spreadsheetId, range);
     if (rows.length === 0) {
@@ -294,7 +355,7 @@ function findPhoneNumber(row) {
  * Unique senders from column O on every data row.
  * (Do not derive from getGuestList: that drops rows without name+phone, which would hide senders.)
  */
-export async function getSenders(spreadsheetId, range = GUEST_SHEET_READ_RANGE) {
+export async function getSenders(spreadsheetId, range = guestReadRange()) {
   const rows = await fetchSheetRows(spreadsheetId, range);
   if (rows.length <= 1) {
     return [];
@@ -305,7 +366,7 @@ export async function getSenders(spreadsheetId, range = GUEST_SHEET_READ_RANGE) 
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const raw = row[14];
+    const raw = cellAt(row, 'sender');
     const s = (raw !== undefined && raw !== null ? String(raw) : '').trim();
     if (!s) {
       continue;
@@ -323,7 +384,7 @@ export async function getSenders(spreadsheetId, range = GUEST_SHEET_READ_RANGE) 
 /**
  * Get guest information by phone number
  */
-export async function getGuestByPhone(spreadsheetId, phone, range = GUEST_SHEET_READ_RANGE) {
+export async function getGuestByPhone(spreadsheetId, phone, range = guestReadRange()) {
   if (!sheets) {
     await configureSheets();
   }
@@ -373,7 +434,7 @@ function findGuestRowIndexInRows(rows, phone) {
  * @param {string} [range]
  * @returns {Promise<number>} Row index in rows array, or -1
  */
-async function findGuestRowIndexByPhone(spreadsheetId, phone, range = GUEST_SHEET_READ_RANGE) {
+async function findGuestRowIndexByPhone(spreadsheetId, phone, range = guestReadRange()) {
   const rows = await fetchSheetRows(spreadsheetId, range);
   return findGuestRowIndexInRows(rows, phone);
 }
@@ -433,8 +494,8 @@ export async function updateGuestRsvpOnGuestSheet(
       resource: {
         valueInputOption: 'RAW',
         data: [
-          { range: `${GUEST_SHEET_TAB}!H${rowNumber}`, values: [[columnH]] },
-          { range: `${GUEST_SHEET_TAB}!M${rowNumber}`, values: [[columnM]] },
+          { range: rangeFor('rsvpCount', rowNumber), values: [[columnH]] },
+          { range: rangeFor('remarks', rowNumber), values: [[columnM]] },
         ],
       },
     });
@@ -505,19 +566,21 @@ export async function addGuestGiftAmount(spreadsheetId, phone, amount, linkLabel
   const rowNumber = guest.rowNumber;
   const current = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${GUEST_SHEET_TAB}!P${rowNumber}:Q${rowNumber}`,
+    range: `${guestTab()}!A${rowNumber}:ZZ${rowNumber}`,
   });
   const cells = current.data.values?.[0] || [];
-  const total = parseGiftAmountCell(cells[0]) + payment;
-  const links = mergeGiftLinkLabel(cells[1], linkLabel);
+  const amountIndex = letterIndex(columnMap().giftAmount);
+  const linkIndex = letterIndex(columnMap().giftLink);
+  const total = parseGiftAmountCell(amountIndex >= 0 ? cells[amountIndex] : 0) + payment;
+  const links = mergeGiftLinkLabel(linkIndex >= 0 ? cells[linkIndex] : '', linkLabel);
 
   await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
     resource: {
       valueInputOption: 'USER_ENTERED',
       data: [
-        { range: `${GUEST_SHEET_TAB}!P${rowNumber}`, values: [[total]] },
-        { range: `${GUEST_SHEET_TAB}!Q${rowNumber}`, values: [[links]] },
+        { range: rangeFor('giftAmount', rowNumber), values: [[total]] },
+        { range: rangeFor('giftLink', rowNumber), values: [[links]] },
       ],
     },
   });
@@ -529,7 +592,7 @@ export async function addGuestGiftAmount(spreadsheetId, phone, amount, linkLabel
 /**
  * Update send confirmation status for a guest (remove from send list)
  */
-export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = GUEST_SHEET_READ_RANGE) {
+export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = guestReadRange()) {
   if (!sheets) {
     await configureSheets();
   }
@@ -544,7 +607,7 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${GUEST_SHEET_TAB}!N${rowNumber}`,
+      range: rangeFor('whatsappSent', rowNumber),
       valueInputOption: 'RAW',
       resource: {
         values: [[shouldSend ? WHATSAPP_SENT_MARK : '']],
@@ -565,7 +628,7 @@ export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = 
  * @param {string} [range]
  * @returns {Promise<{ success: true, cleared: number, phones: string[] }>}
  */
-export async function clearWhatsappSentMarks(spreadsheetId, phones, range = GUEST_SHEET_READ_RANGE) {
+export async function clearWhatsappSentMarks(spreadsheetId, phones, range = guestReadRange()) {
   if (!sheets) {
     await configureSheets();
   }
@@ -586,7 +649,7 @@ export async function clearWhatsappSentMarks(spreadsheetId, phones, range = GUES
         continue;
       }
       data.push({
-        range: `${GUEST_SHEET_TAB}!N${rowIndex + 1}`,
+        range: rangeFor('whatsappSent', rowIndex + 1),
         values: [['']],
       });
       clearedPhones.push(phone);
@@ -615,7 +678,7 @@ export async function clearWhatsappSentMarks(spreadsheetId, phones, range = GUES
  * @param {string} phone
  * @param {'invite' | 'reminder'} [_kind]
  */
-export async function updateWhatsappSentAt(spreadsheetId, phone, _kind, range = GUEST_SHEET_READ_RANGE) {
+export async function updateWhatsappSentAt(spreadsheetId, phone, _kind, range = guestReadRange()) {
   if (!sheets) {
     await configureSheets();
   }
@@ -630,7 +693,7 @@ export async function updateWhatsappSentAt(spreadsheetId, phone, _kind, range = 
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${GUEST_SHEET_TAB}!N${rowNumber}`,
+      range: rangeFor('whatsappSent', rowNumber),
       valueInputOption: 'RAW',
       resource: {
         values: [[WHATSAPP_SENT_MARK]],
@@ -680,7 +743,7 @@ export async function saveRSVPResponse(
   numberOfBabies = 0,
   numberOfVegan = 0,
   additionalNotes = '',
-  range = `${RESPONSE_SHEET_TAB}!A:H`
+  range = `${guestTab()}!A:H`
 ) {
   if (!sheets) {
     await configureSheets();
@@ -718,7 +781,7 @@ export async function saveRSVPResponse(
       const rowNumber = existingRowIndex + 1;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${RESPONSE_SHEET_TAB}!A${rowNumber}:H${rowNumber}`,
+        range: `${guestTab()}!A${rowNumber}:H${rowNumber}`,
         valueInputOption: 'RAW',
         resource: {
           values,
@@ -770,7 +833,7 @@ export async function initializeResponseSheet(spreadsheetId) {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${RESPONSE_SHEET_TAB}!A1:H1`,
+      range: `${guestTab()}!A1:H1`,
     });
 
     const existingHeaders = response.data.values?.[0] || [];
@@ -778,7 +841,7 @@ export async function initializeResponseSheet(spreadsheetId) {
     if (existingHeaders.length === 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${RESPONSE_SHEET_TAB}!A1:H1`,
+        range: `${guestTab()}!A1:H1`,
         valueInputOption: 'RAW',
         resource: {
           values: [RESPONSE_SHEET_HEADERS],
@@ -788,7 +851,7 @@ export async function initializeResponseSheet(spreadsheetId) {
     } else if (existingHeaders.length < RESPONSE_SHEET_HEADERS.length) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${RESPONSE_SHEET_TAB}!A1:H1`,
+        range: `${guestTab()}!A1:H1`,
         valueInputOption: 'RAW',
         resource: {
           values: [RESPONSE_SHEET_HEADERS],

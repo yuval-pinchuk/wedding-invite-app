@@ -1,10 +1,15 @@
 import express from 'express';
 import {
+  addLink,
   adjustLinkSum,
   getPaymentStatus,
+  moveLink,
+  removeLink,
+  reorderLinks,
   setRoutingMode,
   updateLink,
 } from '../services/paymentRouting.js';
+import { requireAccount } from '../services/sessions.js';
 
 const router = express.Router();
 
@@ -13,22 +18,7 @@ router.use((_req, res, next) => {
   next();
 });
 
-function requireAdminKey(req, res, next) {
-  const expected = (process.env.ADMIN_API_KEY || '').trim();
-  if (!expected) {
-    return next();
-  }
-  const provided = String(req.get('x-admin-key') || req.query.key || '').trim();
-  if (provided !== expected) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized. Provide a valid x-admin-key header.',
-    });
-  }
-  return next();
-}
-
-router.use(requireAdminKey);
+router.use(requireAccount);
 
 /**
  * GET /api/admin/pay/status
@@ -38,7 +28,7 @@ router.get('/status', (_req, res) => {
     res.json({
       success: true,
       ...getPaymentStatus(),
-      authRequired: Boolean((process.env.ADMIN_API_KEY || '').trim()),
+      authRequired: true,
     });
   } catch (error) {
     console.error('[admin/pay/status]', error);
@@ -74,8 +64,60 @@ router.post('/mode', (req, res) => {
 });
 
 /**
+ * POST /api/admin/pay/links
+ * Body: { label, url, provider?, owner?, threshold? }
+ */
+router.post('/links', (req, res) => {
+  try {
+    const status = addLink(req.body || {});
+    res.json({ success: true, ...status });
+  } catch (error) {
+    console.error('[admin/pay/links/add]', error);
+    res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to add link',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/pay/links/reorder
+ * Body: { orderedIds: string[] }
+ */
+router.post('/links/reorder', (req, res) => {
+  try {
+    const status = reorderLinks(req.body?.orderedIds || []);
+    res.json({ success: true, ...status });
+  } catch (error) {
+    console.error('[admin/pay/links/reorder]', error);
+    res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to reorder links',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/pay/links/:linkId/move
+ * Body: { direction: 'up' | 'down' }
+ */
+router.post('/links/:linkId/move', (req, res) => {
+  try {
+    const direction = req.body?.direction === 'up' ? 'up' : 'down';
+    const status = moveLink(req.params.linkId, direction);
+    res.json({ success: true, ...status });
+  } catch (error) {
+    console.error('[admin/pay/links/move]', error);
+    res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to move link',
+    });
+  }
+});
+
+/**
  * POST /api/admin/pay/links/:linkId
- * Body: { threshold?, currentSum?, url?, label? }
+ * Body: { threshold?, currentSum?, url?, label?, provider?, owner? }
  */
 router.post('/links/:linkId', (req, res) => {
   try {
@@ -86,6 +128,22 @@ router.post('/links/:linkId', (req, res) => {
     res.status(error.status || 500).json({
       success: false,
       error: error.message || 'Failed to update link',
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/pay/links/:linkId
+ */
+router.delete('/links/:linkId', (req, res) => {
+  try {
+    const status = removeLink(req.params.linkId);
+    res.json({ success: true, ...status });
+  } catch (error) {
+    console.error('[admin/pay/links/delete]', error);
+    res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to remove link',
     });
   }
 });

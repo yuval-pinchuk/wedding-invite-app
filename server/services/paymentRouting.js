@@ -8,11 +8,20 @@
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
+import { getDataDir } from '../config/dataDir.js';
+import { currentAccount } from './accountContext.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const DATA_FILE = path.join(DATA_DIR, 'payment-routing.json');
+function paymentFilePath() {
+  const account = currentAccount();
+  const root = getDataDir();
+  if (account?.id) {
+    const dir = path.join(root, 'payments');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return path.join(dir, `${account.id}.json`);
+  }
+  return path.join(root, 'payment-routing.json');
+}
 
 /** @typedef {{ id: string, label: string, provider: 'paybox' | 'bit', owner: string, url: string, threshold: number, currentSum: number }} PaymentLink */
 /** @typedef {{ mode: 'auto' | 'manual', manualLinkId: string | null, links: PaymentLink[], history: Array<{ id: string, timestamp: string, linkId: string, amount: number, source: string, note?: string }> }} PaymentState */
@@ -65,11 +74,9 @@ function defaultState() {
 }
 
 function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(defaultState(), null, 2), 'utf8');
+  const file = paymentFilePath();
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, JSON.stringify(defaultState(), null, 2), 'utf8');
   }
 }
 
@@ -77,7 +84,7 @@ function ensureDataFile() {
 export function readPaymentState() {
   ensureDataFile();
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    const raw = fs.readFileSync(paymentFilePath(), 'utf8');
     const parsed = JSON.parse(raw);
     return normalizeState(parsed);
   } catch (error) {
@@ -91,30 +98,46 @@ export function readPaymentState() {
 /** @param {PaymentState} state */
 function writePaymentState(state) {
   ensureDataFile();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf8');
+  fs.writeFileSync(paymentFilePath(), JSON.stringify(state, null, 2), 'utf8');
+}
+
+/**
+ * @param {any} raw
+ * @param {number} [index]
+ * @returns {PaymentLink | null}
+ */
+function normalizeLink(raw, index = 0) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = String(raw.id || '').trim() || `link-${Date.now().toString(36)}-${index}`;
+  const provider = String(raw.provider || '').toLowerCase() === 'bit' ? 'bit' : 'paybox';
+  const owner = String(raw.owner || '').trim() || 'custom';
+  const url = String(raw.url || '').trim();
+  const label = String(raw.label || '').trim() || `${provider} ${index + 1}`;
+  const threshold = Number.isFinite(Number(raw.threshold))
+    ? Math.max(0, Math.floor(Number(raw.threshold)))
+    : 10000;
+  const currentSum = Number.isFinite(Number(raw.currentSum))
+    ? Math.max(0, Math.floor(Number(raw.currentSum)))
+    : 0;
+  return { id, label, provider, owner, url, threshold, currentSum };
 }
 
 /** @param {any} parsed @returns {PaymentState} */
 function normalizeState(parsed) {
   const defaults = defaultState();
-  const byId = new Map((parsed?.links || []).map((l) => [l.id, l]));
+  const rawLinks = Array.isArray(parsed?.links) ? parsed.links : [];
+  let links = rawLinks.map((item, index) => normalizeLink(item, index)).filter(Boolean);
+  if (!links.length) {
+    links = defaults.links.map((item, index) => normalizeLink(item, index)).filter(Boolean);
+  }
 
-  const links = linksInAutoOrder(
-    defaults.links.map((def) => {
-      const existing = byId.get(def.id) || {};
-      return {
-        ...def,
-        url: typeof existing.url === 'string' && existing.url ? existing.url : def.url,
-        threshold: Number.isFinite(Number(existing.threshold))
-          ? Math.max(0, Math.floor(Number(existing.threshold)))
-          : def.threshold,
-        currentSum: Number.isFinite(Number(existing.currentSum))
-          ? Math.max(0, Math.floor(Number(existing.currentSum)))
-          : 0,
-        label: typeof existing.label === 'string' && existing.label ? existing.label : def.label,
-      };
-    }),
-  );
+  // Deduplicate ids while preserving order
+  const seen = new Set();
+  links = links.filter((link) => {
+    if (seen.has(link.id)) return false;
+    seen.add(link.id);
+    return true;
+  });
 
   const mode = parsed?.mode === 'manual' ? 'manual' : 'auto';
   const manualLinkId =
@@ -132,17 +155,21 @@ function normalizeState(parsed) {
 
 const BIT_REQUIRED_MIN_AMOUNT = 1000;
 
-/** Auto cascade: all PayBox links, then all Bit links. */
-const PROVIDER_AUTO_ORDER = { paybox: 0, bit: 1 };
-
+/** Auto cascade uses the stored link order (admin can reorder). */
 /** @param {PaymentLink[]} links @returns {PaymentLink[]} */
 function linksInAutoOrder(links) {
-  return [...links].sort((a, b) => {
-    const rankA = PROVIDER_AUTO_ORDER[a.provider] ?? 99;
-    const rankB = PROVIDER_AUTO_ORDER[b.provider] ?? 99;
-    if (rankA !== rankB) return rankA - rankB;
-    return links.indexOf(a) - links.indexOf(b);
-  });
+  return Array.isArray(links) ? [...links] : [];
+}
+
+function pushHistory(state, entry) {
+  state.history.push(entry);
+  if (state.history.length > 200) {
+    state.history = state.history.slice(-200);
+  }
+}
+
+function historyId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** @param {PaymentLink} link */
@@ -305,7 +332,7 @@ export function setRoutingMode(mode, manualLinkId = null) {
 
 /**
  * @param {string} linkId
- * @param {{ threshold?: number, currentSum?: number, url?: string, label?: string }} updates
+ * @param {{ threshold?: number, currentSum?: number, url?: string, label?: string, provider?: string, owner?: string }} updates
  */
 export function updateLink(linkId, updates = {}) {
   const state = readPaymentState();
@@ -338,20 +365,142 @@ export function updateLink(linkId, updates = {}) {
     link.label = updates.label.trim();
   }
 
-  state.history.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  if (updates.provider !== undefined) {
+    link.provider = String(updates.provider).toLowerCase() === 'bit' ? 'bit' : 'paybox';
+  }
+
+  if (typeof updates.owner === 'string' && updates.owner.trim()) {
+    link.owner = updates.owner.trim();
+  }
+
+  pushHistory(state, {
+    id: historyId(),
     timestamp: new Date().toISOString(),
     linkId: link.id,
     amount: 0,
     source: 'admin-edit',
-    note: `Updated: threshold=${link.threshold}, currentSum=${link.currentSum}`,
+    note: `Updated: ${link.label}`,
   });
-  if (state.history.length > 200) {
-    state.history = state.history.slice(-200);
-  }
 
   writePaymentState(state);
   return getPaymentStatus(state);
+}
+
+/**
+ * @param {{ label: string, url: string, provider?: string, owner?: string, threshold?: number }} payload
+ */
+export function addLink(payload = {}) {
+  const state = readPaymentState();
+  const label = String(payload.label || '').trim();
+  const url = String(payload.url || '').trim();
+  if (!label || !url) {
+    throw Object.assign(new Error('label and url are required'), { status: 400 });
+  }
+
+  const id = `link-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`;
+  const link = normalizeLink({
+    id,
+    label,
+    url,
+    provider: payload.provider,
+    owner: payload.owner,
+    threshold: payload.threshold,
+    currentSum: 0,
+  });
+  if (!link) {
+    throw Object.assign(new Error('Invalid link'), { status: 400 });
+  }
+
+  state.links.push(link);
+  pushHistory(state, {
+    id: historyId(),
+    timestamp: new Date().toISOString(),
+    linkId: link.id,
+    amount: 0,
+    source: 'admin-add',
+    note: `Added: ${link.label}`,
+  });
+  writePaymentState(state);
+  return getPaymentStatus(state);
+}
+
+/** @param {string} linkId */
+export function removeLink(linkId) {
+  const state = readPaymentState();
+  const index = state.links.findIndex((l) => l.id === linkId);
+  if (index < 0) {
+    throw Object.assign(new Error('Link not found'), { status: 404 });
+  }
+  if (state.links.length <= 1) {
+    throw Object.assign(new Error('Must keep at least one payment link'), { status: 400 });
+  }
+
+  const [removed] = state.links.splice(index, 1);
+  if (state.manualLinkId === linkId) {
+    state.mode = 'auto';
+    state.manualLinkId = null;
+  }
+
+  pushHistory(state, {
+    id: historyId(),
+    timestamp: new Date().toISOString(),
+    linkId: removed.id,
+    amount: 0,
+    source: 'admin-remove',
+    note: `Removed: ${removed.label}`,
+  });
+  writePaymentState(state);
+  return getPaymentStatus(state);
+}
+
+/**
+ * @param {string[]} orderedIds
+ */
+export function reorderLinks(orderedIds) {
+  const state = readPaymentState();
+  if (!Array.isArray(orderedIds) || orderedIds.length !== state.links.length) {
+    throw Object.assign(new Error('orderedIds must include every link id once'), { status: 400 });
+  }
+  const unique = new Set(orderedIds);
+  if (unique.size !== orderedIds.length) {
+    throw Object.assign(new Error('orderedIds contains duplicates'), { status: 400 });
+  }
+  const byId = new Map(state.links.map((l) => [l.id, l]));
+  for (const id of orderedIds) {
+    if (!byId.has(id)) {
+      throw Object.assign(new Error(`Unknown link id: ${id}`), { status: 400 });
+    }
+  }
+  state.links = orderedIds.map((id) => byId.get(id));
+  pushHistory(state, {
+    id: historyId(),
+    timestamp: new Date().toISOString(),
+    linkId: state.links[0]?.id || '',
+    amount: 0,
+    source: 'admin-reorder',
+    note: `Order: ${state.links.map((l) => l.label).join(' → ')}`,
+  });
+  writePaymentState(state);
+  return getPaymentStatus(state);
+}
+
+/**
+ * @param {string} linkId
+ * @param {'up' | 'down'} direction
+ */
+export function moveLink(linkId, direction) {
+  const state = readPaymentState();
+  const index = state.links.findIndex((l) => l.id === linkId);
+  if (index < 0) {
+    throw Object.assign(new Error('Link not found'), { status: 404 });
+  }
+  const swapWith = direction === 'up' ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= state.links.length) {
+    return getPaymentStatus(state);
+  }
+  const next = [...state.links];
+  [next[index], next[swapWith]] = [next[swapWith], next[index]];
+  return reorderLinks(next.map((l) => l.id));
 }
 
 /**
@@ -387,4 +536,21 @@ export function adjustLinkSum(linkId, amount, note = '') {
 
   writePaymentState(state);
   return getPaymentStatus(state);
+}
+
+/** Write the four payment links for a new account. */
+export function seedPaymentFile(accountId, urls = {}) {
+  const dir = path.join(getDataDir(), 'payments');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const state = defaultState();
+  const byId = {
+    'danielle-paybox': urls.daniellePaybox,
+    'yuval-paybox': urls.yuvalPaybox,
+    'danielle-bit': urls.danielleBit,
+    'yuval-bit': urls.yuvalBit,
+  };
+  for (const link of state.links) {
+    if (byId[link.id]) link.url = String(byId[link.id]).trim();
+  }
+  fs.writeFileSync(path.join(dir, `${accountId}.json`), JSON.stringify(state, null, 2), 'utf8');
 }
