@@ -11,7 +11,7 @@ import { seedPaymentFile } from './paymentRouting.js';
 const scrypt = promisify(scryptCb);
 const MAX_FAILURES = 5;
 const CODE_TTL_MS = 15 * 60 * 1000;
-const RESET_CODE_TTL_MS = 60 * 1000;
+const RESET_CODE_TTL_MS = 15 * 60 * 1000;
 
 function accountsPath() {
   return path.join(getDataDir(), 'accounts.json');
@@ -271,7 +271,7 @@ export function unlockWithCode(email, code) {
   return { ok: true };
 }
 
-/** Issue a 6-digit reset code (1 minute). Replaces any previous code. */
+/** Issue a 6-digit reset code (15 minutes). Replaces any previous code. */
 export function issueResetCode(account) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   saveAccount({

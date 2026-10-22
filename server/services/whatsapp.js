@@ -6,7 +6,6 @@
  * - WHATSAPP_SEND_JITTER_MS — random extra 0..N ms added to the base (default 1200). Max gap = base+jitter.
  * - WHATSAPP_BATCH_SIZE — successful sends between longer pauses (default 25).
  * - WHATSAPP_BATCH_PAUSE_MS — extra pause after each batch (default 5000).
- * - WHATSAPP_WARM_SENDERS — comma-separated sender names to connect at server boot (optional).
  * - WHATSAPP_INVITE_IMAGE_PATH — optional absolute path to a JPEG/PNG sent with the invite/reminder text as caption.
  *   If unset, looks for `WEDDING.png` in the project root (not cwd). If the file is missing, sends text only.
  * - WHATSAPP_CLEANUP_INTERVAL_MS — how often to log heap and idle-close sessions (default 900000 = 15m).
@@ -732,21 +731,3 @@ export function startSessionMaintenance() {
   );
 }
 
-/**
- * Optional: connect listed senders after server starts (hides QR cold start during event).
- */
-export async function warmWhatsAppSessions() {
-  const raw = process.env.WHATSAPP_WARM_SENDERS || '';
-  const names = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const name of names) {
-    try {
-      touchSession(name);
-      void connectSocket(name);
-    } catch (e) {
-      console.warn(`[WhatsApp] warm failed for ${name}:`, e.message);
-    }
-  }
-}

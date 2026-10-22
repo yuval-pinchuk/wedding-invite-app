@@ -11,7 +11,7 @@ import payRouter from './routes/pay.js';
 import authRouter from './routes/auth.js';
 import publicWeddingRouter from './routes/publicWedding.js';
 import { configureSheets } from './services/googleSheets.js';
-import { warmWhatsAppSessions, startSessionMaintenance } from './services/whatsapp.js';
+import { startSessionMaintenance } from './services/whatsapp.js';
 import { ensureLegacyAccount } from './services/accounts.js';
 import { accountFromRequest } from './services/sessions.js';
 
@@ -81,7 +81,6 @@ async function start() {
     await ensureLegacyAccount();
     app.listen(port, () => {
       console.log(`easyWed running on http://localhost:${port}`);
-      void warmWhatsAppSessions();
       startSessionMaintenance();
     });
   } catch (error) {

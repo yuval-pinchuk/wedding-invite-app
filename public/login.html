@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>easyWed</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'light';</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -53,9 +53,11 @@
       --wash: rgba(42, 36, 33, 0.9);
     }
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body {
       margin: 0;
       min-height: 100vh;
+      min-height: 100dvh;
       font-family: var(--font-body);
       color: var(--text);
       background: var(--bg);
@@ -122,8 +124,8 @@
 
     .theme-switch {
       position: fixed;
-      top: 14px;
-      right: 14px;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
       z-index: 60;
       display: flex;
       gap: 2px;
@@ -238,6 +240,7 @@
       background: var(--input-bg);
       color: var(--text);
       font: inherit;
+      font-size: 16px;
       font-weight: 500;
       transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.2s ease;
     }
@@ -382,7 +385,14 @@
     .map-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
     .map-row span { flex: 1; }
     a { color: var(--accent); }
-    .signup-scroll { max-height: min(70vh, 640px); overflow: auto; padding-left: 4px; }
+    .signup-scroll {
+      max-height: min(70vh, 640px);
+      max-height: min(70dvh, 640px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding-left: 4px;
+    }
 
     @keyframes riseIn {
       from { opacity: 0; transform: translateY(18px); }
@@ -398,8 +408,23 @@
     }
 
     @media (max-width: 520px) {
-      .shell { align-items: flex-start; padding-top: 80px; }
-      .brand { font-size: 2.75rem; }
+      .shell {
+        align-items: flex-start;
+        padding:
+          max(72px, calc(env(safe-area-inset-top) + 56px))
+          max(14px, env(safe-area-inset-right))
+          max(28px, env(safe-area-inset-bottom))
+          max(14px, env(safe-area-inset-left));
+      }
+      .stage { width: 100%; }
+      .brand { font-size: clamp(2.4rem, 12vw, 2.85rem); margin-bottom: 12px; }
+      .headline { font-size: 1.1rem; }
+      .lede { margin-bottom: 20px; font-size: 0.95rem; }
+      .panel { padding: 18px 16px 14px; border-radius: 16px; }
+      .row-buttons { flex-direction: column; }
+      .row-buttons button { width: 100%; }
+      .signup-scroll { max-height: min(68dvh, 560px); }
+      .map-row { flex-direction: column; align-items: stretch; }
     }
   </style>
 </head>
@@ -459,7 +484,7 @@
         <form id="forgotForm" class="hidden">
           <div id="forgotEmailStep">
             <h2>שכחתי סיסמה</h2>
-            <p>נשלח אליכם קוד בן 6 ספרות לאימייל. הקוד תקף לדקה אחת.</p>
+            <p>נשלח אליכם קוד בן 6 ספרות לאימייל. הקוד תקף ל-15 דקות.</p>
             <label for="forgotEmail">אימייל</label>
             <input id="forgotEmail" type="email" autocomplete="username" required>
             <p id="forgotMsg" class="hint"></p>
@@ -469,7 +494,7 @@
           </div>
           <div id="forgotCodeStep" class="hidden">
             <h2>הזנת קוד</h2>
-            <p>הזינו את הקוד שנשלח ל־<strong id="forgotCodeEmailLabel"></strong>. הקוד תקף לדקה אחת.</p>
+            <p>הזינו את הקוד שנשלח ל־<strong id="forgotCodeEmailLabel"></strong>. הקוד תקף ל-15 דקות.</p>
             <label for="forgotCode">קוד בן 6 ספרות</label>
             <input id="forgotCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
             <p id="forgotCodeError" class="error"></p>

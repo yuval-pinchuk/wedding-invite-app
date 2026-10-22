@@ -15,8 +15,6 @@ services:
         sync: false
       - key: DATA_DIR
         value: /var/data
-      - key: SESSION_SECRET
-        sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_KEY
         sync: false
       - key: GOOGLE_GUEST_SHEET_ID
@@ -39,9 +37,6 @@ services:
         sync: false
       - key: LEGACY_ADMIN_PASSWORD
         sync: false
-      - key: INVITATION_MESSAGE
-        sync: false
-        optional: true
   - type: cron
     name: wedding-invite-keepalive
     env: node

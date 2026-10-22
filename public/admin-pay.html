@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>easyWed · מתנות</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,15 +55,26 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body {
       font-family: var(--font);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
+      overflow-x: hidden;
     }
-    .layout { max-width: 980px; margin: 0 auto; padding: 64px 20px 48px; }
+    .layout {
+      max-width: 980px;
+      margin: 0 auto;
+      padding:
+        max(64px, calc(env(safe-area-inset-top) + 56px))
+        max(20px, env(safe-area-inset-right))
+        max(48px, env(safe-area-inset-bottom))
+        max(20px, env(safe-area-inset-left));
+    }
     header { margin-bottom: 28px; }
     header h1 {
       font-family: 'Fraunces', Georgia, serif;
@@ -95,7 +106,7 @@
       background: var(--input-bg);
       color: var(--text);
       font-family: inherit;
-      font-size: 1rem;
+      font-size: 16px;
       font-weight: 500;
       transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.2s ease;
     }
@@ -138,8 +149,8 @@
     .btn-sm { padding: 8px 12px; font-size: 0.85rem; }
     .corner-logout {
       position: fixed;
-      top: 14px;
-      left: 14px;
+      top: max(14px, env(safe-area-inset-top));
+      left: max(14px, env(safe-area-inset-left));
       z-index: 200;
       width: 44px;
       height: 44px;
@@ -162,8 +173,8 @@
     .corner-logout svg { width: 20px; height: 20px; display: block; pointer-events: none; }
     .corner-menu {
       position: fixed;
-      top: 14px;
-      right: 14px;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
       z-index: 200;
       width: 44px;
       height: 44px;
@@ -463,8 +474,25 @@
       background: rgba(142, 124, 118, 0.14);
     }
     .hidden { display: none !important; }
-    @media (max-width: 640px) {
+    @media (max-width: 700px) {
+      .layout {
+        padding-left: max(14px, env(safe-area-inset-left));
+        padding-right: max(14px, env(safe-area-inset-right));
+      }
+      header h1 { font-size: 1.55rem; }
+      .card { padding: 16px; }
+      .row .grow { min-width: 100%; }
+      .row > button { width: 100%; }
       .meta { grid-template-columns: 1fr; }
+      .actions { flex-direction: column; }
+      .actions button { width: 100%; }
+      .links-header { align-items: stretch; }
+      .links-header > button { width: 100%; }
+      .nav-drawer {
+        width: min(100vw, 100%);
+        padding-top: max(20px, env(safe-area-inset-top));
+        padding-bottom: max(28px, env(safe-area-inset-bottom));
+      }
     }
   </style>
 </head>

@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>easyWed · בית</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -52,15 +52,26 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body {
       font-family: var(--font);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
+      overflow-x: hidden;
     }
-    .layout { max-width: 920px; margin: 0 auto; padding: 64px 20px 48px; }
+    .layout {
+      max-width: 920px;
+      margin: 0 auto;
+      padding:
+        max(64px, calc(env(safe-area-inset-top) + 56px))
+        max(20px, env(safe-area-inset-right))
+        max(48px, env(safe-area-inset-bottom))
+        max(20px, env(safe-area-inset-left));
+    }
     header { margin-bottom: 28px; }
     header h1 {
       font-family: 'Fraunces', Georgia, serif;
@@ -138,7 +149,19 @@
     .chart-panel.is-empty .chart-wrap { display: none; }
     .chart-panel.is-empty .chart-empty { display: flex; }
     @media (max-width: 700px) {
-      .charts-grid { grid-template-columns: 1fr; }
+      .layout { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+      header h1 { font-size: 1.55rem; }
+      .welcome { font-size: 1.05rem; }
+      .card { padding: 16px; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .stat { padding: 12px 10px; }
+      .stat .value { font-size: 1.25rem; }
+      .charts-grid { grid-template-columns: 1fr; gap: 14px; }
+      .chart-panel { min-height: 240px; padding: 12px 10px 8px; }
+      .chart-wrap, .chart-empty { min-height: 200px; }
+    }
+    @media (max-width: 380px) {
+      .stats { grid-template-columns: 1fr; }
     }
     .message {
       margin: 12px 0 0;
@@ -168,8 +191,8 @@
       cursor: pointer;
       transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
     }
-    .corner-logout { left: 14px; }
-    .corner-menu { right: 14px; }
+    .corner-logout { left: max(14px, env(safe-area-inset-left)); top: max(14px, env(safe-area-inset-top)); }
+    .corner-menu { right: max(14px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); }
     .corner-logout:hover,
     .corner-menu:hover {
       color: var(--accent-contrast);

@@ -130,7 +130,7 @@ router.post('/forgot', async (req, res) => {
     await sendMail({
       to: account.email,
       subject: 'קוד איפוס סיסמה',
-      text: `קוד איפוס הסיסמה שלכם: ${code}\nהקוד תקף לדקה אחת בלבד.`,
+      text: `קוד איפוס הסיסמה שלכם: ${code}\nהקוד תקף ל-15 דקות.`,
     });
   }
   // Always succeed so we do not reveal whether the email exists.

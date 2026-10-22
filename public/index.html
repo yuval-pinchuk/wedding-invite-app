@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>החתונה של דניאל ויובל</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,11 +40,13 @@
       box-sizing: border-box;
     }
 
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body {
       font-family: var(--font);
       background: var(--cream);
       color: var(--text);
       line-height: 1.6;
+      overflow-x: hidden;
     }
 
     body.scroll-locked {
@@ -60,7 +62,7 @@
       z-index: 20;
       display: flex;
       justify-content: center;
-      padding: 14px 20px 18px;
+      padding: max(14px, env(safe-area-inset-top)) 20px 18px;
       background: linear-gradient(
         180deg,
         rgba(250, 247, 242, 0.98) 0%,
@@ -1301,6 +1303,21 @@
       width: 32px;
       height: 32px;
       object-fit: contain;
+    }
+
+    @media (max-width: 480px) {
+      .page-header { padding-left: 14px; padding-right: 14px; }
+      .page-section { padding-left: 14px; padding-right: 14px; }
+      .section-back-btn {
+        right: max(12px, env(safe-area-inset-right));
+        top: calc(var(--header-h) + 2px);
+        padding: 10px 14px;
+      }
+      .rsvp-logged-summary { width: 100%; max-width: none; }
+      .radio-group { gap: 8px; }
+      .radio-label { padding: 14px 10px; font-size: 0.92rem; }
+      .gate-error { padding: 28px 16px; }
+      #giftPayBtn { max-width: none; }
     }
   </style>
 </head>
