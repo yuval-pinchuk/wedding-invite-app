@@ -11,6 +11,7 @@ import { seedPaymentFile } from './paymentRouting.js';
 const scrypt = promisify(scryptCb);
 const MAX_FAILURES = 5;
 const CODE_TTL_MS = 15 * 60 * 1000;
+const RESET_CODE_TTL_MS = 60 * 1000;
 
 function accountsPath() {
   return path.join(getDataDir(), 'accounts.json');
@@ -270,31 +271,48 @@ export function unlockWithCode(email, code) {
   return { ok: true };
 }
 
-export function issueResetToken(account) {
-  const token = randomBytes(24).toString('hex');
+/** Issue a 6-digit reset code (1 minute). Replaces any previous code. */
+export function issueResetCode(account) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
   saveAccount({
     ...account,
-    resetTokenHash: hashToken(token),
-    resetTokenExpires: Date.now() + 60 * 60 * 1000,
+    resetTokenHash: hashToken(code),
+    resetTokenExpires: Date.now() + RESET_CODE_TTL_MS,
   });
-  return token;
+  return code;
 }
 
-export async function resetPassword(token, password) {
+function findAccountWithValidResetCode(email, code) {
+  const account = findAccountByEmail(email);
+  if (!account || !account.resetTokenHash || !account.resetTokenExpires || Date.now() > account.resetTokenExpires) {
+    return { ok: false, error: 'פג תוקף הקוד. בקשו קוד חדש.', account: null };
+  }
+  if (hashToken(String(code || '').trim()) !== account.resetTokenHash) {
+    return { ok: false, error: 'הקוד שגוי', account: null };
+  }
+  return { ok: true, error: '', account };
+}
+
+export function verifyResetCode(email, code) {
+  const result = findAccountWithValidResetCode(email, code);
+  return { ok: result.ok, error: result.error };
+}
+
+export async function resetPassword(email, code, password) {
   assertPassword(password);
-  const hashed = hashToken(token);
-  const account = listAccounts().find((item) => item.resetTokenHash && item.resetTokenHash === hashed);
-  if (!account || !account.resetTokenExpires || Date.now() > account.resetTokenExpires) {
-    throw Object.assign(new Error('הקישור לאיפוס אינו תקף'), { status: 400 });
+  const result = findAccountWithValidResetCode(email, code);
+  if (!result.ok) {
+    throw Object.assign(new Error(result.error), { status: 400 });
   }
   saveAccount({
-    ...account,
+    ...result.account,
     passwordHash: await hashPassword(password),
     resetTokenHash: '',
     resetTokenExpires: 0,
     failedLogins: 0,
     locked: false,
     unlockCodeHash: '',
+    unlockCodeExpires: 0,
   });
 }
 

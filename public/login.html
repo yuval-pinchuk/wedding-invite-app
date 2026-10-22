@@ -331,6 +331,16 @@
       color: #c43c3c;
     }
     :root[data-theme="dark"] .password-rules li.is-bad { color: #f87171; }
+    .password-match {
+      margin: 8px 0 0;
+      font-size: 0.86rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .password-match.is-ok { color: #6d5952; }
+    :root[data-theme="dark"] .password-match.is-ok { color: #c4a99a; }
+    .password-match.is-bad { color: #c43c3c; }
+    :root[data-theme="dark"] .password-match.is-bad { color: #f87171; }
     button, .linkish {
       margin-top: 14px;
       width: 100%;
@@ -447,21 +457,59 @@
         </form>
 
         <form id="forgotForm" class="hidden">
-          <h2>שכחתי סיסמה</h2>
-          <label for="forgotEmail">אימייל</label>
-          <input id="forgotEmail" type="email" required>
-          <p id="forgotMsg"></p>
-          <button type="submit">שליחת קישור</button>
-          <button type="button" class="ghost-btn" id="forgotBack">חזרה</button>
+          <div id="forgotEmailStep">
+            <h2>שכחתי סיסמה</h2>
+            <p>נשלח אליכם קוד בן 6 ספרות לאימייל. הקוד תקף לדקה אחת.</p>
+            <label for="forgotEmail">אימייל</label>
+            <input id="forgotEmail" type="email" autocomplete="username" required>
+            <p id="forgotMsg" class="hint"></p>
+            <p id="forgotError" class="error"></p>
+            <button type="submit" id="forgotSendBtn">שליחת קוד לאימייל</button>
+            <button type="button" class="ghost-btn" id="forgotBack">חזרה</button>
+          </div>
+          <div id="forgotCodeStep" class="hidden">
+            <h2>הזנת קוד</h2>
+            <p>הזינו את הקוד שנשלח ל־<strong id="forgotCodeEmailLabel"></strong>. הקוד תקף לדקה אחת.</p>
+            <label for="forgotCode">קוד בן 6 ספרות</label>
+            <input id="forgotCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
+            <p id="forgotCodeError" class="error"></p>
+            <button type="button" id="forgotVerifyBtn">המשך</button>
+            <button type="button" class="ghost-btn" id="forgotResendBtn">שליחת קוד מחדש</button>
+            <button type="button" class="ghost-btn" id="forgotCodeBack">חזרה</button>
+          </div>
         </form>
 
         <form id="resetForm" class="hidden">
           <h2>סיסמה חדשה</h2>
-          <label for="newPassword">סיסמה חדשה</label>
-          <input id="newPassword" type="password" minlength="6" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}" title="אנגלית, לפחות 6 תווים, אות גדולה, אות קטנה ומספר" required>
-          <p class="hint">אנגלית בלבד, לפחות 6 תווים, אות גדולה, אות קטנה ומספר.</p>
+          <label for="resetPassword">סיסמה חדשה</label>
+          <div class="password-field">
+            <input id="resetPassword" type="password" autocomplete="new-password" minlength="6" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}" title="אנגלית, לפחות 6 תווים, אות גדולה, אות קטנה ומספר" spellcheck="false" autocapitalize="off" required>
+            <button type="button" class="password-toggle" id="resetPasswordToggle" aria-label="הצגת סיסמה" aria-pressed="false" title="הצג / הסתר סיסמה">
+              <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="icon-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.5 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/>
+                <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+          <ul id="resetPasswordRules" class="password-rules hidden" aria-live="polite">
+            <li data-rule="english"><span class="mark">!</span><span>אותיות באנגלית ומספרים בלבד</span></li>
+            <li data-rule="length"><span class="mark">!</span><span>לפחות 6 תווים</span></li>
+            <li data-rule="lower"><span class="mark">!</span><span>אות קטנה באנגלית (a–z)</span></li>
+            <li data-rule="upper"><span class="mark">!</span><span>אות גדולה באנגלית (A–Z)</span></li>
+            <li data-rule="digit"><span class="mark">!</span><span>לפחות ספרה אחת (0–9)</span></li>
+          </ul>
+          <label for="resetPasswordConfirm">הזנת סיסמה שוב</label>
+          <input id="resetPasswordConfirm" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" required>
+          <p id="resetConfirmMatch" class="password-match hidden" aria-live="polite"></p>
           <p id="resetError" class="error"></p>
-          <button type="submit">שמירה</button>
+          <button type="submit">שמירת סיסמה חדשה</button>
+          <button type="button" class="ghost-btn" id="resetBack">חזרה</button>
         </form>
 
         <form id="signupForm" class="hidden">
@@ -575,20 +623,22 @@
     }
 
     document.getElementById('showSignup').onclick = () => show(signupForm);
-    document.getElementById('showForgot').onclick = () => show(document.getElementById('forgotForm'));
+    document.getElementById('showForgot').onclick = () => {
+      resetForgotUi();
+      show(document.getElementById('forgotForm'));
+    };
     document.getElementById('backLogin').onclick = () => show(loginForm);
     document.getElementById('forgotBack').onclick = () => show(loginForm);
 
-    const params = new URLSearchParams(location.search);
-    if (params.get('reset')) show(document.getElementById('resetForm'));
-
     document.getElementById('date').min = new Date().toISOString().slice(0, 10);
 
-    (function setupSignupPassword() {
-      const input = document.getElementById('sPassword');
-      const toggle = document.getElementById('sPasswordToggle');
-      const rulesEl = document.getElementById('sPasswordRules');
-      if (!input || !toggle || !rulesEl) return;
+    function setupPasswordField(inputId, toggleId, rulesId) {
+      const input = document.getElementById(inputId);
+      const toggle = document.getElementById(toggleId);
+      const rulesEl = document.getElementById(rulesId);
+      if (!input || !toggle || !rulesEl) {
+        return { passwordOk: () => false, getValue: () => '' };
+      }
 
       const checks = {
         english: (value) => /^[A-Za-z\d]+$/.test(value),
@@ -627,7 +677,6 @@
       }
 
       function hideRulesIfBlur() {
-        // Keep visible while interacting with toggle inside the field
         window.setTimeout(() => {
           if (document.activeElement === input || document.activeElement === toggle) return;
           if (!passwordOk(input.value)) {
@@ -654,6 +703,7 @@
         if (cleaned !== input.value) input.value = cleaned;
         renderRules(input.value);
         if (document.activeElement === input) rulesEl.classList.remove('hidden');
+        input.dispatchEvent(new CustomEvent('password-updated'));
       });
 
       input.addEventListener('paste', (event) => {
@@ -666,20 +716,76 @@
         input.setSelectionRange(pos, pos);
         renderRules(input.value);
         rulesEl.classList.remove('hidden');
+        input.dispatchEvent(new CustomEvent('password-updated'));
       });
 
       toggle.addEventListener('click', () => {
-        const show = input.type === 'password';
-        input.type = show ? 'text' : 'password';
-        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
-        toggle.setAttribute('aria-label', show ? 'הסתרת סיסמה' : 'הצגת סיסמה');
-        toggle.querySelector('.icon-eye').classList.toggle('hidden', show);
-        toggle.querySelector('.icon-eye-off').classList.toggle('hidden', !show);
+        const reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        toggle.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+        toggle.setAttribute('aria-label', reveal ? 'הסתרת סיסמה' : 'הצגת סיסמה');
+        toggle.querySelector('.icon-eye').classList.toggle('hidden', reveal);
+        toggle.querySelector('.icon-eye-off').classList.toggle('hidden', !reveal);
         input.focus();
       });
 
       renderRules(input.value);
-    })();
+      return {
+        passwordOk: () => passwordOk(input.value),
+        getValue: () => input.value,
+        showRules,
+      };
+    }
+
+    const signupPasswordField = setupPasswordField('sPassword', 'sPasswordToggle', 'sPasswordRules');
+    const resetPasswordField = setupPasswordField('resetPassword', 'resetPasswordToggle', 'resetPasswordRules');
+
+    let resetEmail = '';
+    let resetCode = '';
+
+    function resetForgotUi() {
+      resetEmail = '';
+      resetCode = '';
+      document.getElementById('forgotEmailStep').classList.remove('hidden');
+      document.getElementById('forgotCodeStep').classList.add('hidden');
+      document.getElementById('forgotEmail').value = '';
+      document.getElementById('forgotCode').value = '';
+      document.getElementById('forgotMsg').textContent = '';
+      document.getElementById('forgotError').textContent = '';
+      document.getElementById('forgotCodeError').textContent = '';
+    }
+
+    function showForgotCodeStep(email) {
+      resetEmail = String(email || '').trim().toLowerCase();
+      document.getElementById('forgotEmailStep').classList.add('hidden');
+      document.getElementById('forgotCodeStep').classList.remove('hidden');
+      document.getElementById('forgotCodeEmailLabel').textContent = resetEmail;
+      document.getElementById('forgotCode').value = '';
+      document.getElementById('forgotCodeError').textContent = '';
+      document.getElementById('forgotCode').focus();
+    }
+
+    function updateResetConfirmMatch() {
+      const confirmInput = document.getElementById('resetPasswordConfirm');
+      const matchEl = document.getElementById('resetConfirmMatch');
+      const value = confirmInput.value;
+      if (!value) {
+        matchEl.classList.add('hidden');
+        matchEl.textContent = '';
+        matchEl.classList.remove('is-ok', 'is-bad');
+        return false;
+      }
+      const matches = value === resetPasswordField.getValue();
+      matchEl.classList.remove('hidden');
+      matchEl.classList.toggle('is-ok', matches);
+      matchEl.classList.toggle('is-bad', !matches);
+      matchEl.textContent = matches ? 'הסיסמאות תואמות' : 'הסיסמאות אינן תואמות';
+      return matches;
+    }
+
+    document.getElementById('resetPassword').addEventListener('password-updated', updateResetConfirmMatch);
+    document.getElementById('resetPassword').addEventListener('input', updateResetConfirmMatch);
+    document.getElementById('resetPasswordConfirm').addEventListener('input', updateResetConfirmMatch);
 
     fetch('/api/auth/setup').then((r) => r.json()).then((data) => {
       document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || 'האימייל של חשבון השירות';
@@ -733,16 +839,92 @@
       }
     };
 
+    document.getElementById('forgotCode').addEventListener('input', (event) => {
+      event.target.value = String(event.target.value || '').replace(/\D/g, '').slice(0, 6);
+    });
+
     document.getElementById('forgotForm').onsubmit = async (e) => {
       e.preventDefault();
-      await post('/api/auth/forgot', { email: document.getElementById('forgotEmail').value });
-      document.getElementById('forgotMsg').textContent = 'אם החשבון קיים, נשלח קישור לאימייל.';
+      if (!document.getElementById('forgotCodeStep').classList.contains('hidden')) {
+        document.getElementById('forgotVerifyBtn').click();
+        return;
+      }
+      document.getElementById('forgotError').textContent = '';
+      document.getElementById('forgotMsg').textContent = '';
+      const email = document.getElementById('forgotEmail').value;
+      try {
+        await post('/api/auth/forgot', { email });
+        showForgotCodeStep(email);
+      } catch (error) {
+        document.getElementById('forgotError').textContent = error.message || 'שליחת הקוד נכשלה';
+      }
+    };
+
+    document.getElementById('forgotResendBtn').onclick = async () => {
+      document.getElementById('forgotCodeError').textContent = '';
+      try {
+        await post('/api/auth/forgot', { email: resetEmail });
+        document.getElementById('forgotCode').value = '';
+        document.getElementById('forgotCodeError').textContent = 'נשלח קוד חדש. הקוד הקודם אינו תקף.';
+        document.getElementById('forgotCode').focus();
+      } catch (error) {
+        document.getElementById('forgotCodeError').textContent = error.message || 'שליחה מחדש נכשלה';
+      }
+    };
+
+    document.getElementById('forgotVerifyBtn').onclick = async () => {
+      document.getElementById('forgotCodeError').textContent = '';
+      const code = String(document.getElementById('forgotCode').value || '').trim();
+      if (!/^\d{6}$/.test(code)) {
+        document.getElementById('forgotCodeError').textContent = 'הזינו קוד בן 6 ספרות';
+        return;
+      }
+      try {
+        await post('/api/auth/verify-reset-code', { email: resetEmail, code });
+        resetCode = code;
+        document.getElementById('resetPassword').value = '';
+        document.getElementById('resetPasswordConfirm').value = '';
+        document.getElementById('resetError').textContent = '';
+        updateResetConfirmMatch();
+        show(document.getElementById('resetForm'));
+        document.getElementById('resetPassword').focus();
+      } catch (error) {
+        document.getElementById('forgotCodeError').textContent = error.message;
+      }
+    };
+
+    document.getElementById('forgotCodeBack').onclick = () => {
+      document.getElementById('forgotCodeStep').classList.add('hidden');
+      document.getElementById('forgotEmailStep').classList.remove('hidden');
+      document.getElementById('forgotCode').value = '';
+      document.getElementById('forgotCodeError').textContent = '';
+    };
+
+    document.getElementById('resetBack').onclick = () => {
+      show(document.getElementById('forgotForm'));
+      document.getElementById('forgotEmailStep').classList.add('hidden');
+      document.getElementById('forgotCodeStep').classList.remove('hidden');
     };
 
     document.getElementById('resetForm').onsubmit = async (e) => {
       e.preventDefault();
+      document.getElementById('resetError').textContent = '';
+      if (!resetPasswordField.passwordOk()) {
+        resetPasswordField.showRules();
+        document.getElementById('resetError').textContent = 'הסיסמה לא עומדת בכללים';
+        return;
+      }
+      if (!updateResetConfirmMatch()) {
+        document.getElementById('resetError').textContent = 'הסיסמאות אינן תואמות';
+        return;
+      }
       try {
-        await post('/api/auth/reset', { token: params.get('reset'), password: document.getElementById('newPassword').value });
+        await post('/api/auth/reset', {
+          email: resetEmail,
+          code: resetCode,
+          password: resetPasswordField.getValue(),
+        });
+        resetForgotUi();
         show(loginForm);
         document.getElementById('loginError').textContent = 'הסיסמה עודכנה. אפשר להתחבר.';
       } catch (error) {
@@ -762,10 +944,10 @@
     signupForm.onsubmit = async (e) => {
       e.preventDefault();
       document.getElementById('signupError').textContent = '';
-      const signupPassword = document.getElementById('sPassword').value;
-      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$/.test(signupPassword)) {
+      const signupPassword = signupPasswordField.getValue();
+      if (!signupPasswordField.passwordOk()) {
+        signupPasswordField.showRules();
         document.getElementById('signupError').textContent = 'הסיסמה לא עומדת בכללים';
-        document.getElementById('sPasswordRules').classList.remove('hidden');
         document.getElementById('sPassword').classList.add('is-invalid');
         document.getElementById('sPassword').focus();
         return;

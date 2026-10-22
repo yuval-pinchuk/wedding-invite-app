@@ -1,12 +1,11 @@
 import express from 'express';
 import { getServiceAccountEmail, readHeaderRow } from '../services/googleSheets.js';
-import { getRsvpBaseUrl } from '../services/whatsapp.js';
 import { sendMail } from '../services/mailer.js';
 import { seedPaymentFile } from '../services/paymentRouting.js';
 import {
   createAccount,
   findAccountByEmail,
-  issueResetToken,
+  issueResetCode,
   issueUnlockCode,
   publicAccount,
   recordFailedLogin,
@@ -14,6 +13,7 @@ import {
   unlockWithCode,
   updateAccount,
   verifyPassword,
+  verifyResetCode,
   clearLoginFailures,
 } from '../services/accounts.js';
 import {
@@ -126,21 +126,26 @@ router.post('/unlock', (req, res) => {
 router.post('/forgot', async (req, res) => {
   const account = findAccountByEmail(req.body?.email);
   if (account) {
-    const token = issueResetToken(account);
-    const base = getRsvpBaseUrl() || '';
-    const link = `${base}/login?reset=${encodeURIComponent(token)}`;
+    const code = issueResetCode(account);
     await sendMail({
       to: account.email,
-      subject: 'איפוס סיסמה',
-      text: `לאיפוס הסיסמה היכנסו לקישור:\n${link}\nהקישור תקף לשעה.`,
+      subject: 'קוד איפוס סיסמה',
+      text: `קוד איפוס הסיסמה שלכם: ${code}\nהקוד תקף לדקה אחת בלבד.`,
     });
   }
+  // Always succeed so we do not reveal whether the email exists.
   res.json({ success: true });
+});
+
+router.post('/verify-reset-code', (req, res) => {
+  const result = verifyResetCode(req.body?.email, req.body?.code);
+  if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+  return res.json({ success: true });
 });
 
 router.post('/reset', async (req, res) => {
   try {
-    await resetPassword(String(req.body?.token || ''), req.body?.password);
+    await resetPassword(req.body?.email, req.body?.code, req.body?.password);
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, error: error.message || 'איפוס הסיסמה נכשל' });
