@@ -41,8 +41,8 @@ router.get('/setup', (_req, res) => {
   });
 });
 
-router.get('/me', (req, res) => {
-  const account = accountFromRequest(req);
+router.get('/me', async (req, res) => {
+  const account = await accountFromRequest(req);
   if (!account) return res.status(401).json({ success: false, error: 'יש להתחבר' });
   return res.json({ success: true, account: publicAccount(account) });
 });
@@ -56,9 +56,9 @@ router.post('/register', async (req, res) => {
       responseSheetId: sheetIdFromInput(body.responseSheetId),
     });
     if (account.paymentSeed) {
-      seedPaymentFile(account.id, account.paymentSeed);
+      await seedPaymentFile(account.id, account.paymentSeed);
     }
-    setSessionCookie(res, createSession(account));
+    setSessionCookie(res, await createSession(account));
     res.json({ success: true, account: publicAccount(account) });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, error: error.message || 'יצירת החשבון נכשלה' });
@@ -69,12 +69,12 @@ router.post('/login', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
-    const account = findAccountByEmail(email);
+    const account = await findAccountByEmail(email);
     if (!account) {
       return res.status(401).json({ success: false, error: 'אימייל או סיסמה שגויים' });
     }
     if (account.locked) {
-      const code = issueUnlockCode(account);
+      const code = await issueUnlockCode(account);
       await sendMail({
         to: account.email,
         subject: 'פתיחת חשבון ההזמנות',
@@ -103,42 +103,42 @@ router.post('/login', async (req, res) => {
       }
       return res.status(401).json({ success: false, error: 'אימייל או סיסמה שגויים' });
     }
-    clearLoginFailures(account);
-    setSessionCookie(res, createSession(findAccountByEmail(email)));
-    return res.json({ success: true, account: publicAccount(findAccountByEmail(email)) });
+    await clearLoginFailures(account);
+    const fresh = await findAccountByEmail(email);
+    setSessionCookie(res, await createSession(fresh));
+    return res.json({ success: true, account: publicAccount(fresh) });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message || 'ההתחברות נכשלה' });
   }
 });
 
-router.post('/logout', (req, res) => {
-  destroySessionToken(readCookie(req, 'sid'));
+router.post('/logout', async (req, res) => {
+  await destroySessionToken(readCookie(req, 'sid'));
   clearSessionCookie(res);
   res.json({ success: true });
 });
 
-router.post('/unlock', (req, res) => {
-  const result = unlockWithCode(req.body?.email, req.body?.code);
+router.post('/unlock', async (req, res) => {
+  const result = await unlockWithCode(req.body?.email, req.body?.code);
   if (!result.ok) return res.status(400).json({ success: false, error: result.error });
   return res.json({ success: true });
 });
 
 router.post('/forgot', async (req, res) => {
-  const account = findAccountByEmail(req.body?.email);
+  const account = await findAccountByEmail(req.body?.email);
   if (account) {
-    const code = issueResetCode(account);
+    const code = await issueResetCode(account);
     await sendMail({
       to: account.email,
       subject: 'קוד איפוס סיסמה',
       text: `קוד איפוס הסיסמה שלכם: ${code}\nהקוד תקף ל-15 דקות.`,
     });
   }
-  // Always succeed so we do not reveal whether the email exists.
   res.json({ success: true });
 });
 
-router.post('/verify-reset-code', (req, res) => {
-  const result = verifyResetCode(req.body?.email, req.body?.code);
+router.post('/verify-reset-code', async (req, res) => {
+  const result = await verifyResetCode(req.body?.email, req.body?.code);
   if (!result.ok) return res.status(400).json({ success: false, error: result.error });
   return res.json({ success: true });
 });
@@ -164,9 +164,9 @@ router.get('/headers', requireAccount, async (req, res) => {
   }
 });
 
-router.post('/columns', requireAccount, (req, res) => {
+router.post('/columns', requireAccount, async (req, res) => {
   const columnMap = req.body?.columnMap || {};
-  const account = updateAccount(req.account.id, { columnMap });
+  const account = await updateAccount(req.account.id, { columnMap });
   res.json({ success: true, account: publicAccount(account) });
 });
 

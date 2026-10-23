@@ -8,8 +8,10 @@ import dotenv from 'dotenv';
 import { currentAccount } from '../services/accountContext.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.join(__dirname, '..', '..', '.env');
-dotenv.config({ path: envPath });
+const root = path.join(__dirname, '..', '..');
+// Prefer committed local secrets, then Neon CLI `.env` (DATABASE_URL / DATABASE_URL_UNPOOLED).
+dotenv.config({ path: path.join(root, '.env.local') });
+dotenv.config({ path: path.join(root, '.env') });
 
 function stripEnvQuotes(value) {
   return String(value || '')

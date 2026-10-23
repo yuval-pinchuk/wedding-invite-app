@@ -1,26 +1,21 @@
 /**
  * Payment routing between personal Bit / PayBox links.
- * Persists totals and thresholds in server/data/payment-routing.json.
+ * Persists totals and thresholds in Neon `payment_states` (JSONB per account).
  *
  * Note: personal Bit/PayBox links do not notify this app when payment completes.
  * Guest "pay" clicks record an intent amount against the active link; admins can correct totals.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { randomBytes } from 'crypto';
-import { getDataDir } from '../config/dataDir.js';
+import { query } from '../db/pool.js';
 import { currentAccount } from './accountContext.js';
 
-function paymentFilePath() {
+function requireAccountId() {
   const account = currentAccount();
-  const root = getDataDir();
-  if (account?.id) {
-    const dir = path.join(root, 'payments');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    return path.join(dir, `${account.id}.json`);
+  if (!account?.id) {
+    throw Object.assign(new Error('Payment state requires an account context'), { status: 401 });
   }
-  return path.join(root, 'payment-routing.json');
+  return account.id;
 }
 
 /** @typedef {{ id: string, label: string, provider: 'paybox' | 'bit', owner: string, url: string, threshold: number, currentSum: number }} PaymentLink */
@@ -73,32 +68,34 @@ function defaultState() {
   };
 }
 
-function ensureDataFile() {
-  const file = paymentFilePath();
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, JSON.stringify(defaultState(), null, 2), 'utf8');
-  }
-}
-
-/** @returns {PaymentState} */
-export function readPaymentState() {
-  ensureDataFile();
+/** @returns {Promise<PaymentState>} */
+export async function readPaymentState() {
+  const accountId = requireAccountId();
   try {
-    const raw = fs.readFileSync(paymentFilePath(), 'utf8');
-    const parsed = JSON.parse(raw);
-    return normalizeState(parsed);
+    const result = await query('SELECT state FROM payment_states WHERE account_id = $1 LIMIT 1', [accountId]);
+    if (!result.rows[0]) {
+      const state = defaultState();
+      await writePaymentState(state);
+      return state;
+    }
+    return normalizeState(result.rows[0].state);
   } catch (error) {
     console.error('[paymentRouting] failed to read state, resetting defaults', error);
     const state = defaultState();
-    writePaymentState(state);
+    await writePaymentState(state);
     return state;
   }
 }
 
 /** @param {PaymentState} state */
-function writePaymentState(state) {
-  ensureDataFile();
-  fs.writeFileSync(paymentFilePath(), JSON.stringify(state, null, 2), 'utf8');
+async function writePaymentState(state) {
+  const accountId = requireAccountId();
+  await query(
+    `INSERT INTO payment_states (account_id, state, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (account_id) DO UPDATE SET state = EXCLUDED.state, updated_at = NOW()`,
+    [accountId, JSON.stringify(state)],
+  );
 }
 
 /**
@@ -230,7 +227,8 @@ export function resolveLinkForAmount(state, amount) {
  * @param {PaymentState} [state]
  * @returns {PaymentLink}
  */
-export function resolveActiveLink(state = readPaymentState()) {
+export function resolveActiveLink(state) {
+  if (!state) throw new Error('resolveActiveLink requires payment state');
   if (state.mode === 'manual' && state.manualLinkId) {
     const forced = state.links.find((l) => l.id === state.manualLinkId);
     if (forced) return forced;
@@ -242,24 +240,25 @@ export function resolveActiveLink(state = readPaymentState()) {
 }
 
 /** @param {PaymentState} [state] */
-export function getPaymentStatus(state = readPaymentState()) {
-  const active = resolveActiveLink(state);
-  const totalReceived = state.links.reduce((sum, l) => sum + l.currentSum, 0);
-  const totalCapacity = state.links.reduce((sum, l) => sum + l.threshold, 0);
+export async function getPaymentStatus(state) {
+  const resolved = state || await readPaymentState();
+  const active = resolveActiveLink(resolved);
+  const totalReceived = resolved.links.reduce((sum, l) => sum + l.currentSum, 0);
+  const totalCapacity = resolved.links.reduce((sum, l) => sum + l.threshold, 0);
 
   return {
-    mode: state.mode,
-    manualLinkId: state.manualLinkId,
+    mode: resolved.mode,
+    manualLinkId: resolved.manualLinkId,
     activeLinkId: active.id,
     totalReceived,
     totalCapacity,
-    links: state.links.map((link) => ({
+    links: resolved.links.map((link) => ({
       ...link,
       remaining: remaining(link),
       isFull: link.currentSum >= link.threshold,
       isActive: link.id === active.id,
     })),
-    recentHistory: state.history.slice(-30).reverse(),
+    recentHistory: resolved.history.slice(-30).reverse(),
   };
 }
 
@@ -268,7 +267,7 @@ export function getPaymentStatus(state = readPaymentState()) {
  * @param {number} amount
  * @param {{ guestPhone?: string, guestName?: string }} [meta]
  */
-export function recordGiftAndGetLink(amount, meta = {}) {
+export async function recordGiftAndGetLink(amount, meta = {}) {
   const value = Math.floor(Number(amount));
   if (!Number.isFinite(value) || value < 1) {
     throw Object.assign(new Error('Amount must be a positive integer'), { status: 400 });
@@ -277,7 +276,7 @@ export function recordGiftAndGetLink(amount, meta = {}) {
     throw Object.assign(new Error('Amount cannot exceed 15000'), { status: 400 });
   }
 
-  const state = readPaymentState();
+  const state = await readPaymentState();
   const active = resolveLinkForAmount(state, value);
   const link = state.links.find((l) => l.id === active.id);
   if (!link) {
@@ -297,8 +296,8 @@ export function recordGiftAndGetLink(amount, meta = {}) {
     state.history = state.history.slice(-200);
   }
 
-  writePaymentState(state);
-  const status = getPaymentStatus(state);
+  await writePaymentState(state);
+  const status = await getPaymentStatus(state);
 
   return {
     url: link.url,
@@ -314,8 +313,8 @@ export function recordGiftAndGetLink(amount, meta = {}) {
  * @param {'auto' | 'manual'} mode
  * @param {string | null} [manualLinkId]
  */
-export function setRoutingMode(mode, manualLinkId = null) {
-  const state = readPaymentState();
+export async function setRoutingMode(mode, manualLinkId = null) {
+  const state = await readPaymentState();
   if (mode === 'manual') {
     if (!manualLinkId || !state.links.some((l) => l.id === manualLinkId)) {
       throw Object.assign(new Error('Valid manualLinkId is required for manual mode'), { status: 400 });
@@ -326,7 +325,7 @@ export function setRoutingMode(mode, manualLinkId = null) {
     state.mode = 'auto';
     state.manualLinkId = null;
   }
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
@@ -334,8 +333,8 @@ export function setRoutingMode(mode, manualLinkId = null) {
  * @param {string} linkId
  * @param {{ threshold?: number, currentSum?: number, url?: string, label?: string, provider?: string, owner?: string }} updates
  */
-export function updateLink(linkId, updates = {}) {
-  const state = readPaymentState();
+export async function updateLink(linkId, updates = {}) {
+  const state = await readPaymentState();
   const link = state.links.find((l) => l.id === linkId);
   if (!link) {
     throw Object.assign(new Error('Link not found'), { status: 404 });
@@ -382,15 +381,15 @@ export function updateLink(linkId, updates = {}) {
     note: `Updated: ${link.label}`,
   });
 
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
 /**
  * @param {{ label: string, url: string, provider?: string, owner?: string, threshold?: number }} payload
  */
-export function addLink(payload = {}) {
-  const state = readPaymentState();
+export async function addLink(payload = {}) {
+  const state = await readPaymentState();
   const label = String(payload.label || '').trim();
   const url = String(payload.url || '').trim();
   if (!label || !url) {
@@ -420,13 +419,13 @@ export function addLink(payload = {}) {
     source: 'admin-add',
     note: `Added: ${link.label}`,
   });
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
 /** @param {string} linkId */
-export function removeLink(linkId) {
-  const state = readPaymentState();
+export async function removeLink(linkId) {
+  const state = await readPaymentState();
   const index = state.links.findIndex((l) => l.id === linkId);
   if (index < 0) {
     throw Object.assign(new Error('Link not found'), { status: 404 });
@@ -449,15 +448,15 @@ export function removeLink(linkId) {
     source: 'admin-remove',
     note: `Removed: ${removed.label}`,
   });
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
 /**
  * @param {string[]} orderedIds
  */
-export function reorderLinks(orderedIds) {
-  const state = readPaymentState();
+export async function reorderLinks(orderedIds) {
+  const state = await readPaymentState();
   if (!Array.isArray(orderedIds) || orderedIds.length !== state.links.length) {
     throw Object.assign(new Error('orderedIds must include every link id once'), { status: 400 });
   }
@@ -480,7 +479,7 @@ export function reorderLinks(orderedIds) {
     source: 'admin-reorder',
     note: `Order: ${state.links.map((l) => l.label).join(' → ')}`,
   });
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
@@ -488,8 +487,8 @@ export function reorderLinks(orderedIds) {
  * @param {string} linkId
  * @param {'up' | 'down'} direction
  */
-export function moveLink(linkId, direction) {
-  const state = readPaymentState();
+export async function moveLink(linkId, direction) {
+  const state = await readPaymentState();
   const index = state.links.findIndex((l) => l.id === linkId);
   if (index < 0) {
     throw Object.assign(new Error('Link not found'), { status: 404 });
@@ -509,13 +508,13 @@ export function moveLink(linkId, direction) {
  * @param {number} amount
  * @param {string} [note]
  */
-export function adjustLinkSum(linkId, amount, note = '') {
+export async function adjustLinkSum(linkId, amount, note = '') {
   const value = Math.floor(Number(amount));
   if (!Number.isFinite(value) || value === 0) {
     throw Object.assign(new Error('amount must be a non-zero integer'), { status: 400 });
   }
 
-  const state = readPaymentState();
+  const state = await readPaymentState();
   const link = state.links.find((l) => l.id === linkId);
   if (!link) {
     throw Object.assign(new Error('Link not found'), { status: 404 });
@@ -534,14 +533,12 @@ export function adjustLinkSum(linkId, amount, note = '') {
     state.history = state.history.slice(-200);
   }
 
-  writePaymentState(state);
+  await writePaymentState(state);
   return getPaymentStatus(state);
 }
 
-/** Write the four payment links for a new account. */
-export function seedPaymentFile(accountId, urls = {}) {
-  const dir = path.join(getDataDir(), 'payments');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+/** Seed the four payment links for a new account. */
+export async function seedPaymentFile(accountId, urls = {}) {
   const state = defaultState();
   const byId = {
     'danielle-paybox': urls.daniellePaybox,
@@ -552,5 +549,10 @@ export function seedPaymentFile(accountId, urls = {}) {
   for (const link of state.links) {
     if (byId[link.id]) link.url = String(byId[link.id]).trim();
   }
-  fs.writeFileSync(path.join(dir, `${accountId}.json`), JSON.stringify(state, null, 2), 'utf8');
+  await query(
+    `INSERT INTO payment_states (account_id, state, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (account_id) DO UPDATE SET state = EXCLUDED.state, updated_at = NOW()`,
+    [accountId, JSON.stringify(state)],
+  );
 }

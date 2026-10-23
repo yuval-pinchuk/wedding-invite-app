@@ -12,16 +12,23 @@
     "dev": "nodemon server/app.js",
     "debug": "node --inspect server/app.js",
     "debug-brk": "node --inspect-brk server/app.js",
+    "build": "npm run db:migrate",
     "send:invitations": "node scripts/sendInvitations.js",
+    "db:migrate": "node --input-type=module -e \"import './server/config/loadEnv.js'; import { migrate } from './server/db/migrate.js'; import { closePool } from './server/db/pool.js'; await migrate(); await closePool();\"",
+    "db:import-json": "node scripts/migrateJsonToNeon.js",
+    "db:verify": "node scripts/verifyNeon.js",
     "lint": "eslint ."
   },
   "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "googleapis": "^131.0.0",
     "nodemailer": "^6.10.1",
+    "pg": "^8.23.1",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "uuid": "^9.0.1"

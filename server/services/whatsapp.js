@@ -88,7 +88,7 @@ function envPositiveMb(name, fallback) {
 }
 
 export function authDirForSender(senderName) {
-  const owner = currentAccount()?.id || 'legacy';
+  const owner = currentAccount()?.id || 'default';
   return path.join(getDataDir(), 'wa', owner, encodeURIComponent(sessionKey(senderName)));
 }
 
@@ -534,9 +534,6 @@ export function buildRsvpLink(phone) {
   }
   const account = currentAccount();
   const phoneQuery = `phone=${encodeURIComponent(phone)}`;
-  if (account?.publicToken && !account.legacy) {
-    return `${base}/i/${account.publicToken}?${phoneQuery}`;
-  }
   if (account?.publicToken) {
     return `${base}/i/${account.publicToken}?${phoneQuery}`;
   }

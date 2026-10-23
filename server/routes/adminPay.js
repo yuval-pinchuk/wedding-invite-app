@@ -20,14 +20,11 @@ router.use((_req, res, next) => {
 
 router.use(requireAccount);
 
-/**
- * GET /api/admin/pay/status
- */
-router.get('/status', (_req, res) => {
+router.get('/status', async (_req, res) => {
   try {
     res.json({
       success: true,
-      ...getPaymentStatus(),
+      ...(await getPaymentStatus()),
       authRequired: true,
     });
   } catch (error) {
@@ -39,11 +36,7 @@ router.get('/status', (_req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/mode
- * Body: { mode: 'auto' | 'manual', manualLinkId? }
- */
-router.post('/mode', (req, res) => {
+router.post('/mode', async (req, res) => {
   try {
     const { mode, manualLinkId } = req.body || {};
     if (mode !== 'auto' && mode !== 'manual') {
@@ -52,7 +45,7 @@ router.post('/mode', (req, res) => {
         error: 'mode must be "auto" or "manual"',
       });
     }
-    const status = setRoutingMode(mode, manualLinkId || null);
+    const status = await setRoutingMode(mode, manualLinkId || null);
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/mode]', error);
@@ -63,13 +56,9 @@ router.post('/mode', (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/links
- * Body: { label, url, provider?, owner?, threshold? }
- */
-router.post('/links', (req, res) => {
+router.post('/links', async (req, res) => {
   try {
-    const status = addLink(req.body || {});
+    const status = await addLink(req.body || {});
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/links/add]', error);
@@ -80,13 +69,9 @@ router.post('/links', (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/links/reorder
- * Body: { orderedIds: string[] }
- */
-router.post('/links/reorder', (req, res) => {
+router.post('/links/reorder', async (req, res) => {
   try {
-    const status = reorderLinks(req.body?.orderedIds || []);
+    const status = await reorderLinks(req.body?.orderedIds || []);
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/links/reorder]', error);
@@ -97,14 +82,10 @@ router.post('/links/reorder', (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/links/:linkId/move
- * Body: { direction: 'up' | 'down' }
- */
-router.post('/links/:linkId/move', (req, res) => {
+router.post('/links/:linkId/move', async (req, res) => {
   try {
     const direction = req.body?.direction === 'up' ? 'up' : 'down';
-    const status = moveLink(req.params.linkId, direction);
+    const status = await moveLink(req.params.linkId, direction);
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/links/move]', error);
@@ -115,13 +96,9 @@ router.post('/links/:linkId/move', (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/links/:linkId
- * Body: { threshold?, currentSum?, url?, label?, provider?, owner? }
- */
-router.post('/links/:linkId', (req, res) => {
+router.post('/links/:linkId', async (req, res) => {
   try {
-    const status = updateLink(req.params.linkId, req.body || {});
+    const status = await updateLink(req.params.linkId, req.body || {});
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/links]', error);
@@ -132,12 +109,9 @@ router.post('/links/:linkId', (req, res) => {
   }
 });
 
-/**
- * DELETE /api/admin/pay/links/:linkId
- */
-router.delete('/links/:linkId', (req, res) => {
+router.delete('/links/:linkId', async (req, res) => {
   try {
-    const status = removeLink(req.params.linkId);
+    const status = await removeLink(req.params.linkId);
     res.json({ success: true, ...status });
   } catch (error) {
     console.error('[admin/pay/links/delete]', error);
@@ -148,17 +122,13 @@ router.delete('/links/:linkId', (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/pay/links/:linkId/adjust
- * Body: { amount, note? } — amount can be negative
- */
-router.post('/links/:linkId/adjust', (req, res) => {
+router.post('/links/:linkId/adjust', async (req, res) => {
   try {
     const { amount, note } = req.body || {};
-    const status = adjustLinkSum(req.params.linkId, amount, note);
+    const status = await adjustLinkSum(req.params.linkId, amount, note);
     res.json({ success: true, ...status });
   } catch (error) {
-    console.error('[admin/pay/adjust]', error);
+    console.error('[admin/pay/links/adjust]', error);
     res.status(error.status || 500).json({
       success: false,
       error: error.message || 'Failed to adjust link sum',

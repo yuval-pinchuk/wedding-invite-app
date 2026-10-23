@@ -165,7 +165,7 @@ router.get('/dashboard', async (req, res) => {
       mode: 'auto',
     };
     try {
-      const status = getPaymentStatus();
+      const status = await getPaymentStatus();
       const active = (status.links || []).find((l) => l.isActive);
       payment = {
         totalReceived: status.totalReceived || 0,

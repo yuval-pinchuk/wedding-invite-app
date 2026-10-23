@@ -1,21 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual, createHash } from 'crypto';
 import { promisify } from 'util';
 import { getDataDir } from '../config/dataDir.js';
-import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
-import { getServiceAccountEmail } from './googleSheets.js';
-import { seedPaymentFile } from './paymentRouting.js';
+import { query } from '../db/pool.js';
 
 const scrypt = promisify(scryptCb);
 const MAX_FAILURES = 5;
 const CODE_TTL_MS = 15 * 60 * 1000;
 const RESET_CODE_TTL_MS = 15 * 60 * 1000;
-
-function accountsPath() {
-  return path.join(getDataDir(), 'accounts.json');
-}
 
 function invitesDir() {
   const dir = path.join(getDataDir(), 'invites');
@@ -23,23 +16,34 @@ function invitesDir() {
   return dir;
 }
 
-function readDb() {
-  const file = accountsPath();
-  if (!fs.existsSync(file)) return { accounts: [] };
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [] };
-  } catch (error) {
-    console.error('[accounts] failed to read store', error);
-    return { accounts: [] };
-  }
-}
-
-function writeDb(db) {
-  const file = accountsPath();
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
-  fs.renameSync(tmp, file);
+function rowToAccount(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    publicToken: row.public_token,
+    email: row.email,
+    passwordHash: row.password_hash,
+    failedLogins: Number(row.failed_logins) || 0,
+    locked: Boolean(row.locked),
+    unlockCodeHash: row.unlock_code_hash || '',
+    unlockCodeExpires: Number(row.unlock_code_expires) || 0,
+    resetTokenHash: row.reset_token_hash || '',
+    resetTokenExpires: Number(row.reset_token_expires) || 0,
+    legacy: Boolean(row.legacy),
+    brideName: row.bride_name || '',
+    groomName: row.groom_name || '',
+    weddingDate: row.wedding_date || '',
+    wazeUrl: row.waze_url || '',
+    mapsUrl: row.maps_url || '',
+    guestSheetId: row.guest_sheet_id || '',
+    responseSheetId: row.response_sheet_id || '',
+    sheetTab: row.sheet_tab || 'חתונה',
+    columnMap: row.column_map && typeof row.column_map === 'object' ? row.column_map : {},
+    invitationMessage: row.invitation_message || '',
+    reminderTemplate: row.reminder_template || '',
+    inviteImageFile: row.invite_image_file || '',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || ''),
+  };
 }
 
 export function publicAccount(account) {
@@ -65,27 +69,29 @@ export function publicAccount(account) {
   };
 }
 
-export function listAccounts() {
-  return readDb().accounts;
+export async function listAccounts() {
+  const result = await query('SELECT * FROM accounts ORDER BY created_at ASC');
+  return result.rows.map(rowToAccount);
 }
 
-export function findAccountById(id) {
-  return listAccounts().find((account) => account.id === id) || null;
+export async function findAccountById(id) {
+  if (!id) return null;
+  const result = await query('SELECT * FROM accounts WHERE id = $1 LIMIT 1', [id]);
+  return rowToAccount(result.rows[0]);
 }
 
-export function findAccountByEmail(email) {
+export async function findAccountByEmail(email) {
   const key = String(email || '').trim().toLowerCase();
-  return listAccounts().find((account) => account.email === key) || null;
+  if (!key) return null;
+  const result = await query('SELECT * FROM accounts WHERE email = $1 LIMIT 1', [key]);
+  return rowToAccount(result.rows[0]);
 }
 
-export function findByPublicToken(token) {
+export async function findByPublicToken(token) {
   const key = String(token || '').trim();
   if (!key) return null;
-  return listAccounts().find((account) => account.publicToken === key) || null;
-}
-
-export function findLegacyAccount() {
-  return listAccounts().find((account) => account.legacy) || listAccounts()[0] || null;
+  const result = await query('SELECT * FROM accounts WHERE public_token = $1 LIMIT 1', [key]);
+  return rowToAccount(result.rows[0]);
 }
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$/;
@@ -127,12 +133,67 @@ function hashToken(value) {
   return createHash('sha256').update(String(value)).digest('hex');
 }
 
-function saveAccount(next) {
-  const db = readDb();
-  const index = db.accounts.findIndex((account) => account.id === next.id);
-  if (index === -1) db.accounts.push(next);
-  else db.accounts[index] = next;
-  writeDb(db);
+export async function saveAccount(next) {
+  await query(
+    `INSERT INTO accounts (
+      id, email, public_token, password_hash, failed_logins, locked,
+      unlock_code_hash, unlock_code_expires, reset_token_hash, reset_token_expires,
+      legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
+      guest_sheet_id, response_sheet_id, sheet_tab, column_map,
+      invitation_message, reminder_template, invite_image_file, created_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      email = EXCLUDED.email,
+      public_token = EXCLUDED.public_token,
+      password_hash = EXCLUDED.password_hash,
+      failed_logins = EXCLUDED.failed_logins,
+      locked = EXCLUDED.locked,
+      unlock_code_hash = EXCLUDED.unlock_code_hash,
+      unlock_code_expires = EXCLUDED.unlock_code_expires,
+      reset_token_hash = EXCLUDED.reset_token_hash,
+      reset_token_expires = EXCLUDED.reset_token_expires,
+      legacy = EXCLUDED.legacy,
+      bride_name = EXCLUDED.bride_name,
+      groom_name = EXCLUDED.groom_name,
+      wedding_date = EXCLUDED.wedding_date,
+      waze_url = EXCLUDED.waze_url,
+      maps_url = EXCLUDED.maps_url,
+      guest_sheet_id = EXCLUDED.guest_sheet_id,
+      response_sheet_id = EXCLUDED.response_sheet_id,
+      sheet_tab = EXCLUDED.sheet_tab,
+      column_map = EXCLUDED.column_map,
+      invitation_message = EXCLUDED.invitation_message,
+      reminder_template = EXCLUDED.reminder_template,
+      invite_image_file = EXCLUDED.invite_image_file`,
+    [
+      next.id,
+      next.email,
+      next.publicToken,
+      next.passwordHash,
+      next.failedLogins || 0,
+      Boolean(next.locked),
+      next.unlockCodeHash || '',
+      next.unlockCodeExpires || 0,
+      next.resetTokenHash || '',
+      next.resetTokenExpires || 0,
+      Boolean(next.legacy),
+      next.brideName || '',
+      next.groomName || '',
+      next.weddingDate || '',
+      next.wazeUrl || '',
+      next.mapsUrl || '',
+      next.guestSheetId || '',
+      next.responseSheetId || '',
+      next.sheetTab || '',
+      JSON.stringify(next.columnMap || {}),
+      next.invitationMessage || '',
+      next.reminderTemplate || '',
+      next.inviteImageFile || '',
+      next.createdAt || new Date().toISOString(),
+    ],
+  );
   return next;
 }
 
@@ -145,8 +206,8 @@ function saveInviteImage(accountId, dataUrl) {
   const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=\s]+)$/i);
   if (!match) return '';
   const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
-  if (!buffer.length || buffer.length > 3 * 1024 * 1024) {
-    throw Object.assign(new Error('התמונה חייבת להיות עד 3MB'), { status: 400 });
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+    throw Object.assign(new Error('התמונה חייבת להיות עד 5MB'), { status: 400 });
   }
   const ext = match[1].includes('png') ? 'png' : match[1].includes('webp') ? 'webp' : 'jpg';
   const filename = `${accountId}.${ext}`;
@@ -161,7 +222,7 @@ export async function createAccount(input) {
     throw Object.assign(new Error('יש להזין אימייל תקין'), { status: 400 });
   }
   assertPassword(password);
-  if (findAccountByEmail(email)) {
+  if (await findAccountByEmail(email)) {
     throw Object.assign(new Error('כבר קיים חשבון עם האימייל הזה'), { status: 409 });
   }
   const brideName = String(input.brideName || '').trim();
@@ -216,15 +277,15 @@ export async function createAccount(input) {
     },
     createdAt: new Date().toISOString(),
   };
-  saveAccount(account);
+  await saveAccount(account);
   return account;
 }
 
-export function updateAccount(id, patch) {
-  const account = findAccountById(id);
+export async function updateAccount(id, patch) {
+  const account = await findAccountById(id);
   if (!account) return null;
   const next = { ...account, ...patch, id: account.id, email: account.email };
-  saveAccount(next);
+  await saveAccount(next);
   return next;
 }
 
@@ -238,15 +299,15 @@ export async function recordFailedLogin(account) {
     next.unlockCodeHash = hashToken(unlockCode);
     next.unlockCodeExpires = Date.now() + CODE_TTL_MS;
   }
-  saveAccount(next);
+  await saveAccount(next);
   return { account: next, unlockCode, locked };
 }
 
-export function clearLoginFailures(account) {
-  saveAccount({ ...account, failedLogins: 0, locked: false, unlockCodeHash: '', unlockCodeExpires: 0 });
+export async function clearLoginFailures(account) {
+  await saveAccount({ ...account, failedLogins: 0, locked: false, unlockCodeHash: '', unlockCodeExpires: 0 });
 }
 
-export function issueUnlockCode(account) {
+export async function issueUnlockCode(account) {
   const unlockCode = String(Math.floor(100000 + Math.random() * 900000));
   const next = {
     ...account,
@@ -254,12 +315,12 @@ export function issueUnlockCode(account) {
     unlockCodeHash: hashToken(unlockCode),
     unlockCodeExpires: Date.now() + CODE_TTL_MS,
   };
-  saveAccount(next);
+  await saveAccount(next);
   return unlockCode;
 }
 
-export function unlockWithCode(email, code) {
-  const account = findAccountByEmail(email);
+export async function unlockWithCode(email, code) {
+  const account = await findAccountByEmail(email);
   if (!account || !account.locked) return { ok: false, error: 'החשבון אינו נעול' };
   if (!account.unlockCodeExpires || Date.now() > account.unlockCodeExpires) {
     return { ok: false, error: 'פג תוקף הקוד. בקשו קוד חדש בהתחברות.' };
@@ -267,14 +328,14 @@ export function unlockWithCode(email, code) {
   if (hashToken(String(code || '').trim()) !== account.unlockCodeHash) {
     return { ok: false, error: 'הקוד שגוי' };
   }
-  clearLoginFailures(account);
+  await clearLoginFailures(account);
   return { ok: true };
 }
 
 /** Issue a 6-digit reset code (15 minutes). Replaces any previous code. */
-export function issueResetCode(account) {
+export async function issueResetCode(account) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  saveAccount({
+  await saveAccount({
     ...account,
     resetTokenHash: hashToken(code),
     resetTokenExpires: Date.now() + RESET_CODE_TTL_MS,
@@ -282,8 +343,8 @@ export function issueResetCode(account) {
   return code;
 }
 
-function findAccountWithValidResetCode(email, code) {
-  const account = findAccountByEmail(email);
+async function findAccountWithValidResetCode(email, code) {
+  const account = await findAccountByEmail(email);
   if (!account || !account.resetTokenHash || !account.resetTokenExpires || Date.now() > account.resetTokenExpires) {
     return { ok: false, error: 'פג תוקף הקוד. בקשו קוד חדש.', account: null };
   }
@@ -293,18 +354,18 @@ function findAccountWithValidResetCode(email, code) {
   return { ok: true, error: '', account };
 }
 
-export function verifyResetCode(email, code) {
-  const result = findAccountWithValidResetCode(email, code);
+export async function verifyResetCode(email, code) {
+  const result = await findAccountWithValidResetCode(email, code);
   return { ok: result.ok, error: result.error };
 }
 
 export async function resetPassword(email, code, password) {
   assertPassword(password);
-  const result = findAccountWithValidResetCode(email, code);
+  const result = await findAccountWithValidResetCode(email, code);
   if (!result.ok) {
     throw Object.assign(new Error(result.error), { status: 400 });
   }
-  saveAccount({
+  await saveAccount({
     ...result.account,
     passwordHash: await hashPassword(password),
     resetTokenHash: '',
@@ -314,74 +375,4 @@ export async function resetPassword(email, code, password) {
     unlockCodeHash: '',
     unlockCodeExpires: 0,
   });
-}
-
-function copyLegacyImage(accountId) {
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const files = [
-    path.join(repoRoot, 'WEDDING.png'),
-    path.join(repoRoot, 'public', 'WEDDING.png'),
-  ];
-  const found = files.find((file) => fs.existsSync(file));
-  if (!found) return '';
-  const filename = `${accountId}.png`;
-  fs.copyFileSync(found, path.join(invitesDir(), filename));
-  return filename;
-}
-
-/**
- * First boot: keep the existing wedding as a legacy account so old `/?phone=` links still open it.
- */
-export async function ensureLegacyAccount() {
-  if (listAccounts().length) return;
-  const guestSheetId = envGuestSheetId();
-  const responseSheetId = envResponseSheetId();
-  if (!guestSheetId) {
-    console.warn('[accounts] no accounts and no GOOGLE_GUEST_SHEET_ID; signup will create the first wedding');
-    return;
-  }
-  const id = randomUUID();
-  const password = process.env.LEGACY_ADMIN_PASSWORD || randomBytes(9).toString('hex');
-  const email = String(process.env.LEGACY_ADMIN_EMAIL || 'owner@localhost').trim().toLowerCase();
-  const inviteImageFile = copyLegacyImage(id);
-  const account = {
-    id,
-    publicToken: randomBytes(18).toString('hex'),
-    email,
-    passwordHash: await hashPassword(password),
-    failedLogins: 0,
-    locked: false,
-    unlockCodeHash: '',
-    unlockCodeExpires: 0,
-    resetTokenHash: '',
-    resetTokenExpires: 0,
-    legacy: true,
-    brideName: 'דניאל',
-    groomName: 'יובל',
-    weddingDate: '14.10.26',
-    wazeUrl: 'https://ul.waze.com/ul?venue_id=22872388.228658344.2001245&overview=yes&utm_campaign=default&utm_source=waze_website&utm_medium=lm_share_location',
-    mapsUrl: 'https://maps.app.goo.gl/YwCwhRbqcoD2Ky1a8?g_st=aw',
-    guestSheetId,
-    responseSheetId: responseSheetId || guestSheetId,
-    sheetTab: 'חתונה',
-    columnMap: {},
-    invitationMessage: '',
-    reminderTemplate: '',
-    inviteImageFile,
-    paymentSeed: null,
-    createdAt: new Date().toISOString(),
-  };
-  saveAccount(account);
-  const previousPayments = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'payment-routing.json');
-  const target = path.join(getDataDir(), 'payments', `${id}.json`);
-  if (fs.existsSync(previousPayments)) {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (!fs.existsSync(target)) fs.copyFileSync(previousPayments, target);
-  } else {
-    seedPaymentFile(id, {});
-  }
-  if (!process.env.LEGACY_ADMIN_PASSWORD) {
-    console.log(`[accounts] legacy admin ${email} password: ${password}`);
-  }
-  console.log(`[accounts] legacy wedding ready. Service account: ${getServiceAccountEmail() || '(not loaded yet)'}`);
 }

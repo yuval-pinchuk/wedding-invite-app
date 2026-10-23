@@ -11,3 +11,4 @@ dist/
 .wwebjs_cache/
 .baileys_auth_*/
 server/data/payment-routing.json
+.neon

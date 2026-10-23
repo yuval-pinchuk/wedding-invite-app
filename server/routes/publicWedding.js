@@ -1,16 +1,17 @@
 import express from 'express';
 import fs from 'fs';
-import { findByPublicToken, findLegacyAccount, inviteImagePath, publicAccount } from '../services/accounts.js';
+import { findByPublicToken, inviteImagePath, publicAccount } from '../services/accounts.js';
 import { buildExampleResponsesWorkbook, buildExampleWorkbook } from '../services/exampleSheet.js';
 
 const router = express.Router();
 
-function accountFromToken(token) {
-  return (token && findByPublicToken(token)) || findLegacyAccount();
+async function accountFromToken(token) {
+  if (!token) return null;
+  return await findByPublicToken(token);
 }
 
-router.get('/wedding', (req, res) => {
-  const account = accountFromToken(String(req.query.token || '').trim());
+router.get('/wedding', async (req, res) => {
+  const account = await accountFromToken(String(req.query.token || '').trim());
   if (!account) return res.status(404).json({ success: false, error: 'החתונה לא נמצאה' });
   const view = publicAccount(account);
   const imageFile = inviteImagePath(account);
@@ -26,8 +27,8 @@ router.get('/wedding', (req, res) => {
   });
 });
 
-router.get('/invite-image/:token', (req, res) => {
-  const account = findByPublicToken(req.params.token) || findLegacyAccount();
+router.get('/invite-image/:token', async (req, res) => {
+  const account = await findByPublicToken(req.params.token);
   const file = inviteImagePath(account);
   if (!file || !fs.existsSync(file)) return res.status(404).end();
   res.sendFile(file);

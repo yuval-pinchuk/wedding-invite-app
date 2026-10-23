@@ -12,8 +12,8 @@ import authRouter from './routes/auth.js';
 import publicWeddingRouter from './routes/publicWedding.js';
 import { configureSheets } from './services/googleSheets.js';
 import { startSessionMaintenance } from './services/whatsapp.js';
-import { ensureLegacyAccount } from './services/accounts.js';
 import { accountFromRequest } from './services/sessions.js';
+import { migrate } from './db/migrate.js';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -24,26 +24,22 @@ const publicDir = path.resolve(__dirname, '../public');
 
 app.set('trust proxy', 1);
 app.use(cors());
-app.use(express.json({ limit: '4mb' }));
+// Signup sends the invite image as a base64 data URL (~4/3 of file size).
+app.use(express.json({ limit: '8mb' }));
+
+async function requireLoginPage(req, res, nextFile) {
+  const account = await accountFromRequest(req);
+  if (!account) return res.redirect('/login');
+  return res.sendFile(path.join(publicDir, nextFile));
+}
 
 app.get('/login', (_req, res) => {
   res.sendFile(path.join(publicDir, 'login.html'));
 });
 
-app.get('/manage', (req, res) => {
-  if (!accountFromRequest(req)) return res.redirect('/login');
-  return res.sendFile(path.join(publicDir, 'dashboard.html'));
-});
-
-app.get('/manage/invites', (req, res) => {
-  if (!accountFromRequest(req)) return res.redirect('/login');
-  return res.sendFile(path.join(publicDir, 'admin.html'));
-});
-
-app.get('/manage/pay', (req, res) => {
-  if (!accountFromRequest(req)) return res.redirect('/login');
-  return res.sendFile(path.join(publicDir, 'admin-pay.html'));
-});
+app.get('/manage', (req, res) => requireLoginPage(req, res, 'dashboard.html'));
+app.get('/manage/invites', (req, res) => requireLoginPage(req, res, 'admin.html'));
+app.get('/manage/pay', (req, res) => requireLoginPage(req, res, 'admin-pay.html'));
 
 app.get(['/admin.html', '/admin'], (_req, res) => {
   res.redirect('/manage/invites');
@@ -77,14 +73,14 @@ app.get('*', (_req, res) => {
 
 async function start() {
   try {
+    await migrate();
     await configureSheets();
-    await ensureLegacyAccount();
     app.listen(port, () => {
       console.log(`easyWed running on http://localhost:${port}`);
       startSessionMaintenance();
     });
   } catch (error) {
-    console.error('Failed to initialize Google Sheets integration:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }

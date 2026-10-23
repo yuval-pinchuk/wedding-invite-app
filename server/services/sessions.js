@@ -1,31 +1,10 @@
-import fs from 'fs';
-import path from 'path';
 import { randomBytes } from 'crypto';
-import { getDataDir } from '../config/dataDir.js';
+import { query } from '../db/pool.js';
 import { findAccountById } from './accounts.js';
 import { accountStore } from './accountContext.js';
 
 const COOKIE = 'sid';
 const MAX_AGE_SEC = 30 * 24 * 60 * 60;
-
-function sessionsPath() {
-  return path.join(getDataDir(), 'sessions.json');
-}
-
-function readSessions() {
-  const file = sessionsPath();
-  if (!fs.existsSync(file)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
-function writeSessions(data) {
-  const file = sessionsPath();
-  fs.writeFileSync(file, JSON.stringify(data), 'utf8');
-}
 
 export function readCookie(req, name) {
   const raw = String(req.headers.cookie || '');
@@ -58,38 +37,49 @@ export function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-export function createSession(account) {
+export async function createSession(account) {
   const token = randomBytes(24).toString('hex');
-  const sessions = readSessions();
-  sessions[token] = { accountId: account.id, expires: Date.now() + MAX_AGE_SEC * 1000 };
-  writeSessions(sessions);
+  const expires = new Date(Date.now() + MAX_AGE_SEC * 1000);
+  await query(
+    `INSERT INTO sessions (token, account_id, expires_at) VALUES ($1, $2, $3)
+     ON CONFLICT (token) DO UPDATE SET account_id = EXCLUDED.account_id, expires_at = EXCLUDED.expires_at`,
+    [token, account.id, expires.toISOString()],
+  );
   return token;
 }
 
-export function destroySessionToken(token) {
+export async function destroySessionToken(token) {
   if (!token) return;
-  const sessions = readSessions();
-  delete sessions[token];
-  writeSessions(sessions);
+  await query('DELETE FROM sessions WHERE token = $1', [token]);
 }
 
-export function accountFromRequest(req) {
+export async function accountFromRequest(req) {
   const token = readCookie(req, COOKIE);
   if (!token) return null;
-  const sessions = readSessions();
-  const row = sessions[token];
-  if (!row || !row.expires || Date.now() > row.expires) {
-    if (row) destroySessionToken(token);
+  const result = await query(
+    'SELECT account_id, expires_at FROM sessions WHERE token = $1 LIMIT 1',
+    [token],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const expiresAt = row.expires_at instanceof Date ? row.expires_at.getTime() : Date.parse(row.expires_at);
+  if (!expiresAt || Date.now() > expiresAt) {
+    await destroySessionToken(token);
     return null;
   }
-  return findAccountById(row.accountId);
+  return await findAccountById(row.account_id);
 }
 
-export function requireAccount(req, res, next) {
-  const account = accountFromRequest(req);
-  if (!account) {
-    return res.status(401).json({ success: false, error: 'יש להתחבר' });
+export async function requireAccount(req, res, next) {
+  try {
+    const account = await accountFromRequest(req);
+    if (!account) {
+      return res.status(401).json({ success: false, error: 'יש להתחבר' });
+    }
+    req.account = account;
+    return accountStore.run(account, () => next());
+  } catch (error) {
+    console.error('[sessions] requireAccount failed', error);
+    return res.status(500).json({ success: false, error: 'שגיאת התחברות' });
   }
-  req.account = account;
-  return accountStore.run(account, () => next());
 }
