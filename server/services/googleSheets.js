@@ -7,6 +7,7 @@ export const DEFAULT_COLUMN_MAP = {
   phone: '',
   addons: 'L',
   rsvpCount: 'H',
+  babies: '',
   remarks: 'M',
   whatsappSent: 'N',
   sender: 'O',
@@ -205,6 +206,7 @@ function mapDataRowsToGuests(rows) {
       whatsappSentAt: sent,
       phoneTo: mappedPhone || findPhoneNumber(row),
       rsvpGuestCount: String(cellAt(row, 'rsvpCount') || '').trim(),
+      babiesCount: String(cellAt(row, 'babies') || '').trim(),
       rsvpRemarks: String(cellAt(row, 'remarks') || '').trim(),
       giftAmount: String(cellAt(row, 'giftAmount') || '').trim(),
       giftLink: String(cellAt(row, 'giftLink') || '').trim(),
@@ -226,11 +228,11 @@ export function hasWhatsappSent(guest) {
 const WHATSAPP_SENT_MARK = 'V';
 
 /**
- * Parse stored RSVP columns H + M into structured fields.
- * Column H: "0" = not attending, "2" or "(+1)2" = guests (babies left of adults).
- * Also accepts legacy "2(+1)" / "2(1)".
- * Column M: optional "N טבעוני/צמחוני" + free-text notes.
- * @param {{ rsvpGuestCount?: string, rsvpRemarks?: string }} guest
+ * Parse stored RSVP columns into structured fields.
+ * RSVP count: total guests (adults + babies), or legacy "(+1)2" / "2(+1)".
+ * Babies column (optional): babies only.
+ * Remarks: optional "N טבעוני/צמחוני" + free-text notes.
+ * @param {{ rsvpGuestCount?: string, babiesCount?: string, rsvpRemarks?: string }} guest
  * @returns {null | {
  *   isAttending: boolean,
  *   numberOfGuests: number,
@@ -253,7 +255,9 @@ export function parseStoredRsvp(guest) {
     };
   }
 
-  // Prefer "(+1)2" / "(1)2", then legacy "2(+1)" / "2(1)", then plain "2"
+  const babiesFromCol = Math.max(0, parseInt(String(guest?.babiesCount || '').trim(), 10) || 0);
+
+  // Prefer "(+1)2" / "(1)2", then legacy "2(+1)" / "2(1)", then plain total
   const prefixMatch = raw.match(/^\(\+?(\d+)\)(\d+)$/);
   const suffixMatch = raw.match(/^(\d+)\(\+?(\d+)\)$/);
   const plainMatch = raw.match(/^(\d+)$/);
@@ -267,15 +271,26 @@ export function parseStoredRsvp(guest) {
     numberOfGuests = Math.max(1, parseInt(suffixMatch[1], 10) || 1);
     numberOfBabies = parseInt(suffixMatch[2], 10) || 0;
   } else if (plainMatch) {
-    numberOfGuests = Math.max(1, parseInt(plainMatch[1], 10) || 1);
+    const total = Math.max(1, parseInt(plainMatch[1], 10) || 1);
+    if (babiesFromCol > 0) {
+      numberOfBabies = Math.min(babiesFromCol, total);
+      numberOfGuests = Math.max(1, total - numberOfBabies);
+    } else {
+      numberOfGuests = total;
+      numberOfBabies = 0;
+    }
   } else {
     return {
       isAttending: true,
       numberOfGuests: Math.max(1, parseInt(raw, 10) || 1),
-      numberOfBabies: 0,
+      numberOfBabies: babiesFromCol,
       numberOfVegan: 0,
       additionalNotes: '',
     };
+  }
+
+  if (babiesFromCol > 0 && !prefixMatch && !suffixMatch) {
+    numberOfBabies = babiesFromCol;
   }
 
   let numberOfVegan = 0;
@@ -441,13 +456,6 @@ async function findGuestRowIndexByPhone(spreadsheetId, phone, range = guestReadR
   return findGuestRowIndexInRows(rows, phone);
 }
 
-function formatGuestCountColumn(numberOfGuests, numberOfBabies) {
-  if (numberOfBabies > 0) {
-    return `(+${numberOfBabies})${numberOfGuests}`;
-  }
-  return String(numberOfGuests);
-}
-
 function formatRemarksColumn(numberOfVegan, additionalNotes) {
   const parts = [];
   if (numberOfVegan > 0) {
@@ -459,8 +467,15 @@ function formatRemarksColumn(numberOfVegan, additionalNotes) {
   return parts.join(' ');
 }
 
+function hasMappedColumn(key) {
+  return Boolean(String(columnMap()[key] || '').trim());
+}
+
 /**
- * Write RSVP summary to guest list columns H (guest count) and M (remarks).
+ * Write RSVP summary to guest list:
+ * - rsvpCount: total people (adults + babies), or "0" if not attending
+ * - babies: babies only (when mapped)
+ * - remarks: vegan + notes
  * @param {string} spreadsheetId
  * @param {string} phone
  * @param {{ isAttending: boolean, numberOfGuests: number, numberOfBabies: number, numberOfVegan: number, additionalNotes: string }} rsvp
@@ -483,27 +498,35 @@ export async function updateGuestRsvpOnGuestSheet(
     }
 
     const rowNumber = guest.rowNumber;
-    // Not attending → always log "0" in column H (pending = empty, declined = 0)
-    const columnH = isAttending === true
-      ? formatGuestCountColumn(Number(numberOfGuests) || 0, Number(numberOfBabies) || 0)
-      : '0';
+    const adults = Math.max(0, Number(numberOfGuests) || 0);
+    const babies = Math.max(0, Number(numberOfBabies) || 0);
+    // Not attending → always log "0" in RSVP count (pending = empty, declined = 0)
+    const totalCount = isAttending === true ? String(adults + babies) : '0';
+    const babiesValue = isAttending === true ? String(babies) : '0';
     const columnM = isAttending === true
       ? formatRemarksColumn(Number(numberOfVegan) || 0, additionalNotes || '')
       : '';
+
+    const data = [
+      { range: rangeFor('rsvpCount', rowNumber), values: [[totalCount]] },
+    ];
+    if (hasMappedColumn('babies')) {
+      data.push({ range: rangeFor('babies', rowNumber), values: [[babiesValue]] });
+    }
+    if (hasMappedColumn('remarks')) {
+      data.push({ range: rangeFor('remarks', rowNumber), values: [[columnM]] });
+    }
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       resource: {
         valueInputOption: 'RAW',
-        data: [
-          { range: rangeFor('rsvpCount', rowNumber), values: [[columnH]] },
-          { range: rangeFor('remarks', rowNumber), values: [[columnM]] },
-        ],
+        data,
       },
     });
 
     console.log(
-      `Updated guest sheet RSVP for phone ${phone} at row ${rowNumber}: H=${columnH} attending=${isAttending === true}`,
+      `Updated guest sheet RSVP for phone ${phone} at row ${rowNumber}: total=${totalCount} babies=${babiesValue} attending=${isAttending === true}`,
     );
     return { success: true, rowNumber };
   } catch (error) {

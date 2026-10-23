@@ -573,6 +573,9 @@
             <input id="groom" required>
             <label for="date">תאריך החתונה</label>
             <input id="date" type="date" required>
+            <label for="babyMaxAge">עד איזה גיל נחשב ילד/תינוק?</label>
+            <p class="hint">יופיע בטופס אישור ההגעה (ברירת מחדל: 6)</p>
+            <input id="babyMaxAge" type="number" min="0" max="18" value="6" required>
             <label for="image">תמונת הזמנה</label>
             <p class="hint">עד 5MB (PNG, JPEG או WebP)</p>
             <input id="image" type="file" accept="image/png,image/jpeg,image/webp" required>
@@ -615,7 +618,8 @@
       ['firstName', 'שם פרטי'],
       ['familyName', 'שם משפחה'],
       ['phone', 'טלפון'],
-      ['rsvpCount', 'אישור הגעה'],
+      ['rsvpCount', 'אישור הגעה (סה״כ)'],
+      ['babies', 'תינוקות / ילדים'],
       ['remarks', 'הערות'],
       ['whatsappSent', 'נשלח בוואטסאפ'],
       ['sender', 'שולח'],
@@ -998,6 +1002,7 @@
           brideName: document.getElementById('bride').value,
           groomName: document.getElementById('groom').value,
           weddingDate: document.getElementById('date').value,
+          babyMaxAge: Number(document.getElementById('babyMaxAge').value),
           wazeUrl: document.getElementById('waze').value,
           mapsUrl: document.getElementById('maps').value,
           daniellePaybox: document.getElementById('pb1').value,

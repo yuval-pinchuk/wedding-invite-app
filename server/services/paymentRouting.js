@@ -556,3 +556,32 @@ export async function seedPaymentFile(accountId, urls = {}) {
     [accountId, JSON.stringify(state)],
   );
 }
+
+export async function getPaymentSeedUrls() {
+  const state = await readPaymentState();
+  const urlFor = (id) => state.links.find((l) => l.id === id)?.url || '';
+  return {
+    daniellePaybox: urlFor('danielle-paybox'),
+    yuvalPaybox: urlFor('yuval-paybox'),
+    danielleBit: urlFor('danielle-bit'),
+    yuvalBit: urlFor('yuval-bit'),
+  };
+}
+
+/** Update URLs on the default seed links without changing thresholds/sums. */
+export async function updatePaymentSeedUrls(urls = {}) {
+  const state = await readPaymentState();
+  const byId = {
+    'danielle-paybox': urls.daniellePaybox,
+    'yuval-paybox': urls.yuvalPaybox,
+    'danielle-bit': urls.danielleBit,
+    'yuval-bit': urls.yuvalBit,
+  };
+  for (const link of state.links) {
+    if (Object.prototype.hasOwnProperty.call(byId, link.id) && byId[link.id] !== undefined) {
+      link.url = String(byId[link.id] || '').trim();
+    }
+  }
+  await writePaymentState(state);
+  return getPaymentSeedUrls();
+}

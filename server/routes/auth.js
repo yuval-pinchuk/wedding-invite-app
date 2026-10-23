@@ -1,15 +1,17 @@
 import express from 'express';
 import { getServiceAccountEmail, readHeaderRow } from '../services/googleSheets.js';
 import { sendMail } from '../services/mailer.js';
-import { seedPaymentFile } from '../services/paymentRouting.js';
+import { getPaymentSeedUrls, seedPaymentFile, updatePaymentSeedUrls } from '../services/paymentRouting.js';
 import {
   createAccount,
   findAccountByEmail,
   issueResetCode,
   issueUnlockCode,
+  normalizeBabyMaxAge,
   publicAccount,
   recordFailedLogin,
   resetPassword,
+  saveInviteImage,
   unlockWithCode,
   updateAccount,
   verifyPassword,
@@ -154,7 +156,9 @@ router.post('/reset', async (req, res) => {
 
 router.get('/headers', requireAccount, async (req, res) => {
   try {
-    const headers = await readHeaderRow(req.account.guestSheetId, req.account.sheetTab);
+    const guestSheetId = sheetIdFromInput(req.query.guestSheetId || req.account.guestSheetId);
+    const sheetTab = String(req.query.sheetTab || req.account.sheetTab || 'חתונה').trim() || 'חתונה';
+    const headers = await readHeaderRow(guestSheetId, sheetTab);
     res.json({ success: true, headers });
   } catch (error) {
     res.status(500).json({
@@ -168,6 +172,73 @@ router.post('/columns', requireAccount, async (req, res) => {
   const columnMap = req.body?.columnMap || {};
   const account = await updateAccount(req.account.id, { columnMap });
   res.json({ success: true, account: publicAccount(account) });
+});
+
+router.get('/settings', requireAccount, async (req, res) => {
+  try {
+    const paymentUrls = await getPaymentSeedUrls();
+    res.json({
+      success: true,
+      account: publicAccount(req.account),
+      paymentUrls,
+      serviceAccountEmail: getServiceAccountEmail() || '',
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message || 'טעינת ההגדרות נכשלה' });
+  }
+});
+
+router.put('/settings', requireAccount, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const brideName = String(body.brideName || '').trim();
+    const groomName = String(body.groomName || '').trim();
+    const weddingDate = String(body.weddingDate || '').trim();
+    const guestSheetId = sheetIdFromInput(body.guestSheetId);
+    const sheetTab = String(body.sheetTab || '').trim();
+    if (!brideName || !groomName || !weddingDate || !guestSheetId || !sheetTab) {
+      return res.status(400).json({
+        success: false,
+        error: 'יש למלא שמות, תאריך, גיליון אורחים ושם לשונית',
+      });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weddingDate)) {
+      return res.status(400).json({ success: false, error: 'יש לבחור תאריך חתונה' });
+    }
+
+    const patch = {
+      brideName,
+      groomName,
+      weddingDate,
+      wazeUrl: String(body.wazeUrl || '').trim(),
+      mapsUrl: String(body.mapsUrl || '').trim(),
+      guestSheetId,
+      sheetTab,
+      babyMaxAge: normalizeBabyMaxAge(body.babyMaxAge),
+      columnMap: body.columnMap && typeof body.columnMap === 'object' ? body.columnMap : req.account.columnMap,
+    };
+
+    if (body.inviteImageDataUrl) {
+      patch.inviteImageFile = saveInviteImage(req.account.id, body.inviteImageDataUrl);
+    }
+
+    const account = await updateAccount(req.account.id, patch);
+
+    const paymentUrls = await updatePaymentSeedUrls({
+      daniellePaybox: body.daniellePaybox,
+      yuvalPaybox: body.yuvalPaybox,
+      danielleBit: body.danielleBit,
+      yuvalBit: body.yuvalBit,
+    });
+
+    res.json({
+      success: true,
+      account: publicAccount(account),
+      paymentUrls,
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, error: error.message || 'שמירת ההגדרות נכשלה' });
+  }
 });
 
 export default router;

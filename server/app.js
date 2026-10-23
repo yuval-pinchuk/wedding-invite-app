@@ -40,6 +40,7 @@ app.get('/login', (_req, res) => {
 app.get('/manage', (req, res) => requireLoginPage(req, res, 'dashboard.html'));
 app.get('/manage/invites', (req, res) => requireLoginPage(req, res, 'admin.html'));
 app.get('/manage/pay', (req, res) => requireLoginPage(req, res, 'admin-pay.html'));
+app.get('/manage/settings', (req, res) => requireLoginPage(req, res, 'settings.html'));
 
 app.get(['/admin.html', '/admin'], (_req, res) => {
   res.redirect('/manage/invites');

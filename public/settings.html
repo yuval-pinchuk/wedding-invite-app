@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>easyWed · הגדרות</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @property --bg { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    @property --surface { syntax: '<color>'; inherits: true; initial-value: #3a322e; }
+    @property --surface2 { syntax: '<color>'; inherits: true; initial-value: #6b5b54; }
+    @property --text { syntax: '<color>'; inherits: true; initial-value: #f7f4f0; }
+    @property --muted { syntax: '<color>'; inherits: true; initial-value: #c9b8af; }
+    @property --accent { syntax: '<color>'; inherits: true; initial-value: #c4a99a; }
+    @property --accent-dim { syntax: '<color>'; inherits: true; initial-value: #a89084; }
+    @property --accent-contrast { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    :root {
+      --bg: #2a2421;
+      --surface: #3a322e;
+      --surface2: #6b5b54;
+      --text: #f7f4f0;
+      --muted: #c9b8af;
+      --input-bg: #231e1b;
+      --accent: #c4a99a;
+      --accent-dim: #a89084;
+      --accent-contrast: #2a2421;
+      --radius: 12px;
+      --font: 'Heebo', 'DM Sans', system-ui, sans-serif;
+      transition: --bg 0.4s ease, --surface 0.4s ease, --surface2 0.4s ease, --text 0.4s ease, --muted 0.4s ease, --input-bg 0.4s ease, --accent 0.4s ease, --accent-dim 0.4s ease, --accent-contrast 0.4s ease;
+    }
+    :root[data-theme="light"] {
+      --bg: #f7f4f0;
+      --surface: #fffcfa;
+      --surface2: #c9b8af;
+      --text: #4a3f3a;
+      --muted: #8e7c76;
+      --input-bg: #fffcfa;
+      --accent: #8e7c76;
+      --accent-dim: #6d5952;
+      --accent-contrast: #fffcfa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      line-height: 1.5;
+      transition: background-color 0.4s ease, color 0.4s ease;
+      overflow-x: hidden;
+    }
+    .layout {
+      max-width: 720px;
+      margin: 0 auto;
+      padding:
+        max(64px, calc(env(safe-area-inset-top) + 56px))
+        max(20px, env(safe-area-inset-right))
+        max(48px, env(safe-area-inset-bottom))
+        max(20px, env(safe-area-inset-left));
+    }
+    header { margin-bottom: 28px; }
+    header h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    header p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 2px solid var(--surface2);
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
+    label { display: block; margin: 12px 0 6px; font-weight: 600; font-size: 0.88rem; }
+    .hint { color: var(--muted); font-size: 0.82rem; margin: 0 0 8px; line-height: 1.45; }
+    input, select {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 10px;
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .map-row {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .map-row span { font-size: 0.9rem; font-weight: 500; }
+    .btn-primary, .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 16px;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border-color: var(--accent);
+      width: 100%;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--surface2);
+      margin-top: 10px;
+      width: 100%;
+    }
+    .message {
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      border-radius: 8px;
+      display: none;
+      font-size: 0.9rem;
+    }
+    .message.show { display: block; }
+    .message.err { background: rgba(196, 123, 115, 0.18); color: #e0b5b0; }
+    .message.ok { background: rgba(138, 154, 122, 0.22); color: var(--text); }
+    .corner-logout, .corner-menu {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+    }
+    .corner-logout { left: max(14px, env(safe-area-inset-left)); }
+    .corner-menu { right: max(14px, env(safe-area-inset-right)); }
+    .corner-logout svg, .corner-menu svg { width: 20px; height: 20px; display: block; }
+    .nav-backdrop {
+      position: fixed; inset: 0; z-index: 290;
+      background: rgba(42, 36, 33, 0.45);
+      opacity: 0; pointer-events: none; transition: opacity 0.32s ease;
+    }
+    .nav-backdrop.is-open { opacity: 1; pointer-events: auto; }
+    .nav-drawer {
+      position: fixed; top: 0; right: 0; z-index: 300;
+      width: min(320px, 88vw); height: 100%;
+      background: var(--surface);
+      border-left: 2px solid var(--surface2);
+      box-shadow: -12px 0 40px rgba(0,0,0,0.25);
+      transform: translateX(105%);
+      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
+      display: flex; flex-direction: column;
+    }
+    .nav-drawer.is-open { transform: translateX(0); }
+    .nav-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .nav-close {
+      width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--surface2);
+      background: var(--bg); color: var(--text); font-size: 1.4rem; cursor: pointer;
+    }
+    .nav-links { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .nav-links a {
+      text-decoration: none; color: var(--text); font-weight: 600;
+      padding: 14px; border-radius: 12px; border: 2px solid transparent; background: var(--bg);
+    }
+    .nav-links a.is-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+    .nav-theme { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--surface2); }
+    .nav-theme p { color: var(--muted); font-size: 0.85rem; margin-bottom: 10px; }
+    .theme-switch { display: flex; gap: 8px; }
+    .theme-opt {
+      flex: 1; height: 44px; border-radius: 10px; border: 2px solid var(--surface2);
+      background: var(--bg); color: var(--text); cursor: pointer; display: grid; place-items: center;
+    }
+    .theme-opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
+    .theme-opt svg { width: 20px; height: 20px; }
+    body.nav-open { overflow: hidden; }
+    @media (max-width: 700px) {
+      .layout { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+      header h1 { font-size: 1.55rem; }
+      .card { padding: 16px; }
+      .map-row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <button type="button" class="corner-logout" id="logoutBtn" aria-label="התנתקות" title="התנתקות">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+  <button type="button" class="corner-menu" id="navMenuBtn" aria-label="תפריט" aria-expanded="false" aria-controls="navDrawer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+    </svg>
+  </button>
+  <div id="navBackdrop" class="nav-backdrop" hidden></div>
+  <aside id="navDrawer" class="nav-drawer" aria-hidden="true">
+    <div class="nav-drawer-head">
+      <strong>easyWed</strong>
+      <button type="button" class="nav-close" id="navCloseBtn" aria-label="סגירת תפריט">×</button>
+    </div>
+    <nav class="nav-links">
+      <a href="/manage" data-nav="home">בית</a>
+      <a href="/manage/invites" data-nav="invites">שליחת הזמנות</a>
+      <a href="/manage/pay" data-nav="pay">מתנות</a>
+      <a href="/manage/settings" data-nav="settings" class="is-active">הגדרות</a>
+    </nav>
+    <div class="nav-theme">
+      <p>מצב תצוגה</p>
+      <div class="theme-switch" role="radiogroup" aria-label="מצב תצוגה">
+        <button type="button" class="theme-opt" role="radio" data-theme-value="light" aria-checked="false" title="מצב בהיר" aria-label="מצב בהיר">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <button type="button" class="theme-opt" role="radio" data-theme-value="dark" aria-checked="false" title="מצב כהה" aria-label="מצב כהה">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="layout">
+    <header>
+      <h1>הגדרות</h1>
+      <p>עדכון פרטי החתונה, הגיליון, עמודות ותשלומים. אימייל וסיסמה לא משתנים כאן.</p>
+    </header>
+
+    <form id="settingsForm">
+      <div class="card">
+        <h2>פרטי החתונה</h2>
+        <label for="bride">שם הכלה</label>
+        <input id="bride" required>
+        <label for="groom">שם החתן</label>
+        <input id="groom" required>
+        <label for="date">תאריך החתונה</label>
+        <input id="date" type="date" required>
+        <label for="babyMaxAge">עד איזה גיל נחשב ילד/תינוק?</label>
+        <p class="hint">יופיע בטופס אישור ההגעה</p>
+        <input id="babyMaxAge" type="number" min="0" max="18" value="6" required>
+        <label for="image">תמונת הזמנה (אופציונלי — להחלפה)</label>
+        <p class="hint" id="imageHint">עד 5MB (PNG, JPEG או WebP)</p>
+        <input id="image" type="file" accept="image/png,image/jpeg,image/webp">
+        <label for="waze">קישור Waze</label>
+        <input id="waze">
+        <label for="maps">קישור Google Maps</label>
+        <input id="maps">
+      </div>
+
+      <div class="card">
+        <h2>קישורי תשלום</h2>
+        <label for="pb1">PayBox של הכלה</label>
+        <input id="pb1">
+        <label for="pb2">PayBox של החתן</label>
+        <input id="pb2">
+        <label for="bit1">Bit של הכלה</label>
+        <input id="bit1">
+        <label for="bit2">Bit של החתן</label>
+        <input id="bit2">
+      </div>
+
+      <div class="card">
+        <h2>גיליון אורחים</h2>
+        <p class="hint">שתפו את הגיליון עם: <strong id="serviceEmail">טוען…</strong></p>
+        <label for="guestSheet">קישור / מזהה Google Sheets</label>
+        <input id="guestSheet" required>
+        <label for="tab">שם הלשונית</label>
+        <input id="tab" required>
+        <button type="button" class="btn-ghost" id="reloadHeadersBtn">רענון כותרות למיפוי</button>
+        <h2 style="margin-top:20px">מיפוי עמודות</h2>
+        <p class="hint">אישור הגעה = סה״כ אורחים (מבוגרים + ילדים). עמודת תינוקות = מספר הילדים בלבד.</p>
+        <div id="mapFields"></div>
+      </div>
+
+      <button type="submit" class="btn-primary">שמירת הגדרות</button>
+      <p class="message" id="message"></p>
+    </form>
+  </div>
+
+  <script>
+    const COLUMN_FIELDS = [
+      ['firstName', 'שם פרטי'],
+      ['familyName', 'שם משפחה'],
+      ['phone', 'טלפון'],
+      ['rsvpCount', 'אישור הגעה (סה״כ)'],
+      ['babies', 'תינוקות / ילדים'],
+      ['remarks', 'הערות'],
+      ['whatsappSent', 'נשלח בוואטסאפ'],
+      ['sender', 'שולח'],
+      ['giftAmount', 'סכום מתנה'],
+      ['giftLink', 'קישור תשלום'],
+      ['addons', 'מוזמנים נוספים (+1)'],
+    ];
+    const MAX_INVITE_IMAGE_BYTES = 5 * 1024 * 1024;
+    let headers = [];
+    let currentColumnMap = {};
+
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('adminTheme', next);
+      document.querySelectorAll('.theme-opt').forEach((btn) => {
+        btn.setAttribute('aria-checked', btn.dataset.themeValue === next ? 'true' : 'false');
+      });
+    }
+
+    function showMessage(text, ok) {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'message show ' + (ok ? 'ok' : 'err');
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[ch]));
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('קריאת התמונה נכשלה'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderMapFields() {
+      const host = document.getElementById('mapFields');
+      host.innerHTML = '';
+      for (const [key, label] of COLUMN_FIELDS) {
+        const row = document.createElement('div');
+        row.className = 'map-row';
+        const options = headers.map((col) => {
+          const selected = currentColumnMap[key] === col.letter ? ' selected' : '';
+          return `<option value="${escapeHtml(col.letter)}"${selected}>${escapeHtml(col.title)} (${escapeHtml(col.letter)})</option>`;
+        }).join('');
+        row.innerHTML = `<span>${escapeHtml(label)}</span><select data-key="${escapeHtml(key)}"><option value="">—</option>${options}</select>`;
+        host.appendChild(row);
+      }
+    }
+
+    async function loadHeaders() {
+      const guestSheet = document.getElementById('guestSheet').value.trim();
+      const sheetTab = document.getElementById('tab').value.trim();
+      const params = new URLSearchParams();
+      if (guestSheet) params.set('guestSheetId', guestSheet);
+      if (sheetTab) params.set('sheetTab', sheetTab);
+      const res = await fetch('/api/auth/headers?' + params.toString(), { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || 'לא נמצאו כותרות');
+      headers = data.headers || [];
+      renderMapFields();
+    }
+
+    async function load() {
+      const res = await fetch('/api/auth/settings', { cache: 'no-store', credentials: 'same-origin' });
+      if (res.status === 401) {
+        location.href = '/login';
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || 'שגיאה בטעינה');
+      const account = data.account || {};
+      const pay = data.paymentUrls || {};
+      document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || '—';
+      document.getElementById('bride').value = account.brideName || '';
+      document.getElementById('groom').value = account.groomName || '';
+      document.getElementById('date').value = account.weddingDate || '';
+      document.getElementById('babyMaxAge').value = String(account.babyMaxAge ?? 6);
+      document.getElementById('waze').value = account.wazeUrl || '';
+      document.getElementById('maps').value = account.mapsUrl || '';
+      document.getElementById('pb1').value = pay.daniellePaybox || '';
+      document.getElementById('pb2').value = pay.yuvalPaybox || '';
+      document.getElementById('bit1').value = pay.danielleBit || '';
+      document.getElementById('bit2').value = pay.yuvalBit || '';
+      document.getElementById('guestSheet').value = account.guestSheetId || '';
+      document.getElementById('tab').value = account.sheetTab || '';
+      document.getElementById('imageHint').textContent = account.hasInviteImage
+        ? 'יש תמונה נוכחית. בחרו קובץ חדש רק אם רוצים להחליף (עד 5MB).'
+        : 'עד 5MB (PNG, JPEG או WebP)';
+      currentColumnMap = account.columnMap || {};
+      await loadHeaders();
+    }
+
+    applyTheme(localStorage.getItem('adminTheme') || 'dark');
+    document.querySelectorAll('.theme-opt').forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.themeValue));
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_) {}
+      window.location.assign('/login');
+    });
+
+    const navBtn = document.getElementById('navMenuBtn');
+    const navDrawer = document.getElementById('navDrawer');
+    const navBackdrop = document.getElementById('navBackdrop');
+    function setNavOpen(open) {
+      navDrawer.classList.toggle('is-open', open);
+      navBackdrop.classList.toggle('is-open', open);
+      navBackdrop.hidden = !open;
+      navDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('nav-open', open);
+    }
+    navBtn.addEventListener('click', () => setNavOpen(true));
+    document.getElementById('navCloseBtn').addEventListener('click', () => setNavOpen(false));
+    navBackdrop.addEventListener('click', () => setNavOpen(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNavOpen(false); });
+
+    document.getElementById('reloadHeadersBtn').addEventListener('click', async () => {
+      try {
+        await loadHeaders();
+        showMessage('הכותרות עודכנו', true);
+      } catch (error) {
+        showMessage(error.message || 'רענון הכותרות נכשל', false);
+      }
+    });
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const columnMap = {};
+        document.querySelectorAll('#mapFields select').forEach((select) => {
+          if (select.value) columnMap[select.dataset.key] = select.value;
+        });
+        const payload = {
+          brideName: document.getElementById('bride').value,
+          groomName: document.getElementById('groom').value,
+          weddingDate: document.getElementById('date').value,
+          babyMaxAge: Number(document.getElementById('babyMaxAge').value),
+          wazeUrl: document.getElementById('waze').value,
+          mapsUrl: document.getElementById('maps').value,
+          daniellePaybox: document.getElementById('pb1').value,
+          yuvalPaybox: document.getElementById('pb2').value,
+          danielleBit: document.getElementById('bit1').value,
+          yuvalBit: document.getElementById('bit2').value,
+          guestSheetId: document.getElementById('guestSheet').value,
+          sheetTab: document.getElementById('tab').value,
+          columnMap,
+        };
+        const image = document.getElementById('image').files[0];
+        if (image) {
+          if (image.size > MAX_INVITE_IMAGE_BYTES) throw new Error('התמונה חייבת להיות עד 5MB');
+          payload.inviteImageDataUrl = await fileToDataUrl(image);
+        }
+        const res = await fetch('/api/auth/settings', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data.success === false) throw new Error(data.error || 'שמירה נכשלה');
+        currentColumnMap = data.account?.columnMap || columnMap;
+        document.getElementById('image').value = '';
+        showMessage('ההגדרות נשמרו', true);
+      } catch (error) {
+        showMessage(error.message || 'שמירת ההגדרות נכשלה', false);
+      }
+    });
+
+    load().catch((error) => showMessage(error.message || 'טעינת ההגדרות נכשלה', false));
+  </script>
+</body>
+</html>

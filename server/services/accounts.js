@@ -42,8 +42,15 @@ function rowToAccount(row) {
     invitationMessage: row.invitation_message || '',
     reminderTemplate: row.reminder_template || '',
     inviteImageFile: row.invite_image_file || '',
+    babyMaxAge: Number.isFinite(Number(row.baby_max_age)) ? Number(row.baby_max_age) : 6,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || ''),
   };
+}
+
+export function normalizeBabyMaxAge(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 6;
+  return Math.min(18, Math.max(0, Math.floor(n)));
 }
 
 export function publicAccount(account) {
@@ -64,6 +71,7 @@ export function publicAccount(account) {
     columnMap: account.columnMap || {},
     invitationMessage: account.invitationMessage || '',
     reminderTemplate: account.reminderTemplate || '',
+    babyMaxAge: normalizeBabyMaxAge(account.babyMaxAge),
     locked: Boolean(account.locked),
     hasInviteImage: Boolean(account.inviteImageFile),
   };
@@ -140,9 +148,9 @@ export async function saveAccount(next) {
       unlock_code_hash, unlock_code_expires, reset_token_hash, reset_token_expires,
       legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
       guest_sheet_id, response_sheet_id, sheet_tab, column_map,
-      invitation_message, reminder_template, invite_image_file, created_at
+      invitation_message, reminder_template, invite_image_file, baby_max_age, created_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25
     )
     ON CONFLICT (id) DO UPDATE SET
       email = EXCLUDED.email,
@@ -166,7 +174,8 @@ export async function saveAccount(next) {
       column_map = EXCLUDED.column_map,
       invitation_message = EXCLUDED.invitation_message,
       reminder_template = EXCLUDED.reminder_template,
-      invite_image_file = EXCLUDED.invite_image_file`,
+      invite_image_file = EXCLUDED.invite_image_file,
+      baby_max_age = EXCLUDED.baby_max_age`,
     [
       next.id,
       next.email,
@@ -191,6 +200,7 @@ export async function saveAccount(next) {
       next.invitationMessage || '',
       next.reminderTemplate || '',
       next.inviteImageFile || '',
+      normalizeBabyMaxAge(next.babyMaxAge),
       next.createdAt || new Date().toISOString(),
     ],
   );
@@ -202,9 +212,11 @@ export function inviteImagePath(account) {
   return path.join(invitesDir(), account.inviteImageFile);
 }
 
-function saveInviteImage(accountId, dataUrl) {
+export function saveInviteImage(accountId, dataUrl) {
   const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=\s]+)$/i);
-  if (!match) return '';
+  if (!match) {
+    throw Object.assign(new Error('פורמט תמונה לא תקין'), { status: 400 });
+  }
   const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
   if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
     throw Object.assign(new Error('התמונה חייבת להיות עד 5MB'), { status: 400 });
@@ -269,6 +281,7 @@ export async function createAccount(input) {
     invitationMessage: String(input.invitationMessage || '').trim(),
     reminderTemplate: String(input.reminderTemplate || '').trim(),
     inviteImageFile,
+    babyMaxAge: normalizeBabyMaxAge(input.babyMaxAge),
     paymentSeed: {
       daniellePaybox: String(input.daniellePaybox || '').trim(),
       yuvalPaybox: String(input.yuvalPaybox || '').trim(),

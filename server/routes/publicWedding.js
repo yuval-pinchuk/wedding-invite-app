@@ -22,6 +22,7 @@ router.get('/wedding', async (req, res) => {
     weddingDate: view.weddingDate,
     wazeUrl: view.wazeUrl,
     mapsUrl: view.mapsUrl,
+    babyMaxAge: view.babyMaxAge,
     imageUrl: imageFile && fs.existsSync(imageFile) ? `/api/public/invite-image/${account.publicToken}` : '/WEDDING.png',
     token: account.publicToken,
   });

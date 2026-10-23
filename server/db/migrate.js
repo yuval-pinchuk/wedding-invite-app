@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   invitation_message TEXT NOT NULL DEFAULT '',
   reminder_template TEXT NOT NULL DEFAULT '',
   invite_image_file TEXT NOT NULL DEFAULT '',
+  baby_max_age INTEGER NOT NULL DEFAULT 6,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -59,6 +60,8 @@ CREATE TABLE IF NOT EXISTS rsvp_responses (
 
 CREATE INDEX IF NOT EXISTS rsvp_responses_account_updated_idx
   ON rsvp_responses (account_id, updated_at DESC);
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS baby_max_age INTEGER NOT NULL DEFAULT 6;
 `;
 
 export async function migrate() {

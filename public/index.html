@@ -1404,7 +1404,7 @@
                 </div>
 
                 <div class="form-group">
-                  <label for="numberOfBabies">כמה ילדים (עד גיל 6)?</label>
+                  <label for="numberOfBabies" id="babiesLabel">כמה ילדים (עד גיל 6)?</label>
                   <input type="number" id="numberOfBabies" name="numberOfBabies" min="0" value="0">
                 </div>
 
@@ -1513,6 +1513,18 @@
       return match ? decodeURIComponent(match[1]) : '';
     }
 
+    let babyMaxAge = 6;
+
+    function babiesAgeLabel(age) {
+      const n = Number.isFinite(Number(age)) ? Number(age) : 6;
+      return `כמה ילדים (עד גיל ${n})?`;
+    }
+
+    function babiesSummaryLabel(age) {
+      const n = Number.isFinite(Number(age)) ? Number(age) : 6;
+      return `ילדים עד גיל ${n}`;
+    }
+
     async function applyWeddingProfile() {
       inviteToken = inviteTokenFromLocation();
       const query = inviteToken ? `?token=${encodeURIComponent(inviteToken)}` : '';
@@ -1521,6 +1533,9 @@
         const data = await res.json();
         if (!data.success) return;
         if (!inviteToken && data.token) inviteToken = data.token;
+        babyMaxAge = Number.isFinite(Number(data.babyMaxAge)) ? Number(data.babyMaxAge) : 6;
+        const babiesLabel = document.getElementById('babiesLabel');
+        if (babiesLabel) babiesLabel.textContent = babiesAgeLabel(babyMaxAge);
         const brideEl = document.getElementById('headerBride');
         const groomEl = document.getElementById('headerGroom');
         const dateEl = document.getElementById('headerDate');
@@ -1608,7 +1623,7 @@
         summaryRow('מספר אורחים', escapeHtml(rsvp.numberOfGuests)),
       ];
       if (babies > 0) {
-        lines.push(summaryRow('ילדים עד גיל 6', escapeHtml(babies)));
+        lines.push(summaryRow(babiesSummaryLabel(babyMaxAge), escapeHtml(babies)));
       }
       if (vegan > 0) {
         lines.push(summaryRow('טבעונים/צמחונים', escapeHtml(vegan)));
