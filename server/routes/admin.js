@@ -817,15 +817,15 @@ function runReminderJob(job, guests, messageTemplate, options) {
     job.finishedAt = Date.now();
     console.error(`[send-rsvp-reminders] job ${job.id} failed:`, error);
   }).finally(() => {
-    if (runningJobBySender.get(job.sender) === job.id) {
-      runningJobBySender.delete(job.sender);
+    if (runningJobBySender.get(job.senderKey) === job.id) {
+      runningJobBySender.delete(job.senderKey);
     }
   });
 }
 
 router.get('/send-jobs/:id', (req, res) => {
   const job = sendJobs.get(req.params.id);
-  if (!job) {
+  if (!job || job.accountId !== req.account.id) {
     return res.status(404).json({
       success: false,
       error: 'Send job not found. The server may have restarted.',
@@ -928,7 +928,8 @@ router.post('/send-rsvp-reminders', async (req, res) => {
 
     if (req.body?.background) {
       pruneSendJobs();
-      const senderKey = sender.trim();
+      const senderName = sender.trim();
+      const senderKey = `${req.account.id}:${senderName}`;
       const existingId = runningJobBySender.get(senderKey);
       const existing = existingId ? sendJobs.get(existingId) : null;
       if (existing && existing.status === 'running') {
@@ -941,7 +942,9 @@ router.post('/send-rsvp-reminders', async (req, res) => {
 
       const job = {
         id: randomUUID(),
-        sender: senderKey,
+        accountId: req.account.id,
+        sender: senderName,
+        senderKey,
         status: 'running',
         total: targetGuests.length,
         completed: 0,

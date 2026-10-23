@@ -4,8 +4,10 @@ import { addGuestGiftAmount } from '../services/googleSheets.js';
 import { getPaymentStatus, recordGiftAndGetLink } from '../services/paymentRouting.js';
 import { findByPublicToken } from '../services/accounts.js';
 import { runAsAccount } from '../services/accountContext.js';
+import { rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
+const checkoutLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: 'pay' });
 
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -16,7 +18,9 @@ router.use(async (req, res, next) => {
   try {
     const token = String(req.query.token || req.body?.inviteToken || '').trim();
     const account = token ? await findByPublicToken(token) : null;
-    if (!account) return next();
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'החתונה לא נמצאה' });
+    }
     return runAsAccount(account, () => next());
   } catch (error) {
     return next(error);
@@ -49,7 +53,7 @@ router.get('/status', async (_req, res) => {
  * POST /api/pay/checkout
  * Body: { amount, guestPhone?, guestName? }
  */
-router.post('/checkout', async (req, res) => {
+router.post('/checkout', checkoutLimit, async (req, res) => {
   try {
     const { amount, guestPhone, guestName } = req.body || {};
     const result = await recordGiftAndGetLink(amount, { guestPhone, guestName });

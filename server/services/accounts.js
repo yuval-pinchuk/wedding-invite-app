@@ -321,6 +321,9 @@ export async function clearLoginFailures(account) {
 }
 
 export async function issueUnlockCode(account) {
+  if (account.unlockCodeHash && account.unlockCodeExpires && Date.now() < account.unlockCodeExpires) {
+    return '';
+  }
   const unlockCode = String(Math.floor(100000 + Math.random() * 900000));
   const next = {
     ...account,

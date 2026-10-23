@@ -27,8 +27,10 @@ import {
   requireAccount,
   setSessionCookie,
 } from '../services/sessions.js';
+import { clearCodeFailures, rateLimit, recordCodeFailure, tooManyCodeAttempts } from '../middleware/security.js';
 
 const router = express.Router();
+const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: 'auth' });
 
 function sheetIdFromInput(value) {
   const text = String(value || '').trim();
@@ -49,7 +51,7 @@ router.get('/me', async (req, res) => {
   return res.json({ success: true, account: publicAccount(account) });
 });
 
-router.post('/register', async (req, res) => {
+router.post('/register', authLimit, async (req, res) => {
   try {
     const body = req.body || {};
     const account = await createAccount({
@@ -67,7 +69,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimit, async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
@@ -77,15 +79,17 @@ router.post('/login', async (req, res) => {
     }
     if (account.locked) {
       const code = await issueUnlockCode(account);
-      await sendMail({
-        to: account.email,
-        subject: 'פתיחת חשבון ההזמנות',
-        text: `החשבון נעול אחרי ניסיונות התחברות כושלים.\nקוד הפתיחה: ${code}\nהקוד תקף ל-15 דקות.`,
-      });
+      if (code) {
+        await sendMail({
+          to: account.email,
+          subject: 'פתיחת חשבון ההזמנות',
+          text: `החשבון נעול אחרי ניסיונות התחברות כושלים.\nקוד הפתיחה: ${code}\nהקוד תקף ל-15 דקות.`,
+        });
+      }
       return res.status(423).json({
         success: false,
         locked: true,
-        error: 'החשבון נעול. נשלח קוד לאימייל לאימות.',
+        error: 'החשבון נעול. אם אין קוד בתוקף, נשלח קוד לאימייל.',
       });
     }
     const ok = await verifyPassword(password, account.passwordHash);
@@ -110,7 +114,8 @@ router.post('/login', async (req, res) => {
     setSessionCookie(res, await createSession(fresh));
     return res.json({ success: true, account: publicAccount(fresh) });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message || 'ההתחברות נכשלה' });
+    console.error('[auth/login]', error);
+    return res.status(500).json({ success: false, error: 'ההתחברות נכשלה' });
   }
 });
 
@@ -120,13 +125,23 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true });
 });
 
-router.post('/unlock', async (req, res) => {
-  const result = await unlockWithCode(req.body?.email, req.body?.code);
-  if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+router.post('/unlock', authLimit, async (req, res) => {
+  const email = req.body?.email;
+  if (tooManyCodeAttempts('unlock', email)) {
+    return res.status(429).json({ success: false, error: 'יותר מדי ניסיונות. בקשו קוד חדש מאוחר יותר.' });
+  }
+  const result = await unlockWithCode(email, req.body?.code);
+  if (!result.ok) {
+    if (recordCodeFailure('unlock', email)) {
+      return res.status(429).json({ success: false, error: 'יותר מדי ניסיונות. בקשו קוד חדש מאוחר יותר.' });
+    }
+    return res.status(400).json({ success: false, error: result.error });
+  }
+  clearCodeFailures('unlock', email);
   return res.json({ success: true });
 });
 
-router.post('/forgot', async (req, res) => {
+router.post('/forgot', authLimit, async (req, res) => {
   const account = await findAccountByEmail(req.body?.email);
   if (account) {
     const code = await issueResetCode(account);
@@ -139,18 +154,33 @@ router.post('/forgot', async (req, res) => {
   res.json({ success: true });
 });
 
-router.post('/verify-reset-code', async (req, res) => {
-  const result = await verifyResetCode(req.body?.email, req.body?.code);
-  if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+router.post('/verify-reset-code', authLimit, async (req, res) => {
+  const email = req.body?.email;
+  if (tooManyCodeAttempts('reset', email)) {
+    return res.status(429).json({ success: false, error: 'יותר מדי ניסיונות. בקשו קוד חדש.' });
+  }
+  const result = await verifyResetCode(email, req.body?.code);
+  if (!result.ok) {
+    if (recordCodeFailure('reset', email)) {
+      return res.status(429).json({ success: false, error: 'יותר מדי ניסיונות. בקשו קוד חדש.' });
+    }
+    return res.status(400).json({ success: false, error: result.error });
+  }
   return res.json({ success: true });
 });
 
-router.post('/reset', async (req, res) => {
+router.post('/reset', authLimit, async (req, res) => {
   try {
-    await resetPassword(req.body?.email, req.body?.code, req.body?.password);
+    const email = req.body?.email;
+    if (tooManyCodeAttempts('reset', email)) {
+      return res.status(429).json({ success: false, error: 'יותר מדי ניסיונות. בקשו קוד חדש.' });
+    }
+    await resetPassword(email, req.body?.code, req.body?.password);
+    clearCodeFailures('reset', email);
     res.json({ success: true });
   } catch (error) {
-    res.status(error.status || 500).json({ success: false, error: error.message || 'איפוס הסיסמה נכשל' });
+    if (error.status === 400) recordCodeFailure('reset', req.body?.email);
+    res.status(error.status || 500).json({ success: false, error: error.status ? error.message : 'איפוס הסיסמה נכשל' });
   }
 });
 

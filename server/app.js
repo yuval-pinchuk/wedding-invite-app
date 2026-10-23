@@ -14,8 +14,10 @@ import { configureSheets } from './services/googleSheets.js';
 import { startSessionMaintenance } from './services/whatsapp.js';
 import { accountFromRequest } from './services/sessions.js';
 import { migrate } from './db/migrate.js';
+import { allowedOrigins, securityHeaders } from './middleware/security.js';
 
 const app = express();
+app.disable('x-powered-by');
 const port = process.env.PORT || 8080;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +25,14 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../public');
 
 app.set('trust proxy', 1);
-app.use(cors());
+app.use(securityHeaders);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins().has(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true,
+}));
 // Signup sends the invite image as a base64 data URL (~4/3 of file size).
 app.use(express.json({ limit: '8mb' }));
 

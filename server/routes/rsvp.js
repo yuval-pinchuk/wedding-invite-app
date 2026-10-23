@@ -4,8 +4,10 @@ import { updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
 import { findByPublicToken } from '../services/accounts.js';
 import { runAsAccount, currentAccount } from '../services/accountContext.js';
 import { upsertRsvpResponse } from '../services/rsvpResponses.js';
+import { rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
+const publicWriteLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: 'rsvp' });
 
 async function accountForRequest(req) {
   const token = String(req.query.token || req.body?.inviteToken || '').trim();
@@ -28,7 +30,7 @@ router.use(async (req, res, next) => {
  * Handle RSVP submission
  * Body: { name, phone, isAttending, numberOfGuests, numberOfBabies?, numberOfVegan?, additionalNotes? }
  */
-router.post('/', async (req, res) => {
+router.post('/', publicWriteLimit, async (req, res) => {
   try {
     const {
       name,
