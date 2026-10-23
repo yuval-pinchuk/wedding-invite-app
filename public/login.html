@@ -53,7 +53,12 @@
       --wash: rgba(42, 36, 33, 0.9);
     }
     * { box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       margin: 0;
       min-height: 100vh;
@@ -62,7 +67,8 @@
       color: var(--text);
       background: var(--bg);
       transition: background-color 0.4s ease, color 0.4s ease;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
 
     .hero-plane {
@@ -361,10 +367,15 @@
     button:active { transform: scale(0.985); }
     .row-buttons {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-top: 4px;
     }
     .row-buttons button {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: normal;
+      line-height: 1.25;
       background: var(--input-bg);
       color: var(--accent);
       border: 2px solid var(--accent);
@@ -382,13 +393,14 @@
     .error { color: #9b2c2c; font-weight: 600; min-height: 1.2em; margin: 8px 0 0; }
     :root[data-theme="dark"] .error { color: #fda4af; }
     .hint { color: var(--muted); line-height: 1.5; font-size: 0.88rem; margin: 6px 0 0; }
-    .map-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-    .map-row span { flex: 1; }
+    .map-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .map-row span { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
     a { color: var(--accent); }
     .signup-scroll {
       max-height: min(70vh, 640px);
       max-height: min(70dvh, 640px);
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       padding-left: 4px;

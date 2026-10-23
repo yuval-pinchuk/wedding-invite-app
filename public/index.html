@@ -40,13 +40,19 @@
       box-sizing: border-box;
     }
 
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       font-family: var(--font);
       background: var(--cream);
       color: var(--text);
       line-height: 1.6;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
 
     body.scroll-locked {
@@ -77,7 +83,9 @@
       flex-direction: column;
       align-items: center;
       gap: 0;
-      max-width: 420px;
+      width: 100%;
+      max-width: min(420px, 100%);
+      padding: 0 4px;
       animation: headerIn 0.8s ease-out both;
     }
 
@@ -111,6 +119,10 @@
       line-height: 1.1;
       letter-spacing: 0.04em;
       margin-top: 4px;
+      max-width: 100%;
+      text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .page-header-groom {
@@ -119,15 +131,20 @@
 
     .page-header-date {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 10px;
       margin-top: 8px;
+      max-width: 100%;
       font-family: var(--font-display);
       font-size: 0.95rem;
       font-weight: 500;
-      line-height: 1;
+      line-height: 1.2;
       color: var(--text-muted);
-      letter-spacing: 0.14em;
+      letter-spacing: 0.08em;
+      text-align: center;
+      overflow-wrap: anywhere;
     }
 
     .page-header-date::before,
@@ -211,8 +228,9 @@
 
     .section-inner {
       width: 100%;
-      max-width: 480px;
+      max-width: min(480px, 100%);
       max-height: 100%;
+      overflow-x: hidden;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
@@ -566,12 +584,17 @@
       z-index: 25;
       padding: 14px 22px 12px;
       box-shadow: 0 8px 24px rgba(61, 54, 48, 0.14);
-      min-width: min(260px, calc(100vw - 48px));
+      width: min(260px, calc(100vw - 48px));
+      max-width: calc(100vw - 48px);
+      box-sizing: border-box;
+      white-space: normal;
     }
 
     .scroll-hint span {
       line-height: 1.3;
       text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .scroll-hint.is-delayed {
@@ -700,12 +723,14 @@
 
     .rsvp-summary-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 12px;
+      gap: 8px 12px;
       padding: 11px 14px;
       font-size: 0.95rem;
       line-height: 1.4;
+      min-width: 0;
     }
 
     .rsvp-summary-row + .rsvp-summary-row {
@@ -715,13 +740,19 @@
     .rsvp-summary-label {
       color: var(--text-muted);
       font-weight: 500;
-      flex-shrink: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     .rsvp-summary-value {
       color: var(--text);
       font-weight: 600;
       text-align: left;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .rsvp-summary-value.is-attend {
@@ -754,6 +785,7 @@
 
     .rsvp-hub-btn {
       width: 100%;
+      max-width: 100%;
       padding: 14px 12px;
       border-radius: var(--radius);
       font-family: inherit;
@@ -761,6 +793,9 @@
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s, color 0.2s, border-color 0.2s;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .rsvp-hub-row .rsvp-hub-btn {
@@ -806,8 +841,9 @@
     .section-back-btn {
       position: absolute;
       top: calc(var(--header-h) + 4px);
-      right: 16px;
+      right: max(12px, env(safe-area-inset-right));
       z-index: 16;
+      max-width: calc(100vw - 24px);
       padding: 8px 14px;
       border: 2px solid var(--cream-dark);
       border-radius: 999px;
@@ -818,6 +854,7 @@
       font-weight: 600;
       cursor: pointer;
       transition: border-color 0.2s, color 0.2s;
+      white-space: normal;
     }
 
     .section-back-btn:hover {
@@ -883,11 +920,15 @@
 
     .radio-group {
       display: flex;
+      flex-wrap: wrap;
       gap: 12px;
+      width: 100%;
+      min-width: 0;
     }
 
     .radio-option {
-      flex: 1;
+      flex: 1 1 calc(50% - 6px);
+      min-width: min(140px, 100%);
       position: relative;
     }
 
@@ -911,6 +952,10 @@
       cursor: pointer;
       transition: all 0.2s;
       background: #fff;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.3;
     }
 
     .radio-option input[type="radio"]:checked + .radio-label {
@@ -1073,6 +1118,8 @@
       font-weight: 500;
       color: var(--text);
       margin-bottom: 12px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .directions-subtitle {
@@ -1083,8 +1130,10 @@
 
     .venue-links {
       display: flex;
+      flex-wrap: wrap;
       justify-content: center;
-      gap: 32px;
+      gap: 24px 32px;
+      width: 100%;
     }
 
     /* ── Gift / Bit pay ── */
@@ -1102,10 +1151,13 @@
 
     .gift-amount-wrap {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: center;
       gap: 8px;
       margin-bottom: 20px;
+      width: 100%;
+      min-width: 0;
     }
 
     .gift-currency {
@@ -1115,7 +1167,8 @@
     }
 
     #giftAmount {
-      width: 140px;
+      width: min(140px, 100%);
+      max-width: 100%;
       text-align: center;
       font-size: 1.5rem;
       font-weight: 600;
@@ -1127,6 +1180,7 @@
       color: var(--text);
       appearance: textfield;
       -moz-appearance: textfield;
+      box-sizing: border-box;
     }
 
     #giftAmount:focus {
@@ -1182,14 +1236,16 @@
     .gift-modal-card {
       position: relative;
       width: 100%;
-      max-width: 400px;
+      max-width: min(400px, 100%);
       max-height: calc(100dvh - 40px);
+      overflow-x: hidden;
       overflow-y: auto;
       background: #fff;
       border-radius: var(--radius);
       padding: 28px 24px 24px;
       box-shadow: 0 20px 50px rgba(61, 54, 48, 0.2);
       text-align: center;
+      box-sizing: border-box;
     }
 
     .gift-modal-body {
@@ -1197,6 +1253,8 @@
       font-size: 0.95rem;
       line-height: 1.65;
       color: var(--text);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .gift-modal-body p + p {
@@ -1215,6 +1273,7 @@
     .gift-secondary-btn {
       margin-top: 12px;
       width: 100%;
+      max-width: 100%;
       padding: 14px 20px;
       border-radius: var(--radius);
       font-family: inherit;
@@ -1222,6 +1281,10 @@
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s, transform 0.1s, border-color 0.2s;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.3;
     }
 
     #giftFaqClose,
@@ -1387,6 +1450,29 @@
       .radio-label { padding: 14px 10px; font-size: 0.92rem; }
       .gate-error { padding: 28px 16px; }
       #giftPayBtn { max-width: none; }
+      .page-header-date { letter-spacing: 0.04em; gap: 8px; }
+      .gift-modal { padding: 16px; }
+      .gift-modal-card { padding: 22px 16px 18px; }
+    }
+
+    @media (max-width: 360px) {
+      .radio-group,
+      .vegan-toggle {
+        flex-direction: column;
+      }
+      .radio-option {
+        flex: 1 1 100%;
+        min-width: 100%;
+        width: 100%;
+      }
+      .rsvp-summary-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+      }
+      .rsvp-summary-value { text-align: right; }
+      .venue-links { gap: 16px; }
+      .scroll-hint { font-size: 0.95rem; padding: 12px 16px 10px; }
     }
   </style>
 </head>

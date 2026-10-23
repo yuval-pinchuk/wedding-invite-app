@@ -12,7 +12,8 @@
  * - WHATSAPP_SESSION_IDLE_MS — soft-close sockets unused longer than this (default 2700000 = 45m). Auth folders stay.
  * - WHATSAPP_HEAP_SOFT_LIMIT_MB — if heapUsed exceeds this, soft-close all open sockets (default 220).
  *
- * Auth data per sender: `.baileys_auth_<urlencoded_sender>/` under server/ (see authDirForSender).
+ * Auth data per sender: DATA_DIR/wa/<accountId>/<sender>/ (local cache).
+ * Synced to Neon `wa_auth_files` so restarts restore without a new QR.
  * Unofficial clients may violate WhatsApp ToS; use at your own risk.
  */
 
@@ -21,7 +22,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDataDir } from '../config/dataDir.js';
 import { currentAccount } from './accountContext.js';
-import { inviteImagePath } from './accounts.js';
+import { ensureInviteImageCached, inviteImagePath } from './accounts.js';
+import {
+  deleteWaAuthFromNeon,
+  restoreWaAuthFromNeon,
+  syncWaAuthToNeon,
+} from './waAuthStore.js';
 import makeWASocket, { DisconnectReason, fetchLatestWaWebVersion, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -90,6 +96,31 @@ function envPositiveMb(name, fallback) {
 export function authDirForSender(senderName) {
   const owner = currentAccount()?.id || 'default';
   return path.join(getDataDir(), 'wa', owner, encodeURIComponent(sessionKey(senderName)));
+}
+
+function waOwnerAndKey(senderName) {
+  const accountId = currentAccount()?.id || '';
+  const senderKey = sessionKey(senderName) || 'default';
+  return { accountId, senderKey };
+}
+
+/** Debounced Neon sync so rapid Baileys key writes coalesce. */
+const waSyncTimers = new Map();
+
+function scheduleWaAuthSync(senderName) {
+  const { accountId, senderKey } = waOwnerAndKey(senderName);
+  if (!accountId) return;
+  const mapKey = `${accountId}:${senderKey}`;
+  const prev = waSyncTimers.get(mapKey);
+  if (prev) clearTimeout(prev);
+  const timer = setTimeout(() => {
+    waSyncTimers.delete(mapKey);
+    const dir = authDirForSender(senderName);
+    syncWaAuthToNeon(accountId, senderKey, dir).catch((err) => {
+      console.error('[WhatsApp] Neon auth sync failed', err?.message || err);
+    });
+  }, 400);
+  waSyncTimers.set(mapKey, timer);
 }
 
 const DEFAULT_SEND_DELAY_MS = 2000;
@@ -173,10 +204,19 @@ export async function isPhoneOnWhatsApp(sock, digits) {
   }
 }
 
-/** Resolved path to optional invite image (JPEG/PNG). */
-function resolveInviteImagePath() {
-  const accountImage = inviteImagePath(currentAccount());
-  if (accountImage && fs.existsSync(accountImage)) return accountImage;
+/** Resolved path to optional invite image (JPEG/PNG). Rehydrates from Neon when needed. */
+async function resolveInviteImagePath() {
+  const account = currentAccount();
+  if (account) {
+    try {
+      const cached = await ensureInviteImageCached(account);
+      if (cached?.path && fs.existsSync(cached.path)) return cached.path;
+    } catch {
+      /* fall through */
+    }
+    const accountImage = inviteImagePath(account);
+    if (accountImage && fs.existsSync(accountImage)) return accountImage;
+  }
   const raw = (process.env.WHATSAPP_INVITE_IMAGE_PATH || DEFAULT_INVITE_IMAGE_NAME).trim();
   if (!raw) {
     return path.join(repoRoot, DEFAULT_INVITE_IMAGE_NAME);
@@ -184,9 +224,9 @@ function resolveInviteImagePath() {
   return path.isAbsolute(raw) ? raw : path.join(repoRoot, raw);
 }
 
-function readInviteImageBuffer() {
-  const imagePath = resolveInviteImagePath();
-  if (!fs.existsSync(imagePath)) {
+async function readInviteImageBuffer() {
+  const imagePath = await resolveInviteImagePath();
+  if (!imagePath || !fs.existsSync(imagePath)) {
     return null;
   }
   try {
@@ -245,7 +285,15 @@ async function connectSocket(senderName) {
 
   s.connecting = (async () => {
     const dir = authDirForSender(senderName);
+    const { accountId, senderKey } = waOwnerAndKey(senderName);
     await fs.promises.mkdir(dir, { recursive: true });
+    if (accountId) {
+      try {
+        await restoreWaAuthFromNeon(accountId, senderKey, dir);
+      } catch (error) {
+        console.error('[WhatsApp] Neon auth restore failed', error?.message || error);
+      }
+    }
     const { state, saveCreds } = await useMultiFileAuthState(dir);
 
     const { version } = await fetchLatestWaWebVersion();
@@ -261,7 +309,10 @@ async function connectSocket(senderName) {
 
     s.sock = sock;
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+      await saveCreds();
+      scheduleWaAuthSync(senderName);
+    });
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -271,10 +322,12 @@ async function connectSocket(senderName) {
       if (connection === 'open') {
         s.isReady = true;
         s.qrCode = null;
+        scheduleWaAuthSync(senderName);
       }
       if (connection === 'close') {
         s.isReady = false;
         s.sock = null;
+        scheduleWaAuthSync(senderName);
         if (s.userStopped || s.suppressReconnect) {
           return;
         }
@@ -300,6 +353,7 @@ async function connectSocket(senderName) {
     await s.connecting;
   } finally {
     s.connecting = null;
+    scheduleWaAuthSync(senderName);
   }
 }
 
@@ -394,6 +448,7 @@ export function softCloseSession(senderName, reason = 'idle') {
     /* ignore */
   }
 
+  scheduleWaAuthSync(senderName);
   console.log(`[WhatsApp] soft-closed ${key || senderName} (${reason})`);
 }
 
@@ -402,6 +457,7 @@ export function softCloseSession(senderName, reason = 'idle') {
  */
 export async function destroySession(senderName) {
   const key = sessionKey(senderName);
+  const { accountId, senderKey } = waOwnerAndKey(senderName);
   const s = sessions.get(key);
   if (s) {
     s.userStopped = true;
@@ -424,6 +480,13 @@ export async function destroySession(senderName) {
   const dir = authDirForSender(senderName);
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+  if (accountId) {
+    try {
+      await deleteWaAuthFromNeon(accountId, senderKey);
+    } catch (error) {
+      console.error('[WhatsApp] Neon auth delete failed', error?.message || error);
+    }
   }
   sessions.delete(key);
 }
@@ -609,7 +672,7 @@ export async function sendWhatsAppText(payload) {
       return { success: false, skipped: true, error: 'Number is not on WhatsApp', to: digits };
     }
 
-    const imageBuf = includeImage ? readInviteImageBuffer() : null;
+    const imageBuf = includeImage ? await readInviteImageBuffer() : null;
     if (imageBuf) {
       await sock.sendMessage(jid, { image: imageBuf, caption });
     } else {
@@ -650,7 +713,7 @@ export async function sendWhatsAppInvitation(payload) {
       return { success: false, skipped: true, error: 'Number is not on WhatsApp', to: digits };
     }
 
-    const imageBuf = readInviteImageBuffer();
+    const imageBuf = await readInviteImageBuffer();
     if (imageBuf) {
       await sock.sendMessage(jid, { image: imageBuf, caption: text });
     } else {

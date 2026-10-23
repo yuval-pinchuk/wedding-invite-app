@@ -43,7 +43,12 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -52,7 +57,8 @@
       min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
     .layout {
       max-width: 720px;
@@ -199,9 +205,11 @@
     body.nav-open { overflow: hidden; }
     @media (max-width: 700px) {
       .layout { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
-      header h1 { font-size: 1.55rem; }
-      .card { padding: 16px; }
+      header h1 { font-size: 1.55rem; overflow-wrap: anywhere; }
+      .card { padding: 16px; overflow-x: hidden; }
       .map-row { grid-template-columns: 1fr; gap: 4px; }
+      .map-row span { overflow-wrap: anywhere; word-break: break-word; }
+      .btn-primary, .btn-ghost { white-space: normal; line-height: 1.25; }
     }
   </style>
 </head>

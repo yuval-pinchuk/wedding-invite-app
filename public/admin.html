@@ -54,7 +54,12 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -63,7 +68,8 @@
       min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
     .layout {
       max-width: 920px;
@@ -151,9 +157,18 @@
     .guest-badges {
       display: flex;
       flex-direction: column;
+      flex-wrap: wrap;
       align-items: flex-end;
       gap: 4px;
-      flex-shrink: 0;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .guest-name,
+    .guest-phone,
+    .guest-addons {
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .guest-rsvp-badge.sent {
       background: rgba(196, 169, 154, 0.22);
@@ -516,11 +531,28 @@
       .row > button,
       .toolbar button { flex: 1 1 auto; min-width: calc(50% - 6px); }
       .guest-item {
+        flex-wrap: wrap;
         align-items: flex-start;
         gap: 10px;
         padding: 12px;
       }
-      .guest-badges { align-items: flex-start; }
+      .guest-meta { flex: 1 1 160px; }
+      .guest-badges {
+        flex: 1 1 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: flex-start;
+      }
+      .toolbar button {
+        white-space: normal;
+        line-height: 1.25;
+      }
+      .filter-chip {
+        white-space: normal;
+        line-height: 1.25;
+        border-radius: 12px;
+      }
       .filter-group-label { min-width: 100%; margin-bottom: 2px; }
       .nav-drawer {
         width: min(100vw, 100%);

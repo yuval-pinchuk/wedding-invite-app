@@ -67,6 +67,20 @@ CREATE INDEX IF NOT EXISTS rsvp_responses_account_updated_idx
   ON rsvp_responses (account_id, updated_at DESC);
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS baby_max_age INTEGER NOT NULL DEFAULT 6;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_bytes BYTEA;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_mime TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS wa_auth_files (
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  sender_key TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  content BYTEA NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (account_id, sender_key, file_name)
+);
+
+CREATE INDEX IF NOT EXISTS wa_auth_files_account_sender_idx
+  ON wa_auth_files (account_id, sender_key);
 `;
 
 export async function migrate() {

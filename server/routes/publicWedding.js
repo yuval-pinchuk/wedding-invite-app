@@ -1,6 +1,10 @@
 import express from 'express';
-import fs from 'fs';
-import { findByPublicToken, inviteImagePath, publicAccount } from '../services/accounts.js';
+import {
+  accountHasInviteImageInStore,
+  ensureInviteImageCached,
+  findByPublicToken,
+  publicAccount,
+} from '../services/accounts.js';
 import { buildExampleResponsesWorkbook, buildExampleWorkbook } from '../services/exampleSheet.js';
 
 const router = express.Router();
@@ -14,7 +18,7 @@ router.get('/wedding', async (req, res) => {
   const account = await accountFromToken(String(req.query.token || '').trim());
   if (!account) return res.status(404).json({ success: false, error: 'החתונה לא נמצאה' });
   const view = publicAccount(account);
-  const imageFile = inviteImagePath(account);
+  const hasImage = await accountHasInviteImageInStore(account);
   res.json({
     success: true,
     brideName: view.brideName,
@@ -23,16 +27,18 @@ router.get('/wedding', async (req, res) => {
     wazeUrl: view.wazeUrl,
     mapsUrl: view.mapsUrl,
     babyMaxAge: view.babyMaxAge,
-    imageUrl: imageFile && fs.existsSync(imageFile) ? `/api/public/invite-image/${account.publicToken}` : '/WEDDING.png',
+    imageUrl: hasImage ? `/api/public/invite-image/${account.publicToken}` : '/WEDDING.png',
     token: account.publicToken,
   });
 });
 
 router.get('/invite-image/:token', async (req, res) => {
   const account = await findByPublicToken(req.params.token);
-  const file = inviteImagePath(account);
-  if (!file || !fs.existsSync(file)) return res.status(404).end();
-  res.sendFile(file);
+  if (!account) return res.status(404).end();
+  const cached = await ensureInviteImageCached(account);
+  if (!cached?.path) return res.status(404).end();
+  if (cached.mime) res.type(cached.mime);
+  res.sendFile(cached.path);
 });
 
 router.get('/example.xlsx', (_req, res) => {

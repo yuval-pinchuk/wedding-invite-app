@@ -16,6 +16,42 @@ function invitesDir() {
   return dir;
 }
 
+/** Columns for account reads — excludes invite_image_bytes (up to 5MB). */
+const ACCOUNT_COLUMNS = `
+  id, email, public_token, password_hash, failed_logins, locked,
+  unlock_code_hash, unlock_code_expires, reset_token_hash, reset_token_expires,
+  legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
+  guest_sheet_id, response_sheet_id, sheet_tab, column_map,
+  invitation_message, reminder_template, invite_image_file, invite_image_mime,
+  baby_max_age, created_at
+`;
+
+function mimeFromExt(ext) {
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+function extFromMime(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.includes('png')) return 'png';
+  if (m.includes('webp')) return 'webp';
+  return 'jpg';
+}
+
+function parseInviteDataUrl(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) {
+    throw Object.assign(new Error('פורמט תמונה לא תקין'), { status: 400 });
+  }
+  const mime = match[1].toLowerCase().replace('image/jpg', 'image/jpeg');
+  const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+    throw Object.assign(new Error('התמונה חייבת להיות עד 5MB'), { status: 400 });
+  }
+  return { mime, buffer, ext: extFromMime(mime) };
+}
+
 function rowToAccount(row) {
   if (!row) return null;
   return {
@@ -42,9 +78,14 @@ function rowToAccount(row) {
     invitationMessage: row.invitation_message || '',
     reminderTemplate: row.reminder_template || '',
     inviteImageFile: row.invite_image_file || '',
+    inviteImageMime: row.invite_image_mime || '',
     babyMaxAge: Number.isFinite(Number(row.baby_max_age)) ? Number(row.baby_max_age) : 6,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || ''),
   };
+}
+
+function accountHasInviteImage(account) {
+  return Boolean(account?.inviteImageFile || account?.inviteImageMime);
 }
 
 export function normalizeBabyMaxAge(value) {
@@ -73,32 +114,32 @@ export function publicAccount(account) {
     reminderTemplate: account.reminderTemplate || '',
     babyMaxAge: normalizeBabyMaxAge(account.babyMaxAge),
     locked: Boolean(account.locked),
-    hasInviteImage: Boolean(account.inviteImageFile),
+    hasInviteImage: accountHasInviteImage(account),
   };
 }
 
 export async function listAccounts() {
-  const result = await query('SELECT * FROM accounts ORDER BY created_at ASC');
+  const result = await query(`SELECT ${ACCOUNT_COLUMNS} FROM accounts ORDER BY created_at ASC`);
   return result.rows.map(rowToAccount);
 }
 
 export async function findAccountById(id) {
   if (!id) return null;
-  const result = await query('SELECT * FROM accounts WHERE id = $1 LIMIT 1', [id]);
+  const result = await query(`SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = $1 LIMIT 1`, [id]);
   return rowToAccount(result.rows[0]);
 }
 
 export async function findAccountByEmail(email) {
   const key = String(email || '').trim().toLowerCase();
   if (!key) return null;
-  const result = await query('SELECT * FROM accounts WHERE email = $1 LIMIT 1', [key]);
+  const result = await query(`SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE email = $1 LIMIT 1`, [key]);
   return rowToAccount(result.rows[0]);
 }
 
 export async function findByPublicToken(token) {
   const key = String(token || '').trim();
   if (!key) return null;
-  const result = await query('SELECT * FROM accounts WHERE public_token = $1 LIMIT 1', [key]);
+  const result = await query(`SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE public_token = $1 LIMIT 1`, [key]);
   return rowToAccount(result.rows[0]);
 }
 
@@ -212,19 +253,106 @@ export function inviteImagePath(account) {
   return path.join(invitesDir(), account.inviteImageFile);
 }
 
-export function saveInviteImage(accountId, dataUrl) {
-  const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=\s]+)$/i);
-  if (!match) {
-    throw Object.assign(new Error('פורמט תמונה לא תקין'), { status: 400 });
-  }
-  const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
-  if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
-    throw Object.assign(new Error('התמונה חייבת להיות עד 5MB'), { status: 400 });
-  }
-  const ext = match[1].includes('png') ? 'png' : match[1].includes('webp') ? 'webp' : 'jpg';
+/**
+ * Persist invite image to Neon (source of truth) and local DATA_DIR cache.
+ * @returns {Promise<string>} cache filename
+ */
+export async function saveInviteImage(accountId, dataUrl) {
+  const { mime, buffer, ext } = parseInviteDataUrl(dataUrl);
   const filename = `${accountId}.${ext}`;
   fs.writeFileSync(path.join(invitesDir(), filename), buffer);
+  await query(
+    `UPDATE accounts
+     SET invite_image_file = $2, invite_image_mime = $3, invite_image_bytes = $4
+     WHERE id = $1`,
+    [accountId, filename, mime, buffer],
+  );
   return filename;
+}
+
+/**
+ * Ensure invite image exists on local disk; rehydrate from Neon when cache is missing.
+ * @returns {Promise<{ path: string, mime: string } | null>}
+ */
+export async function ensureInviteImageCached(account) {
+  if (!account?.id || !accountHasInviteImage(account)) return null;
+
+  let filename = account.inviteImageFile || '';
+  let diskPath = filename ? path.join(invitesDir(), filename) : '';
+  if (diskPath && fs.existsSync(diskPath)) {
+    return { path: diskPath, mime: account.inviteImageMime || mimeFromExt(path.extname(filename).slice(1)) };
+  }
+
+  const result = await query(
+    `SELECT invite_image_bytes, invite_image_mime, invite_image_file
+     FROM accounts WHERE id = $1 LIMIT 1`,
+    [account.id],
+  );
+  const row = result.rows[0];
+  const bytes = row?.invite_image_bytes;
+  const buf = bytes ? Buffer.from(bytes) : null;
+  if (!buf?.length) return null;
+
+  const mime = String(row.invite_image_mime || account.inviteImageMime || 'image/jpeg');
+  filename = String(row.invite_image_file || account.inviteImageFile || `${account.id}.${extFromMime(mime)}`);
+  diskPath = path.join(invitesDir(), filename);
+  fs.writeFileSync(diskPath, buf);
+
+  if (filename !== account.inviteImageFile || mime !== account.inviteImageMime) {
+    await query(
+      `UPDATE accounts SET invite_image_file = $2, invite_image_mime = $3 WHERE id = $1`,
+      [account.id, filename, mime],
+    );
+  }
+  return { path: diskPath, mime };
+}
+
+export async function accountHasInviteImageInStore(account) {
+  if (!account?.id) return false;
+  if (account.inviteImageFile) {
+    const p = inviteImagePath(account);
+    if (p && fs.existsSync(p)) return true;
+  }
+  const cached = await ensureInviteImageCached(account);
+  return Boolean(cached);
+}
+
+/**
+ * Push local invite files into Neon when DB bytes are missing (boot recovery).
+ */
+export async function hydrateInviteImagesFromDisk() {
+  const result = await query(
+    `SELECT id, invite_image_file, invite_image_mime
+     FROM accounts
+     WHERE invite_image_file <> ''
+       AND (invite_image_bytes IS NULL OR octet_length(invite_image_bytes) = 0)`,
+  );
+  let uploaded = 0;
+  for (const row of result.rows) {
+    const filename = String(row.invite_image_file || '').trim();
+    if (!filename) continue;
+    const diskPath = path.join(invitesDir(), filename);
+    if (!fs.existsSync(diskPath)) continue;
+    try {
+      const buffer = fs.readFileSync(diskPath);
+      if (!buffer.length || buffer.length > 5 * 1024 * 1024) continue;
+      const ext = path.extname(filename).slice(1).toLowerCase() || 'jpg';
+      const mime = String(row.invite_image_mime || '').trim() || mimeFromExt(ext);
+      await query(
+        `UPDATE accounts
+         SET invite_image_bytes = $2, invite_image_mime = $3
+         WHERE id = $1`,
+        [row.id, buffer, mime],
+      );
+      uploaded += 1;
+    } catch (error) {
+      console.error('[accounts] hydrate invite image failed', row.id, error?.message || error);
+    }
+  }
+  if (uploaded) {
+    console.log(`[accounts] hydrated ${uploaded} invite image(s) from disk into Neon`);
+  }
+  return uploaded;
 }
 
 export async function createAccount(input) {
@@ -248,15 +376,13 @@ export async function createAccount(input) {
   }
   assertWeddingDate(weddingDate);
 
-  const id = randomUUID();
-  let inviteImageFile = '';
-  if (input.inviteImageDataUrl) {
-    inviteImageFile = saveInviteImage(id, input.inviteImageDataUrl);
-  }
-  if (!inviteImageFile) {
+  if (!input.inviteImageDataUrl) {
     throw Object.assign(new Error('יש להעלות תמונת הזמנה'), { status: 400 });
   }
+  // Validate before creating the row.
+  const parsedInvite = parseInviteDataUrl(input.inviteImageDataUrl);
 
+  const id = randomUUID();
   const account = {
     id,
     publicToken: randomBytes(18).toString('hex'),
@@ -280,7 +406,8 @@ export async function createAccount(input) {
     columnMap: input.columnMap || {},
     invitationMessage: String(input.invitationMessage || '').trim(),
     reminderTemplate: String(input.reminderTemplate || '').trim(),
-    inviteImageFile,
+    inviteImageFile: '',
+    inviteImageMime: '',
     babyMaxAge: normalizeBabyMaxAge(input.babyMaxAge),
     paymentSeed: {
       daniellePaybox: String(input.daniellePaybox || '').trim(),
@@ -291,7 +418,8 @@ export async function createAccount(input) {
     createdAt: new Date().toISOString(),
   };
   await saveAccount(account);
-  return account;
+  const inviteImageFile = await saveInviteImage(id, input.inviteImageDataUrl);
+  return { ...account, inviteImageFile, inviteImageMime: parsedInvite.mime };
 }
 
 export async function updateAccount(id, patch) {

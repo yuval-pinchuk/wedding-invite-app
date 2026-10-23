@@ -18,6 +18,7 @@ import {
   purgeExpiredSessions,
   refreshSessionCookieIfNeeded,
 } from './services/sessions.js';
+import { hydrateInviteImagesFromDisk } from './services/accounts.js';
 import { migrate } from './db/migrate.js';
 import { allowedOrigins, securityHeaders } from './middleware/security.js';
 
@@ -111,6 +112,9 @@ app.get('*', (req, res) => {
 async function start() {
   try {
     await migrate();
+    await hydrateInviteImagesFromDisk().catch((err) => {
+      console.error('[accounts] invite hydrate failed', err?.message || err);
+    });
     await configureSheets();
     await purgeExpiredSessions().catch(() => {});
     setInterval(() => {

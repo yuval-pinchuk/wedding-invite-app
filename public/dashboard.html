@@ -52,7 +52,12 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -61,7 +66,8 @@
       min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
     .layout {
       max-width: 920px;
@@ -151,7 +157,8 @@
     .data-table-wrap {
       margin-top: 20px;
       max-height: 360px;
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
       border: 1px solid var(--surface2);
       border-radius: 10px;
       background: var(--bg);
@@ -166,6 +173,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 0.85rem;
+      table-layout: fixed;
     }
     .data-table th,
     .data-table td {
@@ -173,6 +181,8 @@
       border-bottom: 1px solid var(--surface2);
       text-align: right;
       vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .data-table th {
       color: var(--muted);
@@ -182,7 +192,7 @@
       background: var(--bg);
       z-index: 1;
     }
-    .data-table td.notes { max-width: 160px; word-break: break-word; }
+    .data-table td.notes { max-width: none; word-break: break-word; }
     .data-table .empty-row td {
       color: var(--muted);
       text-align: center;
@@ -191,14 +201,52 @@
       .layout { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
       header h1 { font-size: 1.55rem; }
       .welcome { font-size: 1.05rem; }
-      .card { padding: 16px; }
+      .card { padding: 16px; overflow-x: hidden; }
       .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .stat { padding: 12px 10px; }
-      .stat .value { font-size: 1.25rem; }
+      .stat .value { font-size: 1.25rem; overflow-wrap: anywhere; }
       .charts-grid { grid-template-columns: 1fr; gap: 14px; }
       .chart-panel { min-height: 240px; padding: 12px 10px 8px; }
       .chart-wrap, .chart-empty { min-height: 200px; }
-      .data-table-wrap { max-height: 280px; }
+      .data-table-wrap { max-height: none; overflow-x: hidden; }
+      .data-table,
+      .data-table thead,
+      .data-table tbody,
+      .data-table tr,
+      .data-table th,
+      .data-table td {
+        display: block;
+        width: 100%;
+      }
+      .data-table thead { display: none; }
+      .data-table tr {
+        padding: 10px 0 12px;
+        border-bottom: 1px solid var(--surface2);
+      }
+      .data-table tr:last-child { border-bottom: none; }
+      .data-table td {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 6px 12px;
+        padding: 6px 12px;
+        border-bottom: none;
+      }
+      .data-table td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-weight: 600;
+        flex: 0 1 auto;
+      }
+      .data-table td > * ,
+      .data-table td {
+        min-width: 0;
+      }
+      .data-table .empty-row td {
+        display: block;
+        text-align: center;
+      }
+      .data-table .empty-row td::before { content: none; }
     }
     @media (max-width: 380px) {
       .stats { grid-template-columns: 1fr; }
@@ -748,14 +796,14 @@
           <tbody>
             ${list.map((row) => `
               <tr>
-                <td>${escapeHtml(row.name || '')}</td>
-                <td>${escapeHtml(row.phone || '')}</td>
-                <td>${row.isAttending ? 'מגיעים' : 'לא מגיעים'}</td>
-                <td>${Number(row.numberOfGuests) || 0}</td>
-                <td>${Number(row.numberOfBabies) || 0}</td>
-                <td>${Number(row.numberOfVegan) || 0}</td>
-                <td class="notes">${escapeHtml(row.additionalNotes || '')}</td>
-                <td>${formatDateTime(row.updatedAt)}</td>
+                <td data-label="שם">${escapeHtml(row.name || '')}</td>
+                <td data-label="טלפון">${escapeHtml(row.phone || '')}</td>
+                <td data-label="סטטוס">${row.isAttending ? 'מגיעים' : 'לא מגיעים'}</td>
+                <td data-label="אורחים">${Number(row.numberOfGuests) || 0}</td>
+                <td data-label="תינוקות">${Number(row.numberOfBabies) || 0}</td>
+                <td data-label="טבעוני">${Number(row.numberOfVegan) || 0}</td>
+                <td class="notes" data-label="הערות">${escapeHtml(row.additionalNotes || '')}</td>
+                <td data-label="עודכן">${formatDateTime(row.updatedAt)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -782,10 +830,10 @@
           <tbody>
             ${list.map((row) => `
               <tr>
-                <td>${escapeHtml(row.name || '')}</td>
-                <td>${escapeHtml(row.phone || '')}</td>
-                <td>${money(row.amount)}</td>
-                <td>${escapeHtml(row.giftLink || '—')}</td>
+                <td data-label="שם">${escapeHtml(row.name || '')}</td>
+                <td data-label="טלפון">${escapeHtml(row.phone || '')}</td>
+                <td data-label="סכום">${money(row.amount)}</td>
+                <td data-label="קישור">${escapeHtml(row.giftLink || '—')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -812,10 +860,10 @@
           <tbody>
             ${list.map((row) => `
               <tr>
-                <td>${formatDateTime(row.timestamp)}</td>
-                <td>${row.amount ? money(row.amount) : '—'}</td>
-                <td>${escapeHtml(row.source || '')}</td>
-                <td class="notes">${escapeHtml(row.note || '')}</td>
+                <td data-label="זמן">${formatDateTime(row.timestamp)}</td>
+                <td data-label="סכום">${row.amount ? money(row.amount) : '—'}</td>
+                <td data-label="מקור">${escapeHtml(row.source || '')}</td>
+                <td class="notes" data-label="הערה">${escapeHtml(row.note || '')}</td>
               </tr>
             `).join('')}
           </tbody>

@@ -2,7 +2,8 @@ import { defineConfig } from "@neon/config/v1";
 
 /**
  * Neon policy for easyWed.
- * Postgres only — invite images / WhatsApp auth stay on disk (DATA_DIR).
+ * Postgres holds accounts, RSVPs, payments, sessions, invite image bytes,
+ * and WhatsApp auth files. DATA_DIR is a local cache only.
  */
 export default defineConfig({
   auth: false,

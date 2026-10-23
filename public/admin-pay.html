@@ -55,7 +55,12 @@
       --accent-contrast: #fffcfa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+    }
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -64,7 +69,8 @@
       min-height: 100dvh;
       line-height: 1.5;
       transition: background-color 0.4s ease, color 0.4s ease;
-      overflow-x: hidden;
+      max-width: 100%;
+      overflow-x: clip;
     }
     .layout {
       max-width: 980px;
@@ -440,16 +446,19 @@
     .message.show { display: block; }
     .message.ok { background: rgba(34, 197, 94, 0.15); color: var(--ok); }
     .message.err { background: rgba(244, 63, 94, 0.15); color: #fda4af; }
-    .history { max-height: 320px; overflow: auto; }
+    .history { max-height: 320px; overflow-x: hidden; overflow-y: auto; }
     .history table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.85rem;
+      table-layout: fixed;
     }
     .history th, .history td {
       text-align: right;
       padding: 10px 8px;
       border-bottom: 1px solid var(--surface2);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .history th { color: var(--muted); font-weight: 500; }
     .mode-row {
@@ -480,14 +489,44 @@
         padding-right: max(14px, env(safe-area-inset-right));
       }
       header h1 { font-size: 1.55rem; }
-      .card { padding: 16px; }
+      .card { padding: 16px; overflow-x: hidden; }
       .row .grow { min-width: 100%; }
-      .row > button { width: 100%; }
+      .row > button { width: 100%; white-space: normal; }
+      .actions button { white-space: normal; line-height: 1.25; }
       .meta { grid-template-columns: 1fr; }
       .actions { flex-direction: column; }
       .actions button { width: 100%; }
       .links-header { align-items: stretch; }
-      .links-header > button { width: 100%; }
+      .links-header > button { width: 100%; white-space: normal; }
+      .history { max-height: none; }
+      .history table,
+      .history thead,
+      .history tbody,
+      .history tr,
+      .history th,
+      .history td {
+        display: block;
+        width: 100%;
+      }
+      .history thead { display: none; }
+      .history tr {
+        padding: 10px 0 12px;
+        border-bottom: 1px solid var(--surface2);
+      }
+      .history td {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 6px 12px;
+        padding: 6px 8px;
+        border-bottom: none;
+      }
+      .history td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .history td[colspan]::before { content: none; }
       .nav-drawer {
         width: min(100vw, 100%);
         padding-top: max(20px, env(safe-area-inset-top));
@@ -802,10 +841,10 @@
           <tbody>
             ${gifts.map((g) => `
               <tr>
-                <td>${escapeHtml(g.name || '')}</td>
-                <td>${escapeHtml(g.phone || '')}</td>
-                <td>${money(g.amount)}</td>
-                <td>${escapeHtml(g.giftLink || '—')}</td>
+                <td data-label="שם">${escapeHtml(g.name || '')}</td>
+                <td data-label="טלפון">${escapeHtml(g.phone || '')}</td>
+                <td data-label="סכום">${money(g.amount)}</td>
+                <td data-label="קישור">${escapeHtml(g.giftLink || '—')}</td>
               </tr>
             `).join('') || '<tr><td colspan="4">אין מתנות רשומות עדיין</td></tr>'}
           </tbody>
@@ -828,11 +867,11 @@
               const linkLabel = status.links.find((l) => l.id === h.linkId)?.label || h.linkId;
               return `
                 <tr>
-                  <td>${escapeHtml(formatTime(h.timestamp))}</td>
-                  <td>${escapeHtml(linkLabel)}</td>
-                  <td>${h.amount ? money(h.amount) : '—'}</td>
-                  <td>${escapeHtml(h.source || '')}</td>
-                  <td>${escapeHtml(h.note || '')}</td>
+                  <td data-label="זמן">${escapeHtml(formatTime(h.timestamp))}</td>
+                  <td data-label="קישור">${escapeHtml(linkLabel)}</td>
+                  <td data-label="סכום">${h.amount ? money(h.amount) : '—'}</td>
+                  <td data-label="מקור">${escapeHtml(h.source || '')}</td>
+                  <td data-label="הערה">${escapeHtml(h.note || '')}</td>
                 </tr>
               `;
             }).join('') || '<tr><td colspan="5">אין היסטוריה עדיין</td></tr>'}

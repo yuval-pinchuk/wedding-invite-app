@@ -257,7 +257,7 @@ router.put('/settings', requireAccount, async (req, res) => {
     };
 
     if (body.inviteImageDataUrl) {
-      patch.inviteImageFile = saveInviteImage(req.account.id, body.inviteImageDataUrl);
+      patch.inviteImageFile = await saveInviteImage(req.account.id, body.inviteImageDataUrl);
     }
 
     const account = await updateAccount(req.account.id, patch);
