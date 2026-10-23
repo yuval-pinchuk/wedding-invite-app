@@ -262,12 +262,18 @@ export async function getPaymentStatus(state) {
   };
 }
 
-/**
- * Record a guest gift intent and return the link they should open.
- * @param {number} amount
- * @param {{ guestPhone?: string, guestName?: string }} [meta]
- */
-export async function recordGiftAndGetLink(amount, meta = {}) {
+function giftDisplayName(link) {
+  const account = currentAccount();
+  const providerLabel = link.provider === 'bit' ? 'Bit' : 'PayBox';
+  const owner = String(link.owner || '').trim().toLowerCase();
+  let person = '';
+  if (owner === 'danielle') person = String(account?.brideName || '').trim();
+  else if (owner === 'yuval') person = String(account?.groomName || '').trim();
+  if (person) return `${providerLabel} של ${person}`;
+  return String(link.label || providerLabel).trim() || providerLabel;
+}
+
+function assertGiftAmount(amount) {
   const value = Math.floor(Number(amount));
   if (!Number.isFinite(value) || value < 1) {
     throw Object.assign(new Error('Amount must be a positive integer'), { status: 400 });
@@ -275,6 +281,35 @@ export async function recordGiftAndGetLink(amount, meta = {}) {
   if (value > 15000) {
     throw Object.assign(new Error('Amount cannot exceed 15000'), { status: 400 });
   }
+  return value;
+}
+
+/**
+ * Resolve the payment link for an amount without recording anything.
+ * @param {number} amount
+ */
+export async function previewGiftLink(amount) {
+  const value = assertGiftAmount(amount);
+  const state = await readPaymentState();
+  const link = resolveLinkForAmount(state, value);
+  return {
+    url: link.url,
+    linkId: link.id,
+    label: link.label,
+    provider: link.provider,
+    owner: link.owner,
+    amount: value,
+    displayName: giftDisplayName(link),
+  };
+}
+
+/**
+ * Record a guest gift intent and return the link they should open.
+ * @param {number} amount
+ * @param {{ guestPhone?: string, guestName?: string }} [meta]
+ */
+export async function recordGiftAndGetLink(amount, meta = {}) {
+  const value = assertGiftAmount(amount);
 
   const state = await readPaymentState();
   const active = resolveLinkForAmount(state, value);
@@ -304,7 +339,9 @@ export async function recordGiftAndGetLink(amount, meta = {}) {
     linkId: link.id,
     label: link.label,
     provider: link.provider,
+    owner: link.owner,
     amount: value,
+    displayName: giftDisplayName(link),
     status,
   };
 }

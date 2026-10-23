@@ -615,6 +615,47 @@ export async function addGuestGiftAmount(spreadsheetId, phone, amount, linkLabel
 }
 
 /**
+ * Replace guest gift total and link label (instead of adding).
+ * @param {string} spreadsheetId
+ * @param {string} phone
+ * @param {number} amount
+ * @param {string} linkLabel
+ */
+export async function setGuestGiftAmount(spreadsheetId, phone, amount, linkLabel) {
+  if (!sheets) {
+    await configureSheets();
+  }
+
+  const payment = Number(amount);
+  if (!Number.isFinite(payment) || payment <= 0) {
+    throw new Error('Gift amount must be a positive number');
+  }
+
+  const guest = await getGuestByPhone(spreadsheetId, phone);
+  if (!guest) {
+    console.warn(`[gift] no guest row for phone ${phone}`);
+    return { success: false, reason: 'not_found' };
+  }
+
+  const rowNumber = guest.rowNumber;
+  const label = String(linkLabel || '').trim();
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    resource: {
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        { range: rangeFor('giftAmount', rowNumber), values: [[payment]] },
+        { range: rangeFor('giftLink', rowNumber), values: [[label]] },
+      ],
+    },
+  });
+
+  console.log(`[gift] row ${rowNumber} phone ${phone} replaced P=${payment} Q=${label}`);
+  return { success: true, rowNumber, total: payment, linkLabel: label };
+}
+
+/**
  * Update send confirmation status for a guest (remove from send list)
  */
 export async function updateSendConfirmation(spreadsheetId, phone, shouldSend = false, range = guestReadRange()) {

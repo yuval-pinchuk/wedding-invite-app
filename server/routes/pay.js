@@ -1,7 +1,7 @@
 import express from 'express';
 import { envGuestSheetId } from '../config/loadEnv.js';
-import { addGuestGiftAmount } from '../services/googleSheets.js';
-import { getPaymentStatus, recordGiftAndGetLink } from '../services/paymentRouting.js';
+import { addGuestGiftAmount, setGuestGiftAmount } from '../services/googleSheets.js';
+import { getPaymentStatus, previewGiftLink, recordGiftAndGetLink } from '../services/paymentRouting.js';
 import { findByPublicToken } from '../services/accounts.js';
 import { runAsAccount } from '../services/accountContext.js';
 import { rateLimit } from '../middleware/security.js';
@@ -50,12 +50,32 @@ router.get('/status', async (_req, res) => {
 });
 
 /**
+ * POST /api/pay/preview — resolve destination without logging.
+ * Body: { amount, inviteToken }
+ */
+router.post('/preview', checkoutLimit, async (req, res) => {
+  try {
+    const preview = await previewGiftLink(req.body?.amount);
+    res.json({ success: true, ...preview });
+  } catch (error) {
+    console.error('[pay/preview]', error);
+    res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to preview payment',
+    });
+  }
+});
+
+/**
  * POST /api/pay/checkout
- * Body: { amount, guestPhone?, guestName? }
+ * Body: { amount, guestPhone?, guestName?, mode?: 'add' | 'replace' }
  */
 router.post('/checkout', checkoutLimit, async (req, res) => {
   try {
     const { amount, guestPhone, guestName } = req.body || {};
+    const mode = String(req.body?.mode || 'add').trim().toLowerCase() === 'replace'
+      ? 'replace'
+      : 'add';
     const result = await recordGiftAndGetLink(amount, { guestPhone, guestName });
     const phone = String(guestPhone || '').trim();
     const spreadsheetId = envGuestSheetId();
@@ -65,7 +85,11 @@ router.post('/checkout', checkoutLimit, async (req, res) => {
       console.warn('[pay/checkout] guest sheet not configured; skipped gift sheet update');
     } else {
       try {
-        await addGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
+        if (mode === 'replace') {
+          await setGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
+        } else {
+          await addGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
+        }
       } catch (sheetError) {
         console.error('[pay/checkout] gift sheet update failed:', sheetError.message || sheetError);
       }
@@ -76,7 +100,10 @@ router.post('/checkout', checkoutLimit, async (req, res) => {
       linkId: result.linkId,
       label: result.label,
       provider: result.provider,
+      owner: result.owner,
+      displayName: result.displayName,
       amount: result.amount,
+      mode,
     });
   } catch (error) {
     console.error('[pay/checkout]', error);

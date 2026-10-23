@@ -184,6 +184,9 @@ router.get('/guest/:phone', async (req, res) => {
       });
     }
 
+    const giftAmountRaw = Number(String(guest.giftAmount || '').replace(/[^\d.-]/g, ''));
+    const giftAmount = Number.isFinite(giftAmountRaw) && giftAmountRaw > 0 ? giftAmountRaw : 0;
+
     res.json({
       success: true,
       guest: {
@@ -191,6 +194,8 @@ router.get('/guest/:phone', async (req, res) => {
         phone: guest.phoneTo,
         addons: guest.addons,
         rsvp: parseStoredRsvp(guest),
+        giftAmount,
+        giftLink: guest.giftLink || '',
       },
     });
   } catch (error) {

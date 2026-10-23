@@ -1209,27 +1209,91 @@
       line-height: 1;
     }
 
-    #giftFaqClose {
-      margin-top: 16px;
+    #giftFaqClose,
+    .gift-modal-primary,
+    .gift-modal-secondary,
+    .gift-secondary-btn {
+      margin-top: 12px;
       width: 100%;
       padding: 14px 20px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
       border-radius: var(--radius);
       font-family: inherit;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
+      transition: background 0.2s, transform 0.1s, border-color 0.2s;
     }
 
-    #giftFaqClose:hover {
+    #giftFaqClose,
+    .gift-modal-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+    }
+
+    #giftFaqClose:hover,
+    .gift-modal-primary:hover {
       background: var(--accent-dark);
     }
 
-    #giftFaqClose:active {
+    .gift-modal-secondary,
+    .gift-secondary-btn {
+      background: transparent;
+      color: var(--text);
+      border: 2px solid rgba(61, 54, 48, 0.18);
+    }
+
+    #giftFaqClose:active,
+    .gift-modal-primary:active,
+    .gift-modal-secondary:active,
+    .gift-secondary-btn:active {
       transform: scale(0.98);
+    }
+
+    .gift-modal-actions {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .gift-confirm-lead {
+      font-weight: 600;
+    }
+
+    .gift-confirm-amount {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 10px !important;
+    }
+
+    .gift-confirm-dest {
+      margin-top: 8px !important;
+      color: var(--text-muted, #6b5f57);
+    }
+
+    .gift-accepted {
+      text-align: center;
+      padding: 8px 0 4px;
+    }
+
+    .gift-accepted.hidden,
+    #giftFormPanel.hidden {
+      display: none;
+    }
+
+    .gift-accepted-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .gift-accepted-amount {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 18px;
     }
 
     .gift-error {
@@ -1264,6 +1328,11 @@
 
     #giftPayBtn:active {
       transform: scale(0.98);
+    }
+
+    #giftPayBtn:disabled {
+      opacity: 0.65;
+      cursor: wait;
     }
 
     .venue-link {
@@ -1446,19 +1515,28 @@
         <div class="section-inner no-scroll">
           <div class="gift-section">
             <h2 class="section-title">שליחת מתנה</h2>
-            <p class="gift-subtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לפתיחת אפליקציית התשלום</p>
-            <div class="form-group">
-              <label for="giftAmount">סכום בש״ח</label>
-              <div class="gift-amount-wrap">
-                <span class="gift-currency">₪</span>
-                <input type="text" id="giftAmount" name="giftAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="5" placeholder="0">
-              </div>
+
+            <div id="giftAcceptedPanel" class="gift-accepted hidden">
+              <p class="gift-accepted-title">המתנה התקבלה</p>
+              <p class="gift-accepted-amount" id="giftAcceptedAmount">₪0</p>
+              <button type="button" id="giftResendBtn" class="gift-secondary-btn">שליחה נוספת</button>
             </div>
-            <button type="button" id="giftPayBtn">שליחת מתנה</button>
-            <p class="gift-note">תשלומים מעל ₪1000 יבוצעו באמצעות אפליקציית ביט.</p>
-            <p class="gift-note">לאחר הפתיחה, הזינו את הסכום הרצוי שנית.</p>
-            <button type="button" class="gift-faq-link" id="giftFaqTrigger">למה אני צריך להזין את הסכום פעמיים?</button>
-            <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
+
+            <div id="giftFormPanel">
+              <p class="gift-subtitle" id="giftSubtitle">רוצים לשלוח מתנה? הזינו סכום ולחצו לשליחה</p>
+              <div class="form-group">
+                <label for="giftAmount">סכום בש״ח</label>
+                <div class="gift-amount-wrap">
+                  <span class="gift-currency">₪</span>
+                  <input type="text" id="giftAmount" name="giftAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="5" placeholder="0">
+                </div>
+              </div>
+              <button type="button" id="giftPayBtn">שליחת מתנה</button>
+              <p class="gift-note">תשלומים מעל ₪1000 יבוצעו באמצעות אפליקציית ביט.</p>
+              <p class="gift-note">לאחר הפתיחה, הזינו את הסכום הרצוי שנית באפליקציה.</p>
+              <button type="button" class="gift-faq-link" id="giftFaqTrigger">למה אני צריך להזין את הסכום פעמיים?</button>
+              <p class="gift-error" id="giftError">אנא הזינו סכום בין ₪1 ל-₪15,000</p>
+            </div>
           </div>
         </div>
       </section>
@@ -1499,6 +1577,36 @@
         </div>
         <p class="gift-modal-heart" aria-hidden="true">❤️</p>
         <button type="button" id="giftFaqClose">הבנתי תודה!</button>
+      </div>
+    </div>
+
+    <div class="gift-modal hidden" id="giftConfirmModal" role="dialog" aria-modal="true" aria-labelledby="giftConfirmTitle">
+      <div class="gift-modal-backdrop" id="giftConfirmBackdrop"></div>
+      <div class="gift-modal-card">
+        <div class="gift-modal-body" id="giftConfirmTitle">
+          <p class="gift-confirm-lead">המתנה תירשם ותועברו לתשלום</p>
+          <p id="giftConfirmAmount" class="gift-confirm-amount"></p>
+          <p id="giftConfirmDest" class="gift-confirm-dest"></p>
+        </div>
+        <div class="gift-modal-actions">
+          <button type="button" id="giftConfirmOk" class="gift-modal-primary">אישור</button>
+          <button type="button" id="giftConfirmCancel" class="gift-modal-secondary">ביטול</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gift-modal hidden" id="giftModeModal" role="dialog" aria-modal="true" aria-labelledby="giftModeTitle">
+      <div class="gift-modal-backdrop" id="giftModeBackdrop"></div>
+      <div class="gift-modal-card">
+        <div class="gift-modal-body" id="giftModeTitle">
+          <p>כבר נרשמה מתנה קודמת.</p>
+          <p>המתנה החדשה היא בנוסף לקודמת, או במקומה?</p>
+        </div>
+        <div class="gift-modal-actions">
+          <button type="button" id="giftModeAdd" class="gift-modal-primary">בנוסף למתנה הקודמת</button>
+          <button type="button" id="giftModeReplace" class="gift-modal-primary">במקום המתנה הקודמת</button>
+          <button type="button" id="giftModeCancel" class="gift-modal-secondary">ביטול</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1590,10 +1698,29 @@
     const giftFaqModal = document.getElementById('giftFaqModal');
     const giftFaqBackdrop = document.getElementById('giftFaqBackdrop');
     const giftFaqClose = document.getElementById('giftFaqClose');
+    const giftAcceptedPanel = document.getElementById('giftAcceptedPanel');
+    const giftAcceptedAmount = document.getElementById('giftAcceptedAmount');
+    const giftResendBtn = document.getElementById('giftResendBtn');
+    const giftFormPanel = document.getElementById('giftFormPanel');
+    const giftConfirmModal = document.getElementById('giftConfirmModal');
+    const giftConfirmBackdrop = document.getElementById('giftConfirmBackdrop');
+    const giftConfirmAmount = document.getElementById('giftConfirmAmount');
+    const giftConfirmDest = document.getElementById('giftConfirmDest');
+    const giftConfirmOk = document.getElementById('giftConfirmOk');
+    const giftConfirmCancel = document.getElementById('giftConfirmCancel');
+    const giftModeModal = document.getElementById('giftModeModal');
+    const giftModeBackdrop = document.getElementById('giftModeBackdrop');
+    const giftModeAdd = document.getElementById('giftModeAdd');
+    const giftModeReplace = document.getElementById('giftModeReplace');
+    const giftModeCancel = document.getElementById('giftModeCancel');
 
     const GIFT_MIN_AMOUNT = 1;
     const GIFT_MAX_AMOUNT = 15000;
     const SWIPEABLE_MAX_SECTION = 1;
+    let priorGiftAmount = 0;
+    let pendingGiftAmount = 0;
+    let pendingGiftMode = 'add';
+    let pendingGiftPreview = null;
 
     function escapeHtml(text) {
       const el = document.createElement('div');
@@ -2062,57 +2189,177 @@
       giftError.classList.add('show');
     }
 
-    giftPayBtn.addEventListener('click', async () => {
+    function mapGiftError(message) {
+      const text = String(message || '');
+      if (/No Bit payment link/i.test(text)) {
+        return 'אין כרגע קישור Bit פנוי לסכום זה. נסו סכום אחר או פנו לזוג.';
+      }
+      if (/No payment link can accept/i.test(text)) {
+        return 'כל קישורי התשלום מלאים כרגע. נסו שוב מאוחר יותר או פנו לזוג.';
+      }
+      if (/cannot exceed/i.test(text) || /positive integer/i.test(text)) {
+        return `אנא הזינו סכום בין ₪${GIFT_MIN_AMOUNT} ל-₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`;
+      }
+      return text || 'שגיאה בפתיחת התשלום. אנא נסו שוב.';
+    }
+
+    function moneyHe(n) {
+      return '₪' + Number(n || 0).toLocaleString('he-IL');
+    }
+
+    function setGiftUiForPrior() {
+      if (priorGiftAmount > 0) {
+        giftAcceptedAmount.textContent = moneyHe(priorGiftAmount);
+        giftAcceptedPanel.classList.remove('hidden');
+        giftFormPanel.classList.add('hidden');
+      } else {
+        giftAcceptedPanel.classList.add('hidden');
+        giftFormPanel.classList.remove('hidden');
+      }
+    }
+
+    function openGiftModal(modal) {
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeGiftModal(modal) {
+      modal.classList.add('hidden');
+      if (
+        giftFaqModal.classList.contains('hidden')
+        && giftConfirmModal.classList.contains('hidden')
+        && giftModeModal.classList.contains('hidden')
+      ) {
+        document.body.style.overflow = '';
+      }
+    }
+
+    function resetGiftPayButton() {
+      giftPayBtn.disabled = false;
+      giftPayBtn.textContent = 'שליחת מתנה';
+      giftError.classList.remove('show');
+    }
+
+    function readGiftAmountOrError() {
       const amount = parseInt(giftAmountInput.value, 10);
       if (isNaN(amount) || amount < GIFT_MIN_AMOUNT) {
         showGiftError(`אנא הזינו סכום בין ₪${GIFT_MIN_AMOUNT} ל-₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
         giftAmountInput.focus();
-        return;
+        return null;
       }
       if (amount > GIFT_MAX_AMOUNT) {
         showGiftError(`הסכום המקסימלי הוא ₪${GIFT_MAX_AMOUNT.toLocaleString('he-IL')}`);
         giftAmountInput.focus();
-        return;
+        return null;
       }
-
       giftError.classList.remove('show');
-      giftPayBtn.disabled = true;
-      const previousLabel = giftPayBtn.textContent;
-      giftPayBtn.textContent = 'פותח...';
+      return amount;
+    }
 
+    async function previewThenConfirm(amount, mode) {
+      giftPayBtn.disabled = true;
+      giftPayBtn.textContent = 'בודק...';
+      try {
+        const response = await fetch('/api/pay/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount, inviteToken }),
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'לא הצלחנו לבחור קישור תשלום');
+        pendingGiftAmount = amount;
+        pendingGiftMode = mode;
+        pendingGiftPreview = result;
+        giftConfirmAmount.textContent = moneyHe(amount);
+        giftConfirmDest.textContent = 'תועברו לתשלום ב-' + (result.displayName || result.label || 'קישור התשלום');
+        openGiftModal(giftConfirmModal);
+        resetGiftPayButton();
+      } catch (error) {
+        showGiftError(mapGiftError(error.message));
+        resetGiftPayButton();
+      }
+    }
+
+    async function confirmAndCheckout() {
+      if (!pendingGiftPreview || !pendingGiftAmount) return;
+      giftConfirmOk.disabled = true;
+      giftConfirmCancel.disabled = true;
+      giftConfirmOk.textContent = 'פותח...';
       try {
         const response = await fetch('/api/pay/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount,
+            amount: pendingGiftAmount,
             guestPhone,
             inviteToken,
             guestName,
+            mode: pendingGiftMode,
           }),
         });
         const result = await response.json();
         if (!result.success || !result.url) {
           throw new Error(result.error || 'לא הצלחנו לפתוח את אפליקציית התשלום');
         }
+        if (pendingGiftMode === 'replace') priorGiftAmount = pendingGiftAmount;
+        else priorGiftAmount += pendingGiftAmount;
         window.location.href = result.url;
       } catch (error) {
-        showGiftError(error.message || 'שגיאה בפתיחת התשלום. אנא נסו שוב.');
-        giftPayBtn.disabled = false;
-        giftPayBtn.textContent = previousLabel;
+        closeGiftModal(giftConfirmModal);
+        showGiftError(mapGiftError(error.message));
+        giftConfirmOk.disabled = false;
+        giftConfirmCancel.disabled = false;
+        giftConfirmOk.textContent = 'אישור';
+        resetGiftPayButton();
       }
-    });
-
-    function resetGiftPayButton() {
-      if (giftPayBtn.textContent !== 'פותח...') return;
-      giftPayBtn.disabled = false;
-      giftPayBtn.textContent = 'שליחת מתנה';
-      giftAmountInput.value = '';
-      giftError.classList.remove('show');
     }
 
-    document.addEventListener('visibilitychange', resetGiftPayButton);
-    window.addEventListener('pagehide', resetGiftPayButton);
+    giftPayBtn.addEventListener('click', async () => {
+      const amount = readGiftAmountOrError();
+      if (amount == null) return;
+      if (priorGiftAmount > 0) {
+        pendingGiftAmount = amount;
+        openGiftModal(giftModeModal);
+        return;
+      }
+      await previewThenConfirm(amount, 'add');
+    });
+
+    giftResendBtn.addEventListener('click', () => {
+      giftAcceptedPanel.classList.add('hidden');
+      giftFormPanel.classList.remove('hidden');
+      giftAmountInput.value = '';
+      giftError.classList.remove('show');
+      giftAmountInput.focus();
+    });
+
+    giftModeAdd.addEventListener('click', async () => {
+      closeGiftModal(giftModeModal);
+      await previewThenConfirm(pendingGiftAmount, 'add');
+    });
+    giftModeReplace.addEventListener('click', async () => {
+      closeGiftModal(giftModeModal);
+      await previewThenConfirm(pendingGiftAmount, 'replace');
+    });
+    giftModeCancel.addEventListener('click', () => {
+      closeGiftModal(giftModeModal);
+      pendingGiftAmount = 0;
+      resetGiftPayButton();
+    });
+    giftModeBackdrop.addEventListener('click', () => giftModeCancel.click());
+
+    giftConfirmOk.addEventListener('click', () => { void confirmAndCheckout(); });
+    giftConfirmCancel.addEventListener('click', () => {
+      closeGiftModal(giftConfirmModal);
+      pendingGiftPreview = null;
+      pendingGiftAmount = 0;
+      resetGiftPayButton();
+    });
+    giftConfirmBackdrop.addEventListener('click', () => giftConfirmCancel.click());
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') resetGiftPayButton();
+    });
     window.addEventListener('pageshow', resetGiftPayButton);
 
     giftAmountInput.addEventListener('input', () => {
@@ -2151,7 +2398,16 @@
     giftFaqBackdrop.addEventListener('click', closeGiftFaqModal);
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !giftFaqModal.classList.contains('hidden')) {
+      if (e.key !== 'Escape') return;
+      if (!giftConfirmModal.classList.contains('hidden')) {
+        giftConfirmCancel.click();
+        return;
+      }
+      if (!giftModeModal.classList.contains('hidden')) {
+        giftModeCancel.click();
+        return;
+      }
+      if (!giftFaqModal.classList.contains('hidden')) {
         closeGiftFaqModal();
       }
     });
@@ -2292,6 +2548,8 @@
         }
 
         guestName = result.guest.name || '';
+        priorGiftAmount = Number(result.guest.giftAmount) || 0;
+        setGiftUiForPrior();
         showMain();
         if (result.guest.rsvp) {
           showLoggedRsvp(result.guest.rsvp);
