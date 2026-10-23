@@ -23,6 +23,7 @@ import {
 import { requireAccount } from '../services/sessions.js';
 import { getPaymentStatus } from '../services/paymentRouting.js';
 import { publicAccount } from '../services/accounts.js';
+import { listRsvpResponses } from '../services/rsvpResponses.js';
 const router = express.Router();
 
 router.use((_req, res, next) => {
@@ -163,6 +164,7 @@ router.get('/dashboard', async (req, res) => {
       totalCapacity: 0,
       activeLinkLabel: '',
       mode: 'auto',
+      recentHistory: [],
     };
     try {
       const status = await getPaymentStatus();
@@ -172,10 +174,31 @@ router.get('/dashboard', async (req, res) => {
         totalCapacity: status.totalCapacity || 0,
         activeLinkLabel: active?.label || '',
         mode: status.mode || 'auto',
+        recentHistory: status.recentHistory || [],
       };
     } catch (error) {
       console.error('[admin/dashboard] payment', error);
     }
+
+    let rsvpResponses = [];
+    try {
+      rsvpResponses = await listRsvpResponses(req.account?.id);
+    } catch (error) {
+      console.error('[admin/dashboard] rsvpResponses', error);
+    }
+
+    const guestGifts = guests
+      .map((guest) => {
+        const amount = Number(String(guest.giftAmount || '').replace(/[^\d.-]/g, ''));
+        return {
+          name: guest.fullName || guest.name || '',
+          phone: guest.phoneTo || '',
+          amount: Number.isFinite(amount) ? amount : 0,
+          giftLink: guest.giftLink || '',
+        };
+      })
+      .filter((g) => g.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
 
     res.json({
       success: true,
@@ -189,6 +212,8 @@ router.get('/dashboard', async (req, res) => {
         waSent,
         waUnsent,
       },
+      rsvpResponses,
+      guestGifts,
       payment,
     });
   } catch (error) {

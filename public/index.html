@@ -2234,7 +2234,7 @@
         } else {
           if (result.details && result.details.serviceAccountEmail) {
             let errorMessage = result.error || 'שגיאת הרשאות.';
-            errorMessage += '\n\nיש לשתף את גיליון התשובות עם:';
+            errorMessage += '\n\nיש לשתף את גיליון האורחים עם:';
             errorMessage += `\n${result.details.serviceAccountEmail}`;
             errorMessage += '\n\nעם הרשאות "עורך".';
             messageDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');

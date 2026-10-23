@@ -206,6 +206,8 @@ function mapDataRowsToGuests(rows) {
       phoneTo: mappedPhone || findPhoneNumber(row),
       rsvpGuestCount: String(cellAt(row, 'rsvpCount') || '').trim(),
       rsvpRemarks: String(cellAt(row, 'remarks') || '').trim(),
+      giftAmount: String(cellAt(row, 'giftAmount') || '').trim(),
+      giftLink: String(cellAt(row, 'giftLink') || '').trim(),
     };
   });
 }

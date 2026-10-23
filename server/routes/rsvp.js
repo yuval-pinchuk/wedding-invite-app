@@ -1,8 +1,9 @@
 import express from 'express';
-import { envGuestSheetId, envResponseSheetId } from '../config/loadEnv.js';
-import { saveRSVPResponse, initializeResponseSheet, updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
+import { envGuestSheetId } from '../config/loadEnv.js';
+import { updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
 import { findByPublicToken } from '../services/accounts.js';
-import { runAsAccount } from '../services/accountContext.js';
+import { runAsAccount, currentAccount } from '../services/accountContext.js';
+import { upsertRsvpResponse } from '../services/rsvpResponses.js';
 
 const router = express.Router();
 
@@ -39,7 +40,6 @@ router.post('/', async (req, res) => {
       additionalNotes,
     } = req.body;
 
-    // Validation
     if (!name || !phone) {
       return res.status(400).json({
         success: false,
@@ -86,23 +86,22 @@ router.post('/', async (req, res) => {
       });
     }
 
-    let notes = isAttending && typeof additionalNotes === 'string'
+    const notes = isAttending && typeof additionalNotes === 'string'
       ? additionalNotes.trim().slice(0, 60)
       : '';
+
+    if (!currentAccount()?.id) {
+      return res.status(404).json({
+        success: false,
+        error: 'החתונה לא נמצאה',
+      });
+    }
 
     const guestSheetId = envGuestSheetId();
     if (!guestSheetId) {
       return res.status(500).json({
         success: false,
         error: 'Guest sheet not configured',
-      });
-    }
-
-    const responseSheetId = envResponseSheetId();
-    if (!responseSheetId) {
-      return res.status(500).json({
-        success: false,
-        error: 'Response sheet not configured',
       });
     }
 
@@ -114,20 +113,15 @@ router.post('/', async (req, res) => {
       additionalNotes: notes,
     });
 
-    // Initialize sheet headers if needed
-    await initializeResponseSheet(responseSheetId);
-
-    // Save RSVP response
-    await saveRSVPResponse(
-      responseSheetId,
+    await upsertRsvpResponse({
       name,
       phone,
       isAttending,
-      guests,
-      babies,
-      vegan,
-      notes
-    );
+      numberOfGuests: guests,
+      numberOfBabies: babies,
+      numberOfVegan: vegan,
+      additionalNotes: notes,
+    });
 
     res.json({
       success: true,
@@ -142,21 +136,19 @@ router.post('/', async (req, res) => {
         error: error.message || 'Guest not found in guest list',
       });
     }
-    
-    // Handle permission errors specifically
+
     if (error.code === 'PERMISSION_DENIED' || error.message?.includes('Permission denied')) {
       const serviceAccountEmail = error.serviceAccountEmail || 'your-service-account@project.iam.gserviceaccount.com';
       return res.status(403).json({
         success: false,
-        error: error.message || 'Permission denied. Please ensure the service account has access to the response sheet.',
+        error: error.message || 'Permission denied. Please ensure the service account has access to the guest sheet.',
         details: serviceAccountEmail ? {
           serviceAccountEmail,
-          instructions: `To fix this:\n1. Open your Google Sheet (ID: ${envResponseSheetId()})\n2. Click the "Share" button\n3. Add this email: ${serviceAccountEmail}\n4. Give it "Editor" permissions\n5. Click "Send"`
-        } : null
+          instructions: `To fix this:\n1. Open your guest Google Sheet\n2. Click the "Share" button\n3. Add this email: ${serviceAccountEmail}\n4. Give it "Editor" permissions\n5. Click "Send"`,
+        } : null,
       });
     }
-    
-    // Handle other errors
+
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to process RSVP. Please try again later.',
@@ -193,7 +185,7 @@ router.get('/guest/:phone', async (req, res) => {
     res.json({
       success: true,
       guest: {
-        name: guest.fullName || guest.name, // Use full name (first + last)
+        name: guest.fullName || guest.name,
         phone: guest.phoneTo,
         addons: guest.addons,
         rsvp: parseStoredRsvp(guest),
@@ -209,4 +201,3 @@ router.get('/guest/:phone', async (req, res) => {
 });
 
 export default router;
-

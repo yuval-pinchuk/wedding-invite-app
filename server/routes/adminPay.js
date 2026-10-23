@@ -10,6 +10,8 @@ import {
   updateLink,
 } from '../services/paymentRouting.js';
 import { requireAccount } from '../services/sessions.js';
+import { envGuestSheetId } from '../config/loadEnv.js';
+import { getGuestList } from '../services/googleSheets.js';
 
 const router = express.Router();
 
@@ -20,11 +22,39 @@ router.use((_req, res, next) => {
 
 router.use(requireAccount);
 
+async function guestGiftsFromSheet() {
+  const guestSheetId = envGuestSheetId();
+  if (!guestSheetId) return [];
+  try {
+    const guests = await getGuestList(guestSheetId);
+    return guests
+      .map((guest) => {
+        const amount = Number(String(guest.giftAmount || '').replace(/[^\d.-]/g, ''));
+        return {
+          name: guest.fullName || guest.name || '',
+          phone: guest.phoneTo || '',
+          amount: Number.isFinite(amount) ? amount : 0,
+          giftLink: guest.giftLink || '',
+        };
+      })
+      .filter((g) => g.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  } catch (error) {
+    console.error('[admin/pay/status] guestGifts', error);
+    return [];
+  }
+}
+
 router.get('/status', async (_req, res) => {
   try {
+    const [status, guestGifts] = await Promise.all([
+      getPaymentStatus(),
+      guestGiftsFromSheet(),
+    ]);
     res.json({
       success: true,
-      ...(await getPaymentStatus()),
+      ...status,
+      guestGifts,
       authRequired: true,
     });
   } catch (error) {

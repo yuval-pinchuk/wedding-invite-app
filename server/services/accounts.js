@@ -231,8 +231,8 @@ export async function createAccount(input) {
   const guestSheetId = String(input.guestSheetId || '').trim();
   const responseSheetId = String(input.responseSheetId || '').trim();
   const sheetTab = String(input.sheetTab || '').trim();
-  if (!brideName || !groomName || !weddingDate || !guestSheetId || !responseSheetId || !sheetTab) {
-    throw Object.assign(new Error('יש למלא את כל פרטי החתונה והגיליונות'), { status: 400 });
+  if (!brideName || !groomName || !weddingDate || !guestSheetId || !sheetTab) {
+    throw Object.assign(new Error('יש למלא את כל פרטי החתונה והגיליון'), { status: 400 });
   }
   assertWeddingDate(weddingDate);
 

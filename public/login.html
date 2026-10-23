@@ -541,7 +541,7 @@
           <div class="signup-scroll">
             <h2>יצירת חשבון</h2>
             <p>שתפו את גיליון האורחים עם: <strong id="serviceEmail">טוען…</strong></p>
-            <p><a href="/api/public/example.xlsx">הורדת גיליון אורחים לדוגמה</a> · <a href="/api/public/example-responses.xlsx">הורדת גיליון תשובות לדוגמה</a>. העתיקו אותם ל-Google Sheets.</p>
+            <p><a href="/api/public/example.xlsx">הורדת גיליון אורחים לדוגמה</a>. העתיקו אותו ל-Google Sheets.</p>
             <label for="sEmail">אימייל</label>
             <input id="sEmail" type="email" required>
             <label for="sPassword">סיסמה</label>
@@ -588,12 +588,9 @@
             <input id="bit1" required>
             <label for="bit2">Bit של החתן</label>
             <input id="bit2" required>
-            <label for="guestSheet">קישור ל- Google Sheets</label>
-            <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן.</p>
+            <label for="guestSheet">קישור ל- Google Sheets של האורחים</label>
+            <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן. אישורי הגעה ומתנות יופיעו בלוח הבקרה.</p>
             <input id="guestSheet" required>
-            <label for="responseSheet">קישור ל- Google Sheets של התשובות</label>
-            <p class="hint">אותו דבר: פתחו את גיליון התשובות והעתיקו את הכתובת המלאה משורת הכתובת.</p>
-            <input id="responseSheet" required>
             <label for="tab">שם הלשונית</label>
             <input id="tab" required placeholder="חתונה">
             <p id="signupError" class="error"></p>
@@ -1008,7 +1005,6 @@
           danielleBit: document.getElementById('bit1').value,
           yuvalBit: document.getElementById('bit2').value,
           guestSheetId: document.getElementById('guestSheet').value,
-          responseSheetId: document.getElementById('responseSheet').value,
           sheetTab: document.getElementById('tab').value,
           inviteImageDataUrl: await fileToDataUrl(image),
         });

@@ -148,6 +148,45 @@
     }
     .chart-panel.is-empty .chart-wrap { display: none; }
     .chart-panel.is-empty .chart-empty { display: flex; }
+    .data-table-wrap {
+      margin-top: 20px;
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid var(--surface2);
+      border-radius: 10px;
+      background: var(--bg);
+    }
+    .data-table-wrap h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 12px 14px 0;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .data-table th,
+    .data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--surface2);
+      text-align: right;
+      vertical-align: top;
+    }
+    .data-table th {
+      color: var(--muted);
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 1;
+    }
+    .data-table td.notes { max-width: 160px; word-break: break-word; }
+    .data-table .empty-row td {
+      color: var(--muted);
+      text-align: center;
+    }
     @media (max-width: 700px) {
       .layout { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
       header h1 { font-size: 1.55rem; }
@@ -159,6 +198,7 @@
       .charts-grid { grid-template-columns: 1fr; gap: 14px; }
       .chart-panel { min-height: 240px; padding: 12px 10px 8px; }
       .chart-wrap, .chart-empty { min-height: 200px; }
+      .data-table-wrap { max-height: 280px; }
     }
     @media (max-width: 380px) {
       .stats { grid-template-columns: 1fr; }
@@ -382,6 +422,10 @@
           <div class="chart-empty">אין אורחים עם טלפון</div>
         </div>
       </div>
+      <div class="data-table-wrap">
+        <h3>תשובות RSVP</h3>
+        <div id="rsvpTable"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -393,6 +437,14 @@
           <div class="chart-wrap"><canvas id="giftChart"></canvas></div>
           <div class="chart-empty">אין נתוני מתנות</div>
         </div>
+      </div>
+      <div class="data-table-wrap">
+        <h3>מתנות לפי אורח</h3>
+        <div id="guestGiftsTable"></div>
+      </div>
+      <div class="data-table-wrap">
+        <h3>היסטוריית מתנות אחרונה</h3>
+        <div id="giftHistoryTable"></div>
       </div>
     </div>
 
@@ -658,6 +710,117 @@
       el.className = 'message show err';
     }
 
+    function formatDateTime(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return escapeHtml(value);
+      return escapeHtml(date.toLocaleString('he-IL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }));
+    }
+
+    function renderRsvpTable(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        document.getElementById('rsvpTable').innerHTML = `
+          <table class="data-table"><tbody><tr class="empty-row"><td>אין תשובות עדיין</td></tr></tbody></table>`;
+        return;
+      }
+      document.getElementById('rsvpTable').innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>טלפון</th>
+              <th>סטטוס</th>
+              <th>אורחים</th>
+              <th>תינוקות</th>
+              <th>טבעוני</th>
+              <th>הערות</th>
+              <th>עודכן</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.name || '')}</td>
+                <td>${escapeHtml(row.phone || '')}</td>
+                <td>${row.isAttending ? 'מגיעים' : 'לא מגיעים'}</td>
+                <td>${Number(row.numberOfGuests) || 0}</td>
+                <td>${Number(row.numberOfBabies) || 0}</td>
+                <td>${Number(row.numberOfVegan) || 0}</td>
+                <td class="notes">${escapeHtml(row.additionalNotes || '')}</td>
+                <td>${formatDateTime(row.updatedAt)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function renderGuestGiftsTable(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        document.getElementById('guestGiftsTable').innerHTML = `
+          <table class="data-table"><tbody><tr class="empty-row"><td>אין מתנות רשומות עדיין</td></tr></tbody></table>`;
+        return;
+      }
+      document.getElementById('guestGiftsTable').innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>טלפון</th>
+              <th>סכום</th>
+              <th>קישור</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.name || '')}</td>
+                <td>${escapeHtml(row.phone || '')}</td>
+                <td>${money(row.amount)}</td>
+                <td>${escapeHtml(row.giftLink || '—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function renderGiftHistoryTable(rows) {
+      const list = Array.isArray(rows) ? rows.slice(0, 15) : [];
+      if (!list.length) {
+        document.getElementById('giftHistoryTable').innerHTML = `
+          <table class="data-table"><tbody><tr class="empty-row"><td>אין היסטוריה עדיין</td></tr></tbody></table>`;
+        return;
+      }
+      document.getElementById('giftHistoryTable').innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>זמן</th>
+              <th>סכום</th>
+              <th>מקור</th>
+              <th>הערה</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((row) => `
+              <tr>
+                <td>${formatDateTime(row.timestamp)}</td>
+                <td>${row.amount ? money(row.amount) : '—'}</td>
+                <td>${escapeHtml(row.source || '')}</td>
+                <td class="notes">${escapeHtml(row.note || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
     async function load() {
       try {
         const res = await fetch('/api/admin/dashboard', { cache: 'no-store', credentials: 'same-origin' });
@@ -695,6 +858,10 @@
           <div class="stat"><div class="label">קישור פעיל</div><div class="value" style="font-size:1rem">${escapeHtml(p.activeLinkLabel || '—')}</div></div>
           <div class="stat"><div class="label">מצב ניתוב</div><div class="value" style="font-size:1rem">${p.mode === 'manual' ? 'ידני' : 'אוטומטי'}</div></div>
         `;
+
+        renderRsvpTable(data.rsvpResponses);
+        renderGuestGiftsTable(data.guestGifts);
+        renderGiftHistoryTable(p.recentHistory);
 
         lastDashboardData = data;
         renderCharts(data);

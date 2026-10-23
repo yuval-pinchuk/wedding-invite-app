@@ -42,6 +42,23 @@ CREATE TABLE IF NOT EXISTS payment_states (
   state JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS rsvp_responses (
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  phone_key TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  is_attending BOOLEAN NOT NULL,
+  number_of_guests INTEGER NOT NULL DEFAULT 0,
+  number_of_babies INTEGER NOT NULL DEFAULT 0,
+  number_of_vegan INTEGER NOT NULL DEFAULT 0,
+  additional_notes TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (account_id, phone_key)
+);
+
+CREATE INDEX IF NOT EXISTS rsvp_responses_account_updated_idx
+  ON rsvp_responses (account_id, updated_at DESC);
 `;
 
 export async function migrate() {

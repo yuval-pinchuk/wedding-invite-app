@@ -605,6 +605,12 @@
     </div>
 
     <div class="card">
+      <h2>מתנות לפי אורח</h2>
+      <p class="hint">סכומים מצטברים מהגיליון (עמודת סכום מתנה) אחרי לחיצות תשלום של אורחים.</p>
+      <div class="history" id="guestGifts"></div>
+    </div>
+
+    <div class="card">
       <h2>היסטוריה אחרונה</h2>
       <p class="hint">לחיצות אורחים נרשמות ככוונת תשלום. אפשר לתקן סכומים ידנית אם מישהו לא השלים העברה.</p>
       <div class="history" id="history"></div>
@@ -616,6 +622,7 @@
     const statsEl = document.getElementById('stats');
     const linksEl = document.getElementById('links');
     const historyEl = document.getElementById('history');
+    const guestGiftsEl = document.getElementById('guestGifts');
     const modeAuto = document.getElementById('modeAuto');
     const modeManual = document.getElementById('modeManual');
 
@@ -779,6 +786,30 @@
           </div>
         `;
       }).join('');
+
+      const gifts = Array.isArray(status.guestGifts) ? status.guestGifts : [];
+      guestGiftsEl.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>טלפון</th>
+              <th>סכום</th>
+              <th>קישור</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${gifts.map((g) => `
+              <tr>
+                <td>${escapeHtml(g.name || '')}</td>
+                <td>${escapeHtml(g.phone || '')}</td>
+                <td>${money(g.amount)}</td>
+                <td>${escapeHtml(g.giftLink || '—')}</td>
+              </tr>
+            `).join('') || '<tr><td colspan="4">אין מתנות רשומות עדיין</td></tr>'}
+          </tbody>
+        </table>
+      `;
 
       historyEl.innerHTML = `
         <table>
