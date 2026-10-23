@@ -23,7 +23,9 @@ import {
   clearSessionCookie,
   createSession,
   destroySessionToken,
+  destroySessionsForAccount,
   readCookie,
+  refreshSessionCookieIfNeeded,
   requireAccount,
   setSessionCookie,
 } from '../services/sessions.js';
@@ -47,7 +49,11 @@ router.get('/setup', (_req, res) => {
 
 router.get('/me', async (req, res) => {
   const account = await accountFromRequest(req);
-  if (!account) return res.status(401).json({ success: false, error: 'יש להתחבר' });
+  if (!account) {
+    clearSessionCookie(res);
+    return res.status(401).json({ success: false, error: 'יש להתחבר מחדש', reauth: true });
+  }
+  refreshSessionCookieIfNeeded(req, res);
   return res.json({ success: true, account: publicAccount(account) });
 });
 
@@ -62,7 +68,7 @@ router.post('/register', authLimit, async (req, res) => {
     if (account.paymentSeed) {
       await seedPaymentFile(account.id, account.paymentSeed);
     }
-    setSessionCookie(res, await createSession(account));
+    setSessionCookie(res, await createSession(account, req));
     res.json({ success: true, account: publicAccount(account) });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, error: error.message || 'יצירת החשבון נכשלה' });
@@ -111,7 +117,7 @@ router.post('/login', authLimit, async (req, res) => {
     }
     await clearLoginFailures(account);
     const fresh = await findAccountByEmail(email);
-    setSessionCookie(res, await createSession(fresh));
+    setSessionCookie(res, await createSession(fresh, req));
     return res.json({ success: true, account: publicAccount(fresh) });
   } catch (error) {
     console.error('[auth/login]', error);
@@ -177,6 +183,8 @@ router.post('/reset', authLimit, async (req, res) => {
     }
     await resetPassword(email, req.body?.code, req.body?.password);
     clearCodeFailures('reset', email);
+    const account = await findAccountByEmail(String(email || '').trim().toLowerCase());
+    if (account) await destroySessionsForAccount(account.id);
     res.json({ success: true });
   } catch (error) {
     if (error.status === 400) recordCodeFailure('reset', req.body?.email);

@@ -32,11 +32,16 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  expires_at TIMESTAMPTZ NOT NULL
+  expires_at TIMESTAMPTZ NOT NULL,
+  ip_hash TEXT NOT NULL DEFAULT '',
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS sessions_account_id_idx ON sessions(account_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS payment_states (
   account_id UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
