@@ -248,6 +248,9 @@
       cursor: pointer;
       font-size: 1.25rem;
       line-height: 1;
+      display: grid;
+      place-items: center;
+      padding: 0;
     }
     .nav-links {
       display: flex;
@@ -591,11 +594,11 @@
       <div class="mode-row">
         <span class="mode-pill" id="modeAuto">אוטומטי</span>
         <span class="mode-pill" id="modeManual">ידני</span>
-        <button type="button" class="btn-ghost btn-sm" id="setAutoBtn">חזרה לניתוב אוטומטי</button>
+        <button type="button" class="btn-ghost btn-sm" id="setAutoBtn">חזרה לבחירה אוטומטית</button>
         <button type="button" class="btn-ghost btn-sm" id="refreshBtn">רענון</button>
       </div>
       <p class="hint">
-        בניתוב אוטומטי הסדר הוא לפי רשימת הקישורים למטה (מלמעלה למטה).
+        בבחירה אוטומטית הסדר הוא לפי רשימת הקישורים למטה (מלמעלה למטה).
         כשקישור מגיע לסף שלו, האורח הבא מועבר לקישור הבא. סכומים מ־₪1,000 ומעלה דורשים קישור Bit.
       </p>
       <div class="message" id="message"></div>
@@ -606,7 +609,7 @@
         <h2>קישורים</h2>
         <button type="button" class="btn-primary btn-sm" id="toggleAddBtn">הוספת קישור</button>
       </div>
-      <p class="hint">עריכה, מחיקה, והזזה למעלה/למטה משנים את סדר הניתוב האוטומטי.</p>
+      <p class="hint">עריכה, מחיקה, והזזה למעלה/למטה משנים את סדר הבחירה האוטומטית.</p>
       <div class="add-card hidden" id="addCard">
         <h3>קישור חדש</h3>
         <div class="row">
@@ -1008,7 +1011,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: 'auto' }),
         });
-        showMessage('חזרה לניתוב אוטומטי');
+        showMessage('חזרה לבחירה אוטומטית');
         await load();
       } catch (error) {
         showMessage(error.message, false);

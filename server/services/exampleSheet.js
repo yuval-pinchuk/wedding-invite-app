@@ -1,7 +1,36 @@
 import { deflateRawSync } from 'zlib';
 
 const GUEST_HEADERS = ['שם פרטי', 'שם משפחה', 'טלפון', 'אישור הגעה', 'תינוקות', 'הערות', 'נשלח בוואטסאפ', 'שולח', 'סכום מתנה', 'קישור תשלום', 'מוזמנים נוספים (+1)'];
-const GUEST_SAMPLE = ['דנה', 'כהן', '0501234567', '', '', '', '', 'אמא של הכלה', '', '', ''];
+/** Fully filled example row so every column is clear when opening the file. */
+const GUEST_SAMPLE = [
+  'דנה',
+  'כהן',
+  '0501234567',
+  '3',
+  '1',
+  'ללא גלוטן',
+  'V',
+  'אמא של הכלה',
+  '500',
+  'https://paybox.app/n/example',
+  'יוסי',
+];
+
+const GUEST_EXPLANATIONS = [
+  ['עמודה', 'מה למלא'],
+  ['שם פרטי', 'שם פרטי של האורח'],
+  ['שם משפחה', 'שם משפחה של האורח'],
+  ['טלפון', 'מספר נייד ישראלי (למשל 0501234567) — חובה לשליחת הזמנה'],
+  ['אישור הגעה', 'סה״כ אורחים שמגיעים (מבוגרים + ילדים). אפשר להשאיר ריק עד שתתקבל תשובה'],
+  ['תינוקות', 'מספר ילדים קטנים בלבד. אפשר להשאיר ריק עד שתתקבל תשובה'],
+  ['הערות', 'מידע חופשי (אלרגיות, בקשות וכו׳)'],
+  ['נשלח בוואטסאפ', 'סמנו V אחרי שנשלחה הזמנה; השאירו ריק אם עדיין לא נשלח'],
+  ['שולח', 'מי שולח את ההודעה (למשל אמא של הכלה) — חייב להתאים לשולח באפליקציה'],
+  ['סכום מתנה', 'מתעדכן אוטומטית כשאורח שולח מתנה; אפשר גם להזין ידנית'],
+  ['קישור תשלום', 'מתעדכן אוטומטית לפי קישור התשלום שנבחר; אפשר להשאיר ריק'],
+  ['מוזמנים נוספים (+1)', 'שמות נוספים על אותה הזמנה (למשל בן/בת זוג)'],
+];
+
 const RESPONSE_HEADERS = ['שם', 'טלפון', 'סטטוס הגעה', 'מספר אורחים', 'תינוקות', 'טבעוני/צמחוני', 'הערות', 'מועד עדכון'];
 const RESPONSE_SAMPLE = ['דנה כהן', '0501234567', 'מגיעים', '2', '0', '1', 'ללא גלוטן', '14.10.26 18:00'];
 
@@ -64,25 +93,40 @@ function xmlEscape(value) {
 }
 
 function colName(index) {
-  return String.fromCharCode(65 + index);
+  let n = index;
+  let name = '';
+  while (n >= 0) {
+    name = String.fromCharCode(65 + (n % 26)) + name;
+    n = Math.floor(n / 26) - 1;
+  }
+  return name;
 }
 
 function cellXml(col, row, value, style) {
   return `<c r="${col}${row}" t="inlineStr" s="${style}"><is><t>${xmlEscape(value)}</t></is></c>`;
 }
 
-function sheetXml(headers, sample) {
-  const headerCells = headers.map((title, index) => cellXml(colName(index), 1, title, 1)).join('');
-  const sampleCells = sample.map((value, index) => cellXml(colName(index), 2, value, 2)).join('');
-  const cols = headers.map((_, index) => {
-    const width = Math.min(28, Math.max(14, String(headers[index]).length + 6));
+function sheetXmlFromRows(rows, { freezeHeader = true } = {}) {
+  const colCount = Math.max(...rows.map((r) => r.length), 1);
+  const cols = Array.from({ length: colCount }, (_, index) => {
+    const width = Math.min(48, Math.max(14, String(rows[0]?.[index] || '').length + 8));
     return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
   }).join('');
+  const sheetData = rows.map((row, rowIndex) => {
+    const r = rowIndex + 1;
+    const style = rowIndex === 0 ? 1 : 2;
+    const cells = row.map((value, colIndex) => cellXml(colName(colIndex), r, value ?? '', style)).join('');
+    const ht = rowIndex === 0 ? ' ht="22" customHeight="1"' : '';
+    return `<row r="${r}"${ht}>${cells}</row>`;
+  }).join('');
+  const pane = freezeHeader
+    ? '<sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView>'
+    : '<sheetView rightToLeft="1" workbookViewId="0"/>';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<sheetViews>${pane}</sheetViews>
 <cols>${cols}</cols>
-<sheetData><row r="1" ht="22" customHeight="1">${headerCells}</row><row r="2">${sampleCells}</row></sheetData>
+<sheetData>${sheetData}</sheetData>
 </worksheet>`;
 }
 
@@ -106,13 +150,29 @@ function stylesXml() {
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
 <cellXfs count="3">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" readingOrder="2"/></xf>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/></xf>
 </cellXfs>
 </styleSheet>`;
 }
 
-function workbook(sheetName, headers, sample) {
+/**
+ * @param {{ name: string, rows: string[][] }[]} sheets
+ */
+function workbookFromSheets(sheets) {
+  const sheetOverrides = sheets.map((_, i) =>
+    `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+  ).join('\n');
+  const workbookSheets = sheets.map((sheet, i) =>
+    `<sheet name="${xmlEscape(sheet.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`
+  ).join('');
+  const workbookRels = [
+    ...sheets.map((_, i) =>
+      `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`
+    ),
+    `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`,
+  ].join('\n');
+
   const files = [
     {
       name: '[Content_Types].xml',
@@ -121,7 +181,7 @@ function workbook(sheetName, headers, sample) {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${sheetOverrides}
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`),
     },
@@ -136,25 +196,34 @@ function workbook(sheetName, headers, sample) {
       name: 'xl/workbook.xml',
       data: Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+<sheets>${workbookSheets}</sheets></workbook>`),
     },
     {
       name: 'xl/_rels/workbook.xml.rels',
       data: Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+${workbookRels}
 </Relationships>`),
     },
     { name: 'xl/styles.xml', data: Buffer.from(stylesXml()) },
-    { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheetXml(headers, sample)) },
+    ...sheets.map((sheet, i) => ({
+      name: `xl/worksheets/sheet${i + 1}.xml`,
+      data: Buffer.from(sheetXmlFromRows(sheet.rows)),
+    })),
   ];
   return zipStore(files);
 }
 
+function workbook(sheetName, headers, sample) {
+  return workbookFromSheets([{ name: sheetName, rows: [headers, sample] }]);
+}
+
 /** Example guest workbook the user can upload to Google Sheets. */
 export function buildExampleWorkbook() {
-  return workbook('אורחים', GUEST_HEADERS, GUEST_SAMPLE);
+  return workbookFromSheets([
+    { name: 'אורחים', rows: [GUEST_HEADERS, GUEST_SAMPLE] },
+    { name: 'הסברים', rows: GUEST_EXPLANATIONS },
+  ]);
 }
 
 /** Example answers workbook matching the RSVP response columns. */

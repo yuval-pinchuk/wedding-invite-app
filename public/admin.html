@@ -135,6 +135,47 @@
       line-height: 1.6;
       min-height: 100px;
     }
+    .token-legend {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--surface2);
+      background: var(--bg);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .token-legend strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+    }
+    .token-legend ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .token-legend li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      align-items: baseline;
+      line-height: 1.4;
+    }
+    .token-legend code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      background: var(--input-bg);
+      border: 1px solid var(--surface2);
+      border-radius: 6px;
+      padding: 1px 6px;
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
     .guest-rsvp-badge {
       font-size: 0.75rem;
       font-weight: 600;
@@ -303,6 +344,9 @@
       cursor: pointer;
       font-size: 1.25rem;
       line-height: 1;
+      display: grid;
+      place-items: center;
+      padding: 0;
     }
     .nav-links {
       display: flex;
@@ -672,7 +716,15 @@
       <p class="hint" style="margin-top:16px">שליחת תזכורת RSVP ב-WhatsApp לאורחים שנבחרו. עמודה H ריקה = ממתין לאישור. עמודה N = נשלח בוואטסאפ (V = נשלח, ריק = לא נשלח). אפשר לשלוח שוב גם למי שכבר מסומן כנשלח.</p>
       <label for="rsvpReminderMessage">נוסח ההודעה</label>
       <textarea id="rsvpReminderMessage" dir="rtl" placeholder="טוען תבנית…"></textarea>
-      <p class="hint" style="margin-top:12px">משתנים: <code>{{greeting}}</code> (שם + תוספות), <code>{{name}}</code>, <code>{{fullName}}</code>, <code>{{link}}</code></p>
+      <div class="token-legend" aria-label="מקרא משתנים בהודעה">
+        <strong>משתנים בהודעה</strong>
+        <ul>
+          <li><code>{{greeting}}</code><span>פתיחה עם שם האורח והתוספות</span></li>
+          <li><code>{{name}}</code><span>שם האורח (עם תוספות אם יש)</span></li>
+          <li><code>{{fullName}}</code><span>שם מלא</span></li>
+          <li><code>{{link}}</code><span>קישור אישי לאישור הגעה</span></li>
+        </ul>
+      </div>
       <label for="rsvpReminderPreview" style="margin-top:16px">תצוגה מקדימה</label>
       <div class="preview-box" id="rsvpReminderPreview" dir="rtl"></div>
       <div class="check-row">

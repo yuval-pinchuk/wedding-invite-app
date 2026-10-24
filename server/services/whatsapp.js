@@ -578,10 +578,10 @@ export function defaultReminderTemplate() {
   const custom = String(currentAccount()?.reminderTemplate || '').trim();
   if (custom) return custom;
   return `{{greeting}}
-{{rsvpLine}}
-{{askLine}}
+טרם קיבלנו את אישור ההגעה שלכם לחתונה של ${coupleLabel(false)}.
+נשמח אם תוכלו למלא את הטופס כאן:
 {{link}}
-{{thanksLine}}`;
+תודה!`;
 }
 
 export const DEFAULT_RSVP_REMINDER_TEMPLATE = `{{greeting}}
@@ -617,34 +617,11 @@ export function renderReminderTemplate(template, { name, fullName, phone, addons
   const displayName = formatNameWithAddons(name || '', addons);
   const displayFullName = formatNameWithAddons(fullName || name || '', addons);
   const greeting = openingLineWithAddons(name || fullName || '', addons);
-  const couple = coupleLabel(false);
-  const rsvpLine = pickVariant([
-    `טרם קיבלנו את אישור ההגעה שלכם לחתונה של ${couple}.`,
-    `עדיין לא קיבלנו מכם אישור הגעה לחתונה של ${couple}.`,
-  ]);
-  const askLine = pickVariant([
-    'נשמח אם תוכלו למלא את הטופס כאן:',
-    'נשמח אם תמלאו את הטופס בקישור הזה:',
-  ]);
-  const thanksLine = pickVariant(['תודה!', 'תודה רבה!']);
-  let text = String(template || '');
-  // Legacy default body: inject a random middle-line variant when the template is fixed.
-  if (text.includes('טרם קיבלנו את אישור ההגעה שלכם לחתונה של') && !text.includes('{{rsvpLine}}')) {
-    text = text.replace(
-      /טרם קיבלנו את אישור ההגעה שלכם לחתונה של[^\n]*/,
-      rsvpLine,
-    );
-    text = text.replace('נשמח אם תוכלו למלא את הטופס כאן:', askLine);
-    text = text.replace(/^תודה!$/m, thanksLine);
-  }
-  return text
+  return String(template || '')
     .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{name\}\}/g, displayName)
     .replace(/\{\{fullName\}\}/g, displayFullName)
-    .replace(/\{\{link\}\}/g, link)
-    .replace(/\{\{rsvpLine\}\}/g, rsvpLine)
-    .replace(/\{\{askLine\}\}/g, askLine)
-    .replace(/\{\{thanksLine\}\}/g, thanksLine);
+    .replace(/\{\{link\}\}/g, link);
 }
 
 /**

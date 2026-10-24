@@ -839,7 +839,12 @@ router.get('/rsvp-reminder-defaults', (_req, res) => {
   res.json({
     success: true,
     template: defaultReminderTemplate(),
-    placeholders: ['{{greeting}}', '{{name}}', '{{fullName}}', '{{link}}'],
+    placeholders: [
+      { token: '{{greeting}}', label: 'פתיחה עם שם האורח והתוספות' },
+      { token: '{{name}}', label: 'שם האורח (עם תוספות אם יש)' },
+      { token: '{{fullName}}', label: 'שם מלא' },
+      { token: '{{link}}', label: 'קישור אישי לאישור הגעה' },
+    ],
     rsvpBaseUrl: getRsvpBaseUrl(),
     authRequired: true,
     pacing,

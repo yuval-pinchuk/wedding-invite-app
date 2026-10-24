@@ -340,6 +340,9 @@
       cursor: pointer;
       font-size: 1.25rem;
       line-height: 1;
+      display: grid;
+      place-items: center;
+      padding: 0;
     }
     .nav-links {
       display: flex;
@@ -461,9 +464,9 @@
       <div class="stats" id="guestStats"></div>
       <div class="charts-grid">
         <div class="chart-panel" id="rsvpChartPanel">
-          <h3>סטטוס RSVP</h3>
+          <h3>סטטוס הגעה</h3>
           <div class="chart-wrap"><canvas id="rsvpChart"></canvas></div>
-          <div class="chart-empty">אין עדיין נתוני RSVP</div>
+          <div class="chart-empty">אין עדיין נתוני הגעה</div>
         </div>
         <div class="chart-panel" id="waChartPanel">
           <h3>שליחות וואטסאפ</h3>
@@ -472,7 +475,7 @@
         </div>
       </div>
       <div class="data-table-wrap">
-        <h3>תשובות RSVP</h3>
+        <h3>תשובות אורחים</h3>
         <div id="rsvpTable"></div>
       </div>
     </div>
@@ -905,7 +908,7 @@
           <div class="stat"><div class="label">התקבל</div><div class="value">${money(p.totalReceived)}</div></div>
           <div class="stat"><div class="label">קיבולת</div><div class="value">${money(p.totalCapacity)}</div></div>
           <div class="stat"><div class="label">קישור פעיל</div><div class="value" style="font-size:1rem">${escapeHtml(p.activeLinkLabel || '—')}</div></div>
-          <div class="stat"><div class="label">מצב ניתוב</div><div class="value" style="font-size:1rem">${p.mode === 'manual' ? 'ידני' : 'אוטומטי'}</div></div>
+          <div class="stat"><div class="label">בחירת קישור</div><div class="value" style="font-size:1rem">${p.mode === 'manual' ? 'ידני' : 'אוטומטי'}</div></div>
         `;
 
         renderRsvpTable(data.rsvpResponses);

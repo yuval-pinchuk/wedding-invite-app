@@ -186,6 +186,7 @@
     .nav-close {
       width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--surface2);
       background: var(--bg); color: var(--text); font-size: 1.4rem; cursor: pointer;
+      display: grid; place-items: center; padding: 0; line-height: 1;
     }
     .nav-links { display: flex; flex-direction: column; gap: 8px; flex: 1; }
     .nav-links a {
@@ -304,7 +305,6 @@
         <input id="tab" required>
         <button type="button" class="btn-ghost" id="reloadHeadersBtn">רענון כותרות למיפוי</button>
         <h2 style="margin-top:20px">מיפוי עמודות</h2>
-        <p class="hint">אישור הגעה = סה״כ אורחים (מבוגרים + ילדים). עמודת תינוקות = מספר הילדים בלבד.</p>
         <div id="mapFields"></div>
       </div>
 
