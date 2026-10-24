@@ -9,6 +9,7 @@ import {
   issueResetCode,
   issueUnlockCode,
   normalizeBabyMaxAge,
+  normalizeLandingPrefs,
   publicAccount,
   recordFailedLogin,
   resetPassword,
@@ -294,6 +295,56 @@ router.get('/settings', requireAccount, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message || 'טעינת ההגדרות נכשלה' });
+  }
+});
+
+router.get('/landing-prefs', requireAccount, async (req, res) => {
+  const account = publicAccount(req.account);
+  res.json({
+    success: true,
+    publicToken: account.publicToken,
+    brideName: account.brideName,
+    groomName: account.groomName,
+    weddingDate: account.weddingDate,
+    wazeUrl: account.wazeUrl,
+    mapsUrl: account.mapsUrl,
+    landingPrefs: account.landingPrefs,
+  });
+});
+
+router.put('/landing-prefs', requireAccount, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const patch = {
+      landingPrefs: normalizeLandingPrefs(body.landingPrefs || body),
+    };
+    if (body.brideName !== undefined) patch.brideName = String(body.brideName || '').trim();
+    if (body.groomName !== undefined) patch.groomName = String(body.groomName || '').trim();
+    if (body.weddingDate !== undefined) {
+      const weddingDate = String(body.weddingDate || '').trim();
+      if (weddingDate && !/^\d{4}-\d{2}-\d{2}$/.test(weddingDate)) {
+        return res.status(400).json({ success: false, error: 'יש לבחור תאריך חתונה תקין' });
+      }
+      patch.weddingDate = weddingDate;
+    }
+    if (body.wazeUrl !== undefined) patch.wazeUrl = String(body.wazeUrl || '').trim();
+    if (body.mapsUrl !== undefined) patch.mapsUrl = String(body.mapsUrl || '').trim();
+
+    if (patch.brideName !== undefined && !patch.brideName) {
+      return res.status(400).json({ success: false, error: 'יש להזין שם כלה' });
+    }
+    if (patch.groomName !== undefined && !patch.groomName) {
+      return res.status(400).json({ success: false, error: 'יש להזין שם חתן' });
+    }
+
+    const account = await updateAccount(req.account.id, patch);
+    res.json({
+      success: true,
+      account: publicAccount(account),
+      landingPrefs: publicAccount(account).landingPrefs,
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, error: error.message || 'שמירת דף הנחיתה נכשלה' });
   }
 });
 

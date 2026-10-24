@@ -10,5 +10,7 @@ dist/
 .wwebjs_auth_*/
 .wwebjs_cache/
 .baileys_auth_*/
-server/data/payment-routing.json
+# Local runtime cache (invite images, WhatsApp auth, payment JSON leftovers)
+server/data/
 .neon
+.cursor/debug*.log

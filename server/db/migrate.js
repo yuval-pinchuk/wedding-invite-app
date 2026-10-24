@@ -69,6 +69,7 @@ CREATE INDEX IF NOT EXISTS rsvp_responses_account_updated_idx
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS baby_max_age INTEGER NOT NULL DEFAULT 6;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_bytes BYTEA;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_mime TEXT NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS landing_prefs JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS wa_auth_files (
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

@@ -834,8 +834,9 @@ router.get('/send-jobs/:id', (req, res) => {
   return res.json({ success: true, job: publicSendJob(job) });
 });
 
-router.get('/rsvp-reminder-defaults', (_req, res) => {
+router.get('/rsvp-reminder-defaults', (req, res) => {
   const pacing = getSendPacingConfig();
+  const account = publicAccount(req.account);
   res.json({
     success: true,
     template: defaultReminderTemplate(),
@@ -846,6 +847,7 @@ router.get('/rsvp-reminder-defaults', (_req, res) => {
       { token: '{{link}}', label: 'קישור אישי לאישור הגעה' },
     ],
     rsvpBaseUrl: getRsvpBaseUrl(),
+    publicToken: account?.publicToken || '',
     authRequired: true,
     pacing,
   });

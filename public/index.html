@@ -1455,6 +1455,28 @@
       .gift-modal-card { padding: 22px 16px 18px; }
     }
 
+    .preview-toast {
+      position: fixed;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      max-width: min(420px, calc(100vw - 24px));
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(61, 54, 48, 0.92);
+      color: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(61, 54, 48, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .preview-toast.show { opacity: 1; }
+    .landing-hidden { display: none !important; }
+
     @media (max-width: 360px) {
       .radio-group,
       .vegan-toggle {
@@ -1481,14 +1503,15 @@
     <p id="gateErrorText"></p>
   </div>
 
-  <header class="page-header" aria-label="כותרת האירוע">
+  <header class="page-header" id="pageHeader" aria-label="כותרת האירוע">
     <div class="page-header-inner">
-      <p class="page-header-kicker">החתונה של</p>
+      <p class="page-header-kicker" id="headerKicker">החתונה של</p>
       <p class="page-header-bride" id="headerBride"></p>
       <p class="page-header-groom" id="headerGroom"></p>
       <p class="page-header-date" id="headerDate"></p>
     </div>
   </header>
+  <div id="previewToast" class="preview-toast" role="status" aria-live="polite"></div>
 
   <div id="mainContent" class="hidden">
     <div id="sectionsViewport" class="sections-viewport">
@@ -1506,8 +1529,8 @@
             </div>
           </div>
         </div>
-        <button type="button" class="scroll-hint is-delayed" data-goto="1" aria-label="גללו למטה לאישור הגעה">
-          <span>גללו למטה לאישור הגעה</span>
+        <button type="button" class="scroll-hint is-delayed" id="scrollHintBtn" data-goto="1" aria-label="גללו למטה לאישור הגעה">
+          <span id="scrollHintText">גללו למטה לאישור הגעה</span>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
             <path d="M12 5v14M5 12l7 7 7-7"/>
           </svg>
@@ -1558,12 +1581,12 @@
                   <input type="number" id="numberOfGuests" name="numberOfGuests" min="1" value="1">
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" id="babiesFieldGroup">
                   <label for="numberOfBabies" id="babiesLabel">כמה ילדים (עד גיל 6)?</label>
                   <input type="number" id="numberOfBabies" name="numberOfBabies" min="0" value="0">
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" id="veganFieldGroup">
                   <label>טבעונים/צמחונים?</label>
                   <div class="vegan-toggle radio-group">
                     <div class="radio-option">
@@ -1632,7 +1655,7 @@
         <div class="section-inner no-scroll">
           <div class="directions-section">
             <h2 class="section-title">איך מגיעים</h2>
-            <p class="directions-address">אולם קאי ריזורט - השיטה 5, עמק חפר</p>
+            <p class="directions-address" id="directionsAddress">אולם קאי ריזורט - השיטה 5, עמק חפר</p>
             <p class="directions-subtitle">בחרו אפליקציית ניווט לפתיחת המסלול לאולם</p>
             <div class="venue-links">
               <a class="venue-link" href="https://ul.waze.com/ul?venue_id=22872388.228658344.2001245&overview=yes&utm_campaign=default&utm_source=waze_website&utm_medium=lm_share_location" target="_blank" rel="noopener noreferrer" aria-label="ניווט ב-Waze">
@@ -1701,6 +1724,22 @@
     let guestName = '';
     let guestPhone = '';
     let inviteToken = '';
+    const isPreviewMode = new URLSearchParams(window.location.search).get('preview') === '1';
+    const DEFAULT_LANDING_PREFS = {
+      showHeader: true,
+      headerKicker: 'החתונה של',
+      showInviteImage: true,
+      showGiftButton: true,
+      showDirectionsButton: true,
+      venueAddress: 'אולם קאי ריזורט - השיטה 5, עמק חפר',
+      showBabiesField: true,
+      showVeganField: true,
+      scrollHintText: 'גללו למטה לאישור הגעה',
+      successMessageAttending: 'תודה! אישור ההגעה נשלח בהצלחה.\nמחכים לראותכם! 🎉',
+      successMessageDeclining: 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!',
+    };
+    let landingPrefs = { ...DEFAULT_LANDING_PREFS };
+    let previewToastTimer = null;
 
     function inviteTokenFromLocation() {
       const match = window.location.pathname.match(/^\/i\/([^/]+)/);
@@ -1719,6 +1758,92 @@
       return `ילדים עד גיל ${n}`;
     }
 
+    function successMessageHtml(text) {
+      return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    function showPreviewToast(text) {
+      const el = document.getElementById('previewToast');
+      if (!el) return;
+      el.textContent = text || 'תצוגה מקדימה — לא נשמר';
+      el.classList.add('show');
+      clearTimeout(previewToastTimer);
+      previewToastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+    }
+
+    function setWeddingHeaderFields({ brideName, groomName, weddingDate, headerKicker }) {
+      const brideEl = document.getElementById('headerBride');
+      const groomEl = document.getElementById('headerGroom');
+      const dateEl = document.getElementById('headerDate');
+      const kickerEl = document.getElementById('headerKicker');
+      if (kickerEl && headerKicker != null) kickerEl.textContent = headerKicker;
+      if (brideEl && brideName != null) brideEl.textContent = brideName;
+      if (groomEl && groomName != null) groomEl.textContent = groomName;
+      if (dateEl && weddingDate != null) {
+        const match = String(weddingDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        dateEl.textContent = match ? `${match[3]}.${match[2]}.${match[1].slice(2)}` : weddingDate;
+      }
+      const names = [brideEl?.textContent, groomEl?.textContent].filter(Boolean).join(' ו');
+      const kicker = (kickerEl?.textContent || 'החתונה של').trim();
+      if (names) document.title = `${kicker} ${names}`.trim();
+    }
+
+    function applyLandingPrefs(prefs) {
+      const next = { ...DEFAULT_LANDING_PREFS, ...(prefs && typeof prefs === 'object' ? prefs : {}) };
+      landingPrefs = next;
+
+      const header = document.getElementById('pageHeader');
+      if (header) header.classList.toggle('landing-hidden', !next.showHeader);
+      const kickerEl = document.getElementById('headerKicker');
+      if (kickerEl) kickerEl.textContent = next.headerKicker;
+
+      const hero = document.querySelector('.page-section[data-section="0"]');
+      if (hero) {
+        hero.classList.toggle('landing-hidden', !next.showInviteImage);
+        if (!next.showInviteImage && hero.classList.contains('is-active') && typeof navigateToSection === 'function') {
+          navigateToSection(1);
+        }
+      }
+
+      const scrollHintText = document.getElementById('scrollHintText');
+      const scrollHintBtn = document.getElementById('scrollHintBtn');
+      if (scrollHintText) scrollHintText.textContent = next.scrollHintText;
+      if (scrollHintBtn) scrollHintBtn.setAttribute('aria-label', next.scrollHintText);
+
+      const directionsAddress = document.getElementById('directionsAddress');
+      if (directionsAddress) directionsAddress.textContent = next.venueAddress;
+
+      const babiesGroup = document.getElementById('babiesFieldGroup');
+      const veganGroup = document.getElementById('veganFieldGroup');
+      if (babiesGroup) babiesGroup.classList.toggle('landing-hidden', !next.showBabiesField);
+      if (veganGroup) veganGroup.classList.toggle('landing-hidden', !next.showVeganField);
+
+      if (existingRsvp) {
+        const attending = Boolean(existingRsvp.isAttending);
+        rsvpPayBtn.classList.toggle('hidden', !attending || !next.showGiftButton);
+        rsvpDirectionsBtn.classList.toggle('hidden', !attending || !next.showDirectionsButton);
+        if (rsvpLoggedText) {
+          rsvpLoggedText.innerHTML = attending
+            ? successMessageHtml(next.successMessageAttending)
+            : successMessageHtml(next.successMessageDeclining);
+        }
+      }
+    }
+
+    function applyWeddingDraft(wedding) {
+      if (!wedding || typeof wedding !== 'object') return;
+      setWeddingHeaderFields({
+        brideName: wedding.brideName,
+        groomName: wedding.groomName,
+        weddingDate: wedding.weddingDate,
+        headerKicker: landingPrefs.headerKicker,
+      });
+      const waze = document.querySelector('a[aria-label="ניווט ב-Waze"]');
+      const maps = document.querySelector('a[aria-label="מיקום ב-Google Maps"]');
+      if (waze && wedding.wazeUrl != null) waze.href = wedding.wazeUrl || '#';
+      if (maps && wedding.mapsUrl != null) maps.href = wedding.mapsUrl || '#';
+    }
+
     async function applyWeddingProfile() {
       inviteToken = inviteTokenFromLocation();
       const query = inviteToken ? `?token=${encodeURIComponent(inviteToken)}` : '';
@@ -1730,23 +1855,19 @@
         babyMaxAge = Number.isFinite(Number(data.babyMaxAge)) ? Number(data.babyMaxAge) : 6;
         const babiesLabel = document.getElementById('babiesLabel');
         if (babiesLabel) babiesLabel.textContent = babiesAgeLabel(babyMaxAge);
-        const brideEl = document.getElementById('headerBride');
-        const groomEl = document.getElementById('headerGroom');
-        const dateEl = document.getElementById('headerDate');
-        if (brideEl) brideEl.textContent = data.brideName || '';
-        if (groomEl) groomEl.textContent = data.groomName || '';
-        if (dateEl && data.weddingDate) {
-          const match = String(data.weddingDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-          dateEl.textContent = match ? `${match[3]}.${match[2]}.${match[1].slice(2)}` : data.weddingDate;
-        }
-        const names = [data.brideName, data.groomName].filter(Boolean).join(' ו');
-        if (names) document.title = `החתונה של ${names}`;
+        setWeddingHeaderFields({
+          brideName: data.brideName || '',
+          groomName: data.groomName || '',
+          weddingDate: data.weddingDate || '',
+          headerKicker: (data.landingPrefs && data.landingPrefs.headerKicker) || DEFAULT_LANDING_PREFS.headerKicker,
+        });
         const image = document.querySelector('.invite-card img');
         if (image && data.imageUrl) image.src = data.imageUrl;
         const waze = document.querySelector('a[aria-label="ניווט ב-Waze"]');
         const maps = document.querySelector('a[aria-label="מיקום ב-Google Maps"]');
         if (waze && data.wazeUrl) waze.href = data.wazeUrl;
         if (maps && data.mapsUrl) maps.href = data.mapsUrl;
+        if (data.landingPrefs) applyLandingPrefs(data.landingPrefs);
       } catch (error) {
         console.error('wedding profile', error);
       }
@@ -1886,11 +2007,11 @@
       rsvpLoggedSummary.innerHTML = buildRsvpSummaryHtml(rsvp);
       const attending = Boolean(rsvp && rsvp.isAttending);
       rsvpLoggedText.innerHTML = attending
-        ? 'תודה! אישור ההגעה נשלח בהצלחה.<br>מחכים לראותכם! 🎉'
-        : 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!';
+        ? successMessageHtml(landingPrefs.successMessageAttending)
+        : successMessageHtml(landingPrefs.successMessageDeclining);
       rsvpLoggedText.classList.toggle('rsvp-logged-success', attending);
-      rsvpPayBtn.classList.toggle('hidden', !attending);
-      rsvpDirectionsBtn.classList.toggle('hidden', !attending);
+      rsvpPayBtn.classList.toggle('hidden', !attending || !landingPrefs.showGiftButton);
+      rsvpDirectionsBtn.classList.toggle('hidden', !attending || !landingPrefs.showDirectionsButton);
       rsvpLogged.classList.remove('hidden');
       form.classList.add('hidden');
       messageDiv.classList.remove('show', 'success', 'error');
@@ -1933,6 +2054,16 @@
       const TRANSITION_MS = prefersReducedMotion ? 0 : 500;
 
       let current = 0;
+      const heroSection = sections[0];
+      if (heroSection?.classList.contains('landing-hidden')) {
+        heroSection.classList.remove('is-active');
+        heroSection.style.visibility = 'hidden';
+        current = 1;
+        if (sections[1]) {
+          sections[1].classList.add('is-active');
+          sections[1].style.visibility = 'visible';
+        }
+      }
       let animating = false;
       let wheelLocked = false;
       let touchStartY = 0;
@@ -1965,6 +2096,7 @@
       }
 
       function goTo(index) {
+        if (sections[0]?.classList.contains('landing-hidden') && index === 0) index = 1;
         if (animating || index === current || index < 0 || index >= sections.length) return;
 
         const goingDown = index > current;
@@ -2029,6 +2161,8 @@
 
       function goPrev() {
         if (current > SWIPEABLE_MAX_SECTION) return;
+        const min = sections[0]?.classList.contains('landing-hidden') ? 1 : 0;
+        if (current <= min) return;
         goTo(current - 1);
       }
 
@@ -2346,6 +2480,17 @@
       giftPayBtn.disabled = true;
       giftPayBtn.textContent = 'בודק...';
       try {
+        if (isPreviewMode) {
+          pendingGiftAmount = amount;
+          pendingGiftMode = mode;
+          pendingGiftPreview = { success: true, displayName: 'תצוגה מקדימה', label: 'preview' };
+          giftConfirmAmount.textContent = moneyHe(amount);
+          giftConfirmDest.textContent = 'תצוגה מקדימה — לא ייפתח תשלום אמיתי';
+          openGiftModal(giftConfirmModal);
+          resetGiftPayButton();
+          showPreviewToast('תצוגה מקדימה — לא נשמר');
+          return;
+        }
         const response = await fetch('/api/pay/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2372,6 +2517,15 @@
       giftConfirmCancel.disabled = true;
       giftConfirmOk.textContent = 'פותח...';
       try {
+        if (isPreviewMode) {
+          closeGiftModal(giftConfirmModal);
+          showPreviewToast('תצוגה מקדימה — לא נשמר');
+          giftConfirmOk.disabled = false;
+          giftConfirmCancel.disabled = false;
+          giftConfirmOk.textContent = 'אישור';
+          resetGiftPayButton();
+          return;
+        }
         const response = await fetch('/api/pay/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2545,13 +2699,31 @@
 
       const isAttending = yesRadio.checked;
       const numberOfGuests = isAttending ? parseInt(guestsInput.value, 10) : 0;
-      const numberOfBabies = isAttending ? parseInt(babiesInput.value, 10) || 0 : 0;
-      const numberOfVegan = isAttending && veganYes.checked ? parseInt(veganInput.value, 10) || 0 : 0;
+      const numberOfBabies = isAttending && landingPrefs.showBabiesField
+        ? parseInt(babiesInput.value, 10) || 0
+        : 0;
+      const numberOfVegan = isAttending && landingPrefs.showVeganField && veganYes.checked
+        ? parseInt(veganInput.value, 10) || 0
+        : 0;
       const additionalNotes = isAttending ? notesInput.value.trim().slice(0, 60) : '';
 
       if (isAttending && (isNaN(numberOfGuests) || numberOfGuests < 1)) {
         messageDiv.textContent = 'אנא הזינו מספר אנשים תקין (לפחות 1).';
         messageDiv.className = 'message show error';
+        return;
+      }
+
+      const saved = {
+        isAttending,
+        numberOfGuests: isAttending ? numberOfGuests : 0,
+        numberOfBabies: isAttending ? numberOfBabies : 0,
+        numberOfVegan: isAttending ? numberOfVegan : 0,
+        additionalNotes: isAttending ? additionalNotes : '',
+      };
+
+      if (isPreviewMode) {
+        showLoggedRsvp(saved);
+        showPreviewToast('תצוגה מקדימה — לא נשמר');
         return;
       }
 
@@ -2580,13 +2752,6 @@
         const result = await response.json();
 
         if (result.success) {
-          const saved = {
-            isAttending,
-            numberOfGuests: isAttending ? numberOfGuests : 0,
-            numberOfBabies: isAttending ? numberOfBabies : 0,
-            numberOfVegan: isAttending ? numberOfVegan : 0,
-            additionalNotes: isAttending ? additionalNotes : '',
-          };
           showLoggedRsvp(saved);
         } else {
           if (result.details && result.details.serviceAccountEmail) {
@@ -2609,11 +2774,40 @@
       }
     });
 
-    async function init() {
-      void applyWeddingProfile();
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.type !== 'landing-prefs-draft') return;
+      if (data.prefs) applyLandingPrefs(data.prefs);
+      if (data.wedding) applyWeddingDraft(data.wedding);
+      if (data.prefs && data.prefs.headerKicker != null) {
+        const kickerEl = document.getElementById('headerKicker');
+        if (kickerEl) kickerEl.textContent = landingPrefs.headerKicker;
+        setWeddingHeaderFields({ headerKicker: landingPrefs.headerKicker });
+      }
+    });
 
+    async function init() {
       const urlParams = new URLSearchParams(window.location.search);
       const phoneParam = urlParams.get('phone');
+
+      await applyWeddingProfile();
+
+      if (isPreviewMode) {
+        if (!inviteToken) {
+          showGateError('חסר טוקן לתצוגה מקדימה.');
+          return;
+        }
+        guestName = 'אורח לדוגמה';
+        guestPhone = phoneParam || '0500000000';
+        priorGiftAmount = 0;
+        setGiftUiForPrior();
+        showMain();
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'landing-preview-ready' }, window.location.origin);
+        }
+        return;
+      }
 
       if (!phoneParam) {
         showGateError('הקישור אינו תקין. אנא השתמשו בקישור האישי שנשלח אליכם.');
@@ -2621,7 +2815,6 @@
       }
 
       guestPhone = phoneParam;
-      await applyWeddingProfile();
 
       try {
         const tokenQuery = inviteToken ? `?token=${encodeURIComponent(inviteToken)}` : '';

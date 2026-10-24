@@ -23,8 +23,44 @@ const ACCOUNT_COLUMNS = `
   legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
   guest_sheet_id, response_sheet_id, sheet_tab, column_map,
   invitation_message, reminder_template, invite_image_file, invite_image_mime,
-  baby_max_age, created_at
+  baby_max_age, landing_prefs, created_at
 `;
+
+export const DEFAULT_LANDING_PREFS = {
+  showHeader: true,
+  headerKicker: 'החתונה של',
+  showInviteImage: true,
+  showGiftButton: true,
+  showDirectionsButton: true,
+  venueAddress: 'אולם קאי ריזורט - השיטה 5, עמק חפר',
+  showBabiesField: true,
+  showVeganField: true,
+  scrollHintText: 'גללו למטה לאישור הגעה',
+  successMessageAttending: 'תודה! אישור ההגעה נשלח בהצלחה.\nמחכים לראותכם! 🎉',
+  successMessageDeclining: 'תודה שעדכנתם אותנו. מקווים לפגוש אתכם בהזדמנות אחרת!',
+};
+
+export function normalizeLandingPrefs(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const bool = (value, fallback) => (typeof value === 'boolean' ? value : fallback);
+  const text = (value, fallback) => {
+    const s = String(value ?? '').trim();
+    return s || fallback;
+  };
+  return {
+    showHeader: bool(src.showHeader, DEFAULT_LANDING_PREFS.showHeader),
+    headerKicker: text(src.headerKicker, DEFAULT_LANDING_PREFS.headerKicker),
+    showInviteImage: bool(src.showInviteImage, DEFAULT_LANDING_PREFS.showInviteImage),
+    showGiftButton: bool(src.showGiftButton, DEFAULT_LANDING_PREFS.showGiftButton),
+    showDirectionsButton: bool(src.showDirectionsButton, DEFAULT_LANDING_PREFS.showDirectionsButton),
+    venueAddress: text(src.venueAddress, DEFAULT_LANDING_PREFS.venueAddress),
+    showBabiesField: bool(src.showBabiesField, DEFAULT_LANDING_PREFS.showBabiesField),
+    showVeganField: bool(src.showVeganField, DEFAULT_LANDING_PREFS.showVeganField),
+    scrollHintText: text(src.scrollHintText, DEFAULT_LANDING_PREFS.scrollHintText),
+    successMessageAttending: text(src.successMessageAttending, DEFAULT_LANDING_PREFS.successMessageAttending),
+    successMessageDeclining: text(src.successMessageDeclining, DEFAULT_LANDING_PREFS.successMessageDeclining),
+  };
+}
 
 function mimeFromExt(ext) {
   if (ext === 'png') return 'image/png';
@@ -80,6 +116,7 @@ function rowToAccount(row) {
     inviteImageFile: row.invite_image_file || '',
     inviteImageMime: row.invite_image_mime || '',
     babyMaxAge: Number.isFinite(Number(row.baby_max_age)) ? Number(row.baby_max_age) : 6,
+    landingPrefs: normalizeLandingPrefs(row.landing_prefs),
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || ''),
   };
 }
@@ -113,6 +150,7 @@ export function publicAccount(account) {
     invitationMessage: account.invitationMessage || '',
     reminderTemplate: account.reminderTemplate || '',
     babyMaxAge: normalizeBabyMaxAge(account.babyMaxAge),
+    landingPrefs: normalizeLandingPrefs(account.landingPrefs),
     locked: Boolean(account.locked),
     hasInviteImage: accountHasInviteImage(account),
   };
@@ -183,15 +221,17 @@ function hashToken(value) {
 }
 
 export async function saveAccount(next) {
+  const landingPrefs = normalizeLandingPrefs(next.landingPrefs);
   await query(
     `INSERT INTO accounts (
       id, email, public_token, password_hash, failed_logins, locked,
       unlock_code_hash, unlock_code_expires, reset_token_hash, reset_token_expires,
       legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
       guest_sheet_id, response_sheet_id, sheet_tab, column_map,
-      invitation_message, reminder_template, invite_image_file, baby_max_age, created_at
+      invitation_message, reminder_template, invite_image_file, baby_max_age,
+      landing_prefs, created_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25::jsonb,$26
     )
     ON CONFLICT (id) DO UPDATE SET
       email = EXCLUDED.email,
@@ -216,7 +256,8 @@ export async function saveAccount(next) {
       invitation_message = EXCLUDED.invitation_message,
       reminder_template = EXCLUDED.reminder_template,
       invite_image_file = EXCLUDED.invite_image_file,
-      baby_max_age = EXCLUDED.baby_max_age`,
+      baby_max_age = EXCLUDED.baby_max_age,
+      landing_prefs = EXCLUDED.landing_prefs`,
     [
       next.id,
       next.email,
@@ -242,10 +283,11 @@ export async function saveAccount(next) {
       next.reminderTemplate || '',
       next.inviteImageFile || '',
       normalizeBabyMaxAge(next.babyMaxAge),
+      JSON.stringify(landingPrefs),
       next.createdAt || new Date().toISOString(),
     ],
   );
-  return next;
+  return { ...next, landingPrefs };
 }
 
 export function inviteImagePath(account) {
@@ -409,6 +451,7 @@ export async function createAccount(input) {
     inviteImageFile: '',
     inviteImageMime: '',
     babyMaxAge: normalizeBabyMaxAge(input.babyMaxAge),
+    landingPrefs: normalizeLandingPrefs({}),
     paymentSeed: {
       daniellePaybox: String(input.daniellePaybox || '').trim(),
       yuvalPaybox: String(input.yuvalPaybox || '').trim(),

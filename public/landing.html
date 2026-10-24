@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>easyWed · דף הנחיתה שלנו</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('adminTheme') || 'dark';</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @property --bg { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    @property --surface { syntax: '<color>'; inherits: true; initial-value: #3a322e; }
+    @property --surface2 { syntax: '<color>'; inherits: true; initial-value: #6b5b54; }
+    @property --text { syntax: '<color>'; inherits: true; initial-value: #f7f4f0; }
+    @property --muted { syntax: '<color>'; inherits: true; initial-value: #c9b8af; }
+    @property --accent { syntax: '<color>'; inherits: true; initial-value: #c4a99a; }
+    @property --accent-dim { syntax: '<color>'; inherits: true; initial-value: #a89084; }
+    @property --accent-contrast { syntax: '<color>'; inherits: true; initial-value: #2a2421; }
+    :root {
+      --bg: #2a2421;
+      --surface: #3a322e;
+      --surface2: #6b5b54;
+      --text: #f7f4f0;
+      --muted: #c9b8af;
+      --input-bg: #231e1b;
+      --accent: #c4a99a;
+      --accent-dim: #a89084;
+      --accent-contrast: #2a2421;
+      --radius: 12px;
+      --font: 'Heebo', 'DM Sans', system-ui, sans-serif;
+      transition: --bg 0.4s ease, --surface 0.4s ease, --surface2 0.4s ease, --text 0.4s ease, --muted 0.4s ease, --input-bg 0.4s ease, --accent 0.4s ease, --accent-dim 0.4s ease, --accent-contrast 0.4s ease;
+    }
+    :root[data-theme="light"] {
+      --bg: #f7f4f0;
+      --surface: #fffcfa;
+      --surface2: #c9b8af;
+      --text: #4a3f3a;
+      --muted: #8e7c76;
+      --input-bg: #fffcfa;
+      --accent: #8e7c76;
+      --accent-dim: #6d5952;
+      --accent-contrast: #fffcfa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+      height: 100%;
+    }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      height: 100%;
+      line-height: 1.5;
+      transition: background-color 0.4s ease, color 0.4s ease;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .editor-shell {
+      display: grid;
+      grid-template-columns: minmax(300px, 400px) 1fr;
+      height: 100vh;
+      height: 100dvh;
+      padding-top: max(56px, calc(env(safe-area-inset-top) + 48px));
+    }
+    .controls-panel {
+      overflow-y: auto;
+      border-left: 2px solid var(--surface2);
+      background: var(--surface);
+      padding: 20px 18px max(28px, env(safe-area-inset-bottom));
+    }
+    .controls-panel h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 6px;
+    }
+    .controls-panel .lead {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 18px;
+      line-height: 1.45;
+    }
+    .card {
+      background: var(--bg);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+      border: 2px solid var(--surface2);
+    }
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    label {
+      display: block;
+      margin: 10px 0 6px;
+      font-weight: 600;
+      font-size: 0.84rem;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--surface2) 55%, transparent);
+    }
+    .toggle-row:last-child { border-bottom: 0; }
+    .toggle-row span { font-size: 0.9rem; font-weight: 500; }
+    .toggle-row input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }
+    input[type="text"],
+    input[type="date"],
+    input[type="url"],
+    textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 2px solid var(--surface2);
+      background: var(--input-bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .actions {
+      position: sticky;
+      bottom: 0;
+      margin-top: 8px;
+      padding-top: 12px;
+      background: linear-gradient(to top, var(--surface) 70%, transparent);
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      border: 2px solid var(--accent);
+      background: var(--accent);
+      color: var(--accent-contrast);
+    }
+    .btn-primary:disabled { opacity: 0.6; cursor: wait; }
+    .message {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      display: none;
+      font-size: 0.88rem;
+    }
+    .message.show { display: block; }
+    .message.err { background: rgba(196, 123, 115, 0.18); color: #e0b5b0; }
+    .message.ok { background: rgba(138, 154, 122, 0.22); color: var(--text); }
+    .preview-panel {
+      position: relative;
+      background: #1a1614;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .preview-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 2px solid var(--surface2);
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .preview-bar strong { color: var(--text); font-weight: 600; }
+    .preview-frame-wrap {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      padding: 12px;
+    }
+    #previewFrame {
+      width: min(420px, 100%);
+      height: 100%;
+      border: 2px solid var(--surface2);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.28);
+    }
+    .corner-logout, .corner-menu {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--surface2);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      cursor: pointer;
+    }
+    .corner-logout { left: max(14px, env(safe-area-inset-left)); }
+    .corner-menu { right: max(14px, env(safe-area-inset-right)); }
+    .corner-logout svg, .corner-menu svg { width: 20px; height: 20px; display: block; }
+    .nav-backdrop {
+      position: fixed; inset: 0; z-index: 290;
+      background: rgba(42, 36, 33, 0.45);
+      opacity: 0; pointer-events: none; transition: opacity 0.32s ease;
+    }
+    .nav-backdrop.is-open { opacity: 1; pointer-events: auto; }
+    .nav-drawer {
+      position: fixed; top: 0; right: 0; z-index: 300;
+      width: min(320px, 88vw); height: 100%;
+      background: var(--surface);
+      border-left: 2px solid var(--surface2);
+      box-shadow: -12px 0 40px rgba(0,0,0,0.25);
+      transform: translateX(105%);
+      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
+      display: flex; flex-direction: column;
+    }
+    .nav-drawer.is-open { transform: translateX(0); }
+    .nav-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .nav-close {
+      width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--surface2);
+      background: var(--bg); color: var(--text); font-size: 1.4rem; cursor: pointer;
+      display: grid; place-items: center; padding: 0; line-height: 1;
+    }
+    .nav-links { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .nav-links a {
+      text-decoration: none; color: var(--text); font-weight: 600;
+      padding: 14px; border-radius: 12px; border: 2px solid transparent; background: var(--bg);
+    }
+    .nav-links a.is-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+    .nav-theme { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--surface2); }
+    .nav-theme p { color: var(--muted); font-size: 0.85rem; margin-bottom: 10px; }
+    .theme-switch { display: flex; gap: 8px; }
+    .theme-opt {
+      flex: 1; height: 44px; border-radius: 10px; border: 2px solid var(--surface2);
+      background: var(--bg); color: var(--text); cursor: pointer; display: grid; place-items: center;
+    }
+    .theme-opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
+    .theme-opt svg { width: 20px; height: 20px; }
+    body.nav-open { overflow: hidden; }
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .editor-shell {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 100dvh;
+      }
+      .preview-panel {
+        min-height: 70vh;
+        border-top: 2px solid var(--surface2);
+      }
+      .preview-frame-wrap { min-height: 64vh; }
+      #previewFrame { width: min(390px, 100%); min-height: 620px; }
+    }
+  </style>
+</head>
+<body>
+  <button type="button" class="corner-logout" id="logoutBtn" aria-label="התנתקות" title="התנתקות">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+  <button type="button" class="corner-menu" id="navMenuBtn" aria-label="תפריט" aria-expanded="false" aria-controls="navDrawer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+    </svg>
+  </button>
+  <div id="navBackdrop" class="nav-backdrop" hidden></div>
+  <aside id="navDrawer" class="nav-drawer" aria-hidden="true">
+    <div class="nav-drawer-head">
+      <strong>easyWed</strong>
+      <button type="button" class="nav-close" id="navCloseBtn" aria-label="סגירת תפריט">×</button>
+    </div>
+    <nav class="nav-links">
+      <a href="/manage" data-nav="home">בית</a>
+      <a href="/manage/invites" data-nav="invites">שליחת הזמנות</a>
+      <a href="/manage/pay" data-nav="pay">מתנות</a>
+      <a href="/manage/landing" data-nav="landing" class="is-active">דף הנחיתה</a>
+      <a href="/manage/settings" data-nav="settings">הגדרות</a>
+    </nav>
+    <div class="nav-theme">
+      <p>מצב תצוגה</p>
+      <div class="theme-switch" role="radiogroup" aria-label="מצב תצוגה">
+        <button type="button" class="theme-opt" role="radio" data-theme-value="light" aria-checked="false" title="מצב בהיר" aria-label="מצב בהיר">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <button type="button" class="theme-opt" role="radio" data-theme-value="dark" aria-checked="false" title="מצב כהה" aria-label="מצב כהה">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="editor-shell">
+    <aside class="controls-panel">
+      <h1>דף הנחיתה שלנו</h1>
+      <p class="lead">ערכו את חוויית האורחים. השינויים מופיעים מיד בתצוגה המקדימה; שמירה מעדכנת את הדף החי.</p>
+
+      <form id="landingForm">
+        <div class="card">
+          <h2>כותרת</h2>
+          <div class="toggle-row">
+            <span>הצגת כותרת</span>
+            <input type="checkbox" id="showHeader" checked>
+          </div>
+          <label for="headerKicker">טקסט מעל השמות</label>
+          <input type="text" id="headerKicker" maxlength="80">
+          <label for="brideName">שם הכלה</label>
+          <input type="text" id="brideName" required maxlength="80">
+          <label for="groomName">שם החתן</label>
+          <input type="text" id="groomName" required maxlength="80">
+          <label for="weddingDate">תאריך החתונה</label>
+          <input type="date" id="weddingDate">
+        </div>
+
+        <div class="card">
+          <h2>הזמנה וניווט</h2>
+          <div class="toggle-row">
+            <span>תמונת ההזמנה (מעטפה)</span>
+            <input type="checkbox" id="showInviteImage" checked>
+          </div>
+          <label for="scrollHintText">טקסט לגלול למטה</label>
+          <input type="text" id="scrollHintText" maxlength="80">
+          <div class="toggle-row">
+            <span>כפתור מתנה</span>
+            <input type="checkbox" id="showGiftButton" checked>
+          </div>
+          <div class="toggle-row">
+            <span>כפתור ניווט לאולם</span>
+            <input type="checkbox" id="showDirectionsButton" checked>
+          </div>
+          <label for="venueAddress">כתובת האולם</label>
+          <input type="text" id="venueAddress" maxlength="160">
+          <label for="wazeUrl">קישור Waze</label>
+          <input type="url" id="wazeUrl" placeholder="https://...">
+          <label for="mapsUrl">קישור Google Maps</label>
+          <input type="url" id="mapsUrl" placeholder="https://...">
+        </div>
+
+        <div class="card">
+          <h2>שדות בטופס</h2>
+          <div class="toggle-row">
+            <span>שאלת ילדים</span>
+            <input type="checkbox" id="showBabiesField" checked>
+          </div>
+          <div class="toggle-row">
+            <span>שאלת טבעונים/צמחונים</span>
+            <input type="checkbox" id="showVeganField" checked>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>הודעות תודה</h2>
+          <label for="successMessageAttending">כשמגיעים</label>
+          <textarea id="successMessageAttending" maxlength="240"></textarea>
+          <label for="successMessageDeclining">כשלא מגיעים</label>
+          <textarea id="successMessageDeclining" maxlength="240"></textarea>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn-primary" id="saveBtn">שמירה</button>
+          <p class="message" id="message"></p>
+        </div>
+      </form>
+    </aside>
+
+    <section class="preview-panel" aria-label="תצוגה מקדימה">
+      <div class="preview-bar">
+        <strong>תצוגה מקדימה</strong>
+        <span>אישורי הגעה ומתנות לא נשמרים כאן</span>
+      </div>
+      <div class="preview-frame-wrap">
+        <iframe id="previewFrame" title="תצוגה מקדימה של דף האורחים"></iframe>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let publicToken = '';
+    let draftTimer = null;
+    let iframeReady = false;
+
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('adminTheme', next);
+      document.querySelectorAll('.theme-opt').forEach((btn) => {
+        btn.setAttribute('aria-checked', btn.dataset.themeValue === next ? 'true' : 'false');
+      });
+    }
+
+    function showMessage(text, ok) {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'message show ' + (ok ? 'ok' : 'err');
+    }
+
+    function readPrefsFromForm() {
+      return {
+        showHeader: document.getElementById('showHeader').checked,
+        headerKicker: document.getElementById('headerKicker').value.trim(),
+        showInviteImage: document.getElementById('showInviteImage').checked,
+        showGiftButton: document.getElementById('showGiftButton').checked,
+        showDirectionsButton: document.getElementById('showDirectionsButton').checked,
+        venueAddress: document.getElementById('venueAddress').value.trim(),
+        showBabiesField: document.getElementById('showBabiesField').checked,
+        showVeganField: document.getElementById('showVeganField').checked,
+        scrollHintText: document.getElementById('scrollHintText').value.trim(),
+        successMessageAttending: document.getElementById('successMessageAttending').value.trim(),
+        successMessageDeclining: document.getElementById('successMessageDeclining').value.trim(),
+      };
+    }
+
+    function readWeddingFromForm() {
+      return {
+        brideName: document.getElementById('brideName').value.trim(),
+        groomName: document.getElementById('groomName').value.trim(),
+        weddingDate: document.getElementById('weddingDate').value.trim(),
+        wazeUrl: document.getElementById('wazeUrl').value.trim(),
+        mapsUrl: document.getElementById('mapsUrl').value.trim(),
+      };
+    }
+
+    function fillForm(data) {
+      const prefs = data.landingPrefs || {};
+      document.getElementById('showHeader').checked = prefs.showHeader !== false;
+      document.getElementById('headerKicker').value = prefs.headerKicker || 'החתונה של';
+      document.getElementById('showInviteImage').checked = prefs.showInviteImage !== false;
+      document.getElementById('showGiftButton').checked = prefs.showGiftButton !== false;
+      document.getElementById('showDirectionsButton').checked = prefs.showDirectionsButton !== false;
+      document.getElementById('venueAddress').value = prefs.venueAddress || '';
+      document.getElementById('showBabiesField').checked = prefs.showBabiesField !== false;
+      document.getElementById('showVeganField').checked = prefs.showVeganField !== false;
+      document.getElementById('scrollHintText').value = prefs.scrollHintText || 'גללו למטה לאישור הגעה';
+      document.getElementById('successMessageAttending').value = prefs.successMessageAttending || '';
+      document.getElementById('successMessageDeclining').value = prefs.successMessageDeclining || '';
+      document.getElementById('brideName').value = data.brideName || '';
+      document.getElementById('groomName').value = data.groomName || '';
+      document.getElementById('weddingDate').value = data.weddingDate || '';
+      document.getElementById('wazeUrl').value = data.wazeUrl || '';
+      document.getElementById('mapsUrl').value = data.mapsUrl || '';
+    }
+
+    function postDraftToIframe() {
+      const frame = document.getElementById('previewFrame');
+      if (!frame?.contentWindow || !iframeReady) return;
+      frame.contentWindow.postMessage({
+        type: 'landing-prefs-draft',
+        prefs: readPrefsFromForm(),
+        wedding: readWeddingFromForm(),
+      }, window.location.origin);
+    }
+
+    function scheduleDraftPost() {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(postDraftToIframe, 120);
+    }
+
+    function setPreviewSrc(token) {
+      const frame = document.getElementById('previewFrame');
+      iframeReady = false;
+      if (!token) {
+        frame.removeAttribute('src');
+        return;
+      }
+      frame.src = `/i/${encodeURIComponent(token)}?preview=1`;
+    }
+
+    async function load() {
+      const res = await fetch('/api/auth/landing-prefs', { cache: 'no-store', credentials: 'same-origin' });
+      if (res.status === 401) {
+        location.href = '/login';
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || 'שגיאה בטעינה');
+      publicToken = data.publicToken || '';
+      fillForm(data);
+      setPreviewSrc(publicToken);
+    }
+
+    applyTheme(localStorage.getItem('adminTheme') || 'dark');
+    document.querySelectorAll('.theme-opt').forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.themeValue));
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_) {}
+      window.location.assign('/login');
+    });
+
+    const navBtn = document.getElementById('navMenuBtn');
+    const navDrawer = document.getElementById('navDrawer');
+    const navBackdrop = document.getElementById('navBackdrop');
+    function setNavOpen(open) {
+      navDrawer.classList.toggle('is-open', open);
+      navBackdrop.classList.toggle('is-open', open);
+      navBackdrop.hidden = !open;
+      navDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('nav-open', open);
+    }
+    navBtn.addEventListener('click', () => setNavOpen(true));
+    document.getElementById('navCloseBtn').addEventListener('click', () => setNavOpen(false));
+    navBackdrop.addEventListener('click', () => setNavOpen(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNavOpen(false); });
+
+    document.getElementById('landingForm').addEventListener('input', scheduleDraftPost);
+    document.getElementById('landingForm').addEventListener('change', scheduleDraftPost);
+
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'landing-preview-ready') {
+        iframeReady = true;
+        postDraftToIframe();
+      }
+    });
+
+    document.getElementById('landingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      try {
+        const wedding = readWeddingFromForm();
+        if (!wedding.brideName || !wedding.groomName) {
+          throw new Error('יש להזין שמות כלה וחתן');
+        }
+        const res = await fetch('/api/auth/landing-prefs', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            landingPrefs: readPrefsFromForm(),
+            ...wedding,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.success === false) throw new Error(data.error || 'שמירה נכשלה');
+        if (data.account?.publicToken) publicToken = data.account.publicToken;
+        showMessage('דף הנחיתה נשמר', true);
+        postDraftToIframe();
+      } catch (error) {
+        showMessage(error.message || 'שמירת דף הנחיתה נכשלה', false);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    load().catch((error) => showMessage(error.message || 'טעינת דף הנחיתה נכשלה', false));
+  </script>
+</body>
+</html>
