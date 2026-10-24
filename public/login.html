@@ -596,13 +596,14 @@
             <label for="maps">קישור Google Maps</label>
             <input id="maps">
             <label for="pb1">PayBox של הכלה</label>
-            <input id="pb1" required>
+            <p class="hint">אופציונלי — אפשר להשלים אחר כך בהגדרות</p>
+            <input id="pb1">
             <label for="pb2">PayBox של החתן</label>
-            <input id="pb2" required>
+            <input id="pb2">
             <label for="bit1">Bit של הכלה</label>
-            <input id="bit1" required>
+            <input id="bit1">
             <label for="bit2">Bit של החתן</label>
-            <input id="bit2" required>
+            <input id="bit2">
             <label for="guestSheet">קישור ל- Google Sheets של האורחים</label>
             <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן. אישורי הגעה ומתנות יופיעו בלוח הבקרה.</p>
             <input id="guestSheet" required>
@@ -840,9 +841,27 @@
       if (!res.ok) {
         const error = new Error(data.error || 'שגיאה');
         error.locked = data.locked;
+        error.status = res.status;
         throw error;
       }
       return data;
+    }
+
+    async function continueSignupColumnMap() {
+      const headersRes = await fetch('/api/auth/headers', { credentials: 'same-origin' });
+      const headersData = await headersRes.json().catch(() => ({}));
+      if (!headersRes.ok) throw new Error(headersData.error || 'לא נמצאו כותרות');
+      const host = document.getElementById('mapFields');
+      host.innerHTML = '';
+      for (const [key, label] of fields) {
+        const row = document.createElement('div');
+        row.className = 'map-row';
+        const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        const options = headersData.headers.map((col) => `<option value="${esc(col.letter)}">${esc(col.title)} (${esc(col.letter)})</option>`).join('');
+        row.innerHTML = `<span>${label}</span><select data-key="${key}"><option value="">—</option>${options}</select>`;
+        host.appendChild(row);
+      }
+      show(mapForm);
     }
 
     loginForm.onsubmit = async (e) => {
@@ -1025,20 +1044,7 @@
           sheetTab: document.getElementById('tab').value,
           inviteImageDataUrl: await fileToDataUrl(image),
         });
-        const headersRes = await fetch('/api/auth/headers');
-        const headersData = await headersRes.json();
-        if (!headersRes.ok) throw new Error(headersData.error || 'לא נמצאו כותרות');
-        const host = document.getElementById('mapFields');
-        host.innerHTML = '';
-        for (const [key, label] of fields) {
-          const row = document.createElement('div');
-          row.className = 'map-row';
-          const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-          const options = headersData.headers.map((col) => `<option value="${esc(col.letter)}">${esc(col.title)} (${esc(col.letter)})</option>`).join('');
-          row.innerHTML = `<span>${label}</span><select data-key="${key}"><option value="">—</option>${options}</select>`;
-          host.appendChild(row);
-        }
-        show(mapForm);
+        await continueSignupColumnMap();
       } catch (error) {
         document.getElementById('signupError').textContent = error.message;
       }

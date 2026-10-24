@@ -418,8 +418,28 @@ export async function createAccount(input) {
     createdAt: new Date().toISOString(),
   };
   await saveAccount(account);
-  const inviteImageFile = await saveInviteImage(id, input.inviteImageDataUrl);
-  return { ...account, inviteImageFile, inviteImageMime: parsedInvite.mime };
+  try {
+    const inviteImageFile = await saveInviteImage(id, input.inviteImageDataUrl);
+    return { ...account, inviteImageFile, inviteImageMime: parsedInvite.mime };
+  } catch (error) {
+    await deleteAccount(id).catch(() => {});
+    throw error;
+  }
+}
+
+/** Hard-delete account and cascaded Neon rows (sessions, payments, WA auth, RSVPs). */
+export async function deleteAccount(id) {
+  if (!id) return;
+  await query('DELETE FROM accounts WHERE id = $1', [id]);
+  try {
+    const dir = invitesDir();
+    for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+      const file = path.join(dir, `${id}.${ext}`);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    }
+  } catch {
+    /* cache cleanup best-effort */
+  }
 }
 
 export async function updateAccount(id, patch) {

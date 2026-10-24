@@ -4,6 +4,7 @@ import { sendMail } from '../services/mailer.js';
 import { getPaymentSeedUrls, seedPaymentFile, updatePaymentSeedUrls } from '../services/paymentRouting.js';
 import {
   createAccount,
+  deleteAccount,
   findAccountByEmail,
   issueResetCode,
   issueUnlockCode,
@@ -58,19 +59,89 @@ router.get('/me', async (req, res) => {
 });
 
 router.post('/register', authLimit, async (req, res) => {
+  let createdId = '';
   try {
     const body = req.body || {};
-    const account = await createAccount({
-      ...body,
-      guestSheetId: sheetIdFromInput(body.guestSheetId),
-      responseSheetId: sheetIdFromInput(body.responseSheetId),
-    });
-    if (account.paymentSeed) {
-      await seedPaymentFile(account.id, account.paymentSeed);
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const guestSheetId = sheetIdFromInput(body.guestSheetId);
+    const responseSheetId = sheetIdFromInput(body.responseSheetId);
+    const sheetTab = String(body.sheetTab || '').trim() || 'חתונה';
+
+    if (!guestSheetId || !sheetTab) {
+      return res.status(400).json({ success: false, error: 'יש למלא את כל פרטי החתונה והגיליון' });
     }
+
+    // Fail before creating a row if the sheet is not readable yet.
+    try {
+      await readHeaderRow(guestSheetId, sheetTab);
+    } catch (sheetError) {
+      return res.status(400).json({
+        success: false,
+        error: sheetError.message
+          || 'לא הצלחנו לקרוא את הגיליון. ודאו ששיתפתם אותו עם חשבון השירות והקישור נכון.',
+      });
+    }
+
+    let account;
+    try {
+      account = await createAccount({
+        ...body,
+        guestSheetId,
+        responseSheetId,
+        sheetTab,
+      });
+      createdId = account.id;
+    } catch (error) {
+      // Same email+password after a previous half-finished signup: resume instead of hard-fail.
+      if (error.status === 409 && email && password) {
+        const existing = await findAccountByEmail(email);
+        if (existing && await verifyPassword(password, existing.passwordHash)) {
+          account = await updateAccount(existing.id, {
+            brideName: String(body.brideName || existing.brideName || '').trim(),
+            groomName: String(body.groomName || existing.groomName || '').trim(),
+            weddingDate: String(body.weddingDate || existing.weddingDate || '').trim(),
+            wazeUrl: String(body.wazeUrl || '').trim(),
+            mapsUrl: String(body.mapsUrl || '').trim(),
+            guestSheetId,
+            responseSheetId,
+            sheetTab,
+            babyMaxAge: normalizeBabyMaxAge(body.babyMaxAge ?? existing.babyMaxAge),
+          });
+          if (body.inviteImageDataUrl) {
+            const file = await saveInviteImage(existing.id, body.inviteImageDataUrl);
+            account = await updateAccount(existing.id, { inviteImageFile: file });
+          }
+          await seedPaymentFile(existing.id, {
+            daniellePaybox: body.daniellePaybox,
+            yuvalPaybox: body.yuvalPaybox,
+            danielleBit: body.danielleBit,
+            yuvalBit: body.yuvalBit,
+          });
+          setSessionCookie(res, await createSession(account, req));
+          return res.json({ success: true, account: publicAccount(account), resumed: true });
+        }
+      }
+      throw error;
+    }
+
+    try {
+      await seedPaymentFile(account.id, account.paymentSeed || {});
+    } catch (seedError) {
+      await deleteAccount(account.id).catch(() => {});
+      createdId = '';
+      throw Object.assign(
+        new Error(seedError.message || 'שמירת קישורי התשלום נכשלה'),
+        { status: 500 },
+      );
+    }
+
     setSessionCookie(res, await createSession(account, req));
     res.json({ success: true, account: publicAccount(account) });
   } catch (error) {
+    if (createdId) {
+      await deleteAccount(createdId).catch(() => {});
+    }
     res.status(error.status || 500).json({ success: false, error: error.message || 'יצירת החשבון נכשלה' });
   }
 });
