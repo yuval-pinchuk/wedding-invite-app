@@ -834,6 +834,7 @@
     async function post(url, body) {
       const res = await fetch(url, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -866,14 +867,18 @@
 
     loginForm.onsubmit = async (e) => {
       e.preventDefault();
+      const submitBtn = loginForm.querySelector('button[type="submit"]');
+      if (submitBtn?.disabled) return;
       document.getElementById('loginError').textContent = '';
+      if (submitBtn) submitBtn.disabled = true;
       try {
         await post('/api/auth/login', {
           email: document.getElementById('email').value,
           password: document.getElementById('password').value,
         });
-        location.href = '/manage';
+        location.assign('/manage');
       } catch (error) {
+        if (submitBtn) submitBtn.disabled = false;
         document.getElementById('loginError').textContent = error.message;
         if (error.locked) {
           document.getElementById('unlockEmail').value = document.getElementById('email').value;

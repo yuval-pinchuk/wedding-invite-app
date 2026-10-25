@@ -14,7 +14,6 @@ import { configureSheets } from './services/googleSheets.js';
 import { startSessionMaintenance } from './services/whatsapp.js';
 import {
   accountFromRequest,
-  clearSessionCookie,
   purgeExpiredSessions,
   refreshSessionCookieIfNeeded,
 } from './services/sessions.js';
@@ -43,27 +42,47 @@ app.use(cors({
 // Signup sends the invite image as a base64 data URL (~4/3 of file size).
 app.use(express.json({ limit: '8mb' }));
 
+function noStore(res) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+}
+
 async function requireLoginPage(req, res, nextFile) {
-  const account = await accountFromRequest(req);
-  if (!account) {
-    clearSessionCookie(res);
-    return res.redirect('/login');
+  try {
+    const account = await accountFromRequest(req);
+    if (!account) {
+      noStore(res);
+      return res.redirect(303, '/login');
+    }
+    refreshSessionCookieIfNeeded(req, res);
+    noStore(res);
+    return res.sendFile(path.join(publicDir, nextFile));
+  } catch (error) {
+    console.error('[auth] page session check failed', error);
+    noStore(res);
+    return res.status(503).type('text/plain; charset=utf-8').send('לא הצלחנו לאמת את ההתחברות. רעננו את העמוד.');
   }
-  refreshSessionCookieIfNeeded(req, res);
-  return res.sendFile(path.join(publicDir, nextFile));
 }
 
 app.get('/', (_req, res) => {
-  res.redirect(302, '/login');
+  noStore(res);
+  res.redirect(303, '/login');
 });
 
 app.get('/login', async (req, res) => {
-  const account = await accountFromRequest(req);
-  if (account) {
-    refreshSessionCookieIfNeeded(req, res);
-    return res.redirect('/manage');
+  try {
+    const account = await accountFromRequest(req);
+    noStore(res);
+    if (account) {
+      refreshSessionCookieIfNeeded(req, res);
+      return res.redirect(303, '/manage');
+    }
+    return res.sendFile(path.join(publicDir, 'login.html'));
+  } catch (error) {
+    console.error('[auth] login page failed', error);
+    noStore(res);
+    return res.sendFile(path.join(publicDir, 'login.html'));
   }
-  res.sendFile(path.join(publicDir, 'login.html'));
 });
 
 app.get('/manage', (req, res) => requireLoginPage(req, res, 'dashboard.html'));
@@ -73,11 +92,13 @@ app.get('/manage/landing', (req, res) => requireLoginPage(req, res, 'landing.htm
 app.get('/manage/settings', (req, res) => requireLoginPage(req, res, 'settings.html'));
 
 app.get(['/admin.html', '/admin'], (_req, res) => {
-  res.redirect('/manage/invites');
+  noStore(res);
+  res.redirect(303, '/manage/invites');
 });
 
 app.get(['/admin-pay.html', '/admin-pay'], (_req, res) => {
-  res.redirect('/manage/pay');
+  noStore(res);
+  res.redirect(303, '/manage/pay');
 });
 
 app.get('/i/:token', (_req, res) => {
@@ -86,7 +107,8 @@ app.get('/i/:token', (_req, res) => {
 
 // Invite UI only via /i/:token — block bare /index.html
 app.get('/index.html', (_req, res) => {
-  res.redirect(302, '/login');
+  noStore(res);
+  res.redirect(303, '/login');
 });
 
 app.use('/api/auth', authRouter);
@@ -107,7 +129,8 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ success: false, error: 'Not found' });
   }
-  return res.redirect(302, '/login');
+  noStore(res);
+  return res.redirect(303, '/login');
 });
 
 async function start() {

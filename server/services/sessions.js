@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { query } from '../db/pool.js';
 import { findAccountById } from './accounts.js';
 import { accountStore } from './accountContext.js';
@@ -18,16 +18,21 @@ export function readCookie(req, name) {
   return '';
 }
 
-function cookieSecure() {
-  return process.env.RENDER === 'true' || process.env.NODE_ENV === 'production';
+/**
+ * Secure cookies are dropped by the browser on plain HTTP, which looks like an
+ * instant logout. Set the flag only when this request is actually HTTPS
+ * (Render sets X-Forwarded-Proto; trust proxy makes `req.secure` true).
+ */
+function cookieSecure(res) {
+  return Boolean(res?.req?.secure);
 }
 
 /**
- * Client IP for session binding.
- * Uses Express `req.ip` only (trust proxy is set) so clients cannot spoof via X-Forwarded-For.
+ * Client IP recorded on the session row (audit only; not used to reject logins).
+ * Uses Express `req.ip` (trust proxy is set) so clients cannot spoof via X-Forwarded-For.
  */
 export function requestIp(req) {
-  let ip = String(req.ip || req.socket?.remoteAddress || '').trim() || 'unknown';
+  let ip = String(req?.ip || req?.socket?.remoteAddress || '').trim() || 'unknown';
   if (ip.startsWith('::ffff:')) ip = ip.slice(7);
   return ip;
 }
@@ -44,13 +49,13 @@ export function setSessionCookie(res, token) {
     'Path=/',
     `Max-Age=${IDLE_SEC}`,
   ];
-  if (cookieSecure()) parts.push('Secure');
+  if (cookieSecure(res)) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 export function clearSessionCookie(res) {
   const parts = [`${COOKIE}=`, 'HttpOnly', 'SameSite=Lax', 'Path=/', 'Max-Age=0'];
-  if (cookieSecure()) parts.push('Secure');
+  if (cookieSecure(res)) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
@@ -62,8 +67,12 @@ export async function createSession(account, req) {
   const token = randomBytes(32).toString('hex');
   const ipHash = hashIp(requestIp(req));
   const expires = new Date(Date.now() + IDLE_SEC * 1000);
-  // One active login per account: drop prior sessions (stolen cookies, other devices).
-  await query('DELETE FROM sessions WHERE account_id = $1', [account.id]);
+  // Drop only expired rows. Replacing every live session made a second login
+  // (double submit, another tab) invalidate the cookie the browser just stored.
+  await query(
+    'DELETE FROM sessions WHERE account_id = $1 AND expires_at < NOW()',
+    [account.id],
+  );
   await query(
     `INSERT INTO sessions (token, account_id, expires_at, ip_hash, last_seen_at)
      VALUES ($1, $2, $3, $4, NOW())`,
@@ -88,7 +97,9 @@ export async function purgeExpiredSessions() {
 }
 
 /**
- * Resolve account from cookie. Binds session to login IP and sliding 15m idle expiry.
+ * Resolve account from cookie. Sliding 15m idle expiry.
+ * IP is stored for audit only — client addresses change (IPv4/IPv6, mobile, proxy)
+ * and rejecting on mismatch was logging people out on the next page.
  * On success sets `req.sessionToken` for cookie refresh.
  */
 export async function accountFromRequest(req) {
@@ -96,7 +107,7 @@ export async function accountFromRequest(req) {
   if (!token || token.length < 32) return null;
 
   const result = await query(
-    'SELECT account_id, expires_at, ip_hash, last_seen_at FROM sessions WHERE token = $1 LIMIT 1',
+    'SELECT account_id, expires_at, last_seen_at FROM sessions WHERE token = $1 LIMIT 1',
     [token],
   );
   const row = result.rows[0];
@@ -104,16 +115,6 @@ export async function accountFromRequest(req) {
 
   const expiresAt = row.expires_at instanceof Date ? row.expires_at.getTime() : Date.parse(row.expires_at);
   if (!expiresAt || Date.now() > expiresAt) {
-    await destroySessionToken(token);
-    return null;
-  }
-
-  const currentHash = hashIp(requestIp(req));
-  const storedHash = String(row.ip_hash || '');
-  const ipOk = storedHash.length === currentHash.length
-    && storedHash.length > 0
-    && timingSafeEqual(Buffer.from(storedHash), Buffer.from(currentHash));
-  if (!ipOk) {
     await destroySessionToken(token);
     return null;
   }
@@ -150,7 +151,8 @@ export async function requireAccount(req, res, next) {
   try {
     const account = await accountFromRequest(req);
     if (!account) {
-      clearSessionCookie(res);
+      // Do not clear the cookie here. A late 401 (old tab, poll, prefetch) would
+      // wipe a session cookie that a newer login just stored.
       return res.status(401).json({
         success: false,
         error: 'יש להתחבר מחדש',

@@ -52,7 +52,6 @@ router.get('/setup', (_req, res) => {
 router.get('/me', async (req, res) => {
   const account = await accountFromRequest(req);
   if (!account) {
-    clearSessionCookie(res);
     return res.status(401).json({ success: false, error: 'יש להתחבר מחדש', reauth: true });
   }
   refreshSessionCookieIfNeeded(req, res);

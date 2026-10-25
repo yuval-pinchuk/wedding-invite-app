@@ -844,7 +844,8 @@
     }
 
     function noStoreFetch(input, init) {
-      const merged = { cache: 'no-store', ...(init || {}) };
+      const merged = { cache: 'no-store', credentials: 'same-origin', ...(init || {}) };
+      merged.credentials = 'same-origin';
       merged.headers = adminHeaders(merged.headers || {});
       return fetch(input, merged).then((res) => {
         if (res.status === 401) {

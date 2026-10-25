@@ -729,6 +729,7 @@
       const res = await fetch(path, {
         cache: 'no-store',
         ...options,
+        credentials: 'same-origin',
         headers: adminHeaders(options.headers || {}),
       });
       const data = await res.json().catch(() => ({}));
