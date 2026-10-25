@@ -53,7 +53,9 @@ export function clearCodeFailures(kind, email) {
 
 export function securityHeaders(_req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // SAMEORIGIN so /manage/landing can embed /i/:token?preview=1. DENY broke that iframe.
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (process.env.RENDER === 'true' || process.env.NODE_ENV === 'production') {
