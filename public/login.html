@@ -588,30 +588,59 @@
             <label for="babyMaxAge">עד איזה גיל נחשב ילד/תינוק?</label>
             <p class="hint">יופיע בטופס אישור ההגעה (ברירת מחדל: 6)</p>
             <input id="babyMaxAge" type="number" min="0" max="18" value="6" required>
-            <label for="image">תמונת הזמנה</label>
-            <p class="hint">עד 5MB (PNG, JPEG או WebP)</p>
-            <input id="image" type="file" accept="image/png,image/jpeg,image/webp" required>
-            <label for="waze">קישור Waze</label>
-            <input id="waze">
-            <label for="maps">קישור Google Maps</label>
-            <input id="maps">
-            <label for="pb1">PayBox של הכלה</label>
-            <p class="hint">אופציונלי — אפשר להשלים אחר כך בהגדרות</p>
-            <input id="pb1">
-            <label for="pb2">PayBox של החתן</label>
-            <input id="pb2">
-            <label for="bit1">Bit של הכלה</label>
-            <input id="bit1">
-            <label for="bit2">Bit של החתן</label>
-            <input id="bit2">
             <label for="guestSheet">קישור ל- Google Sheets של האורחים</label>
             <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן. אישורי הגעה ומתנות יופיעו בלוח הבקרה.</p>
             <input id="guestSheet" required>
             <label for="tab">שם הלשונית</label>
             <input id="tab" required placeholder="חתונה">
             <p id="signupError" class="error"></p>
-            <button type="submit">המשך למיפוי עמודות</button>
+            <button type="submit">המשך</button>
             <button type="button" class="ghost-btn" id="backLogin">חזרה להתחברות</button>
+          </div>
+        </form>
+
+        <form id="signupImageForm" class="hidden">
+          <div class="signup-scroll">
+            <h2>תמונת הזמנה</h2>
+            <p class="hint">התמונה תופיע בהזמנה ובהודעות הוואטסאפ. אפשר לדלג ולהעלות אותה אחר כך בהגדרות.</p>
+            <label for="image">תמונת הזמנה</label>
+            <p class="hint">עד 5MB (PNG, JPEG או WebP)</p>
+            <input id="image" type="file" accept="image/png,image/jpeg,image/webp">
+            <p id="imageError" class="error"></p>
+            <button type="submit">המשך</button>
+            <button type="button" class="ghost-btn" id="skipImage">דילוג</button>
+          </div>
+        </form>
+
+        <form id="signupNavForm" class="hidden">
+          <div class="signup-scroll">
+            <h2>קישורי ניווט</h2>
+            <p class="hint">הקישורים יופיעו בהזמנה. אפשר לדלג ולהשלים אותם אחר כך בהגדרות.</p>
+            <label for="waze">קישור Waze</label>
+            <input id="waze" inputmode="url" autocomplete="off">
+            <label for="maps">קישור Google Maps</label>
+            <input id="maps" inputmode="url" autocomplete="off">
+            <p id="navError" class="error"></p>
+            <button type="submit">המשך</button>
+            <button type="button" class="ghost-btn" id="skipNav">דילוג</button>
+          </div>
+        </form>
+
+        <form id="signupPayForm" class="hidden">
+          <div class="signup-scroll">
+            <h2>קישורי תשלום</h2>
+            <p class="hint">הקישורים משמשים למתנות. אפשר לדלג ולהשלים אותם אחר כך בהגדרות.</p>
+            <label for="pb1">PayBox של הכלה</label>
+            <input id="pb1" inputmode="url" autocomplete="off">
+            <label for="pb2">PayBox של החתן</label>
+            <input id="pb2" inputmode="url" autocomplete="off">
+            <label for="bit1">Bit של הכלה</label>
+            <input id="bit1" inputmode="url" autocomplete="off">
+            <label for="bit2">Bit של החתן</label>
+            <input id="bit2" inputmode="url" autocomplete="off">
+            <p id="payError" class="error"></p>
+            <button type="submit">המשך למיפוי עמודות</button>
+            <button type="button" class="ghost-btn" id="skipPay">דילוג</button>
           </div>
         </form>
 
@@ -831,11 +860,11 @@
       document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || 'האימייל של חשבון השירות';
     }).catch(() => {});
 
-    async function post(url, body) {
+    async function send(url, method, body) {
       const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
+        method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
@@ -846,6 +875,14 @@
         throw error;
       }
       return data;
+    }
+
+    function post(url, body) {
+      return send(url, 'POST', body);
+    }
+
+    function put(url, body) {
+      return send(url, 'PUT', body);
     }
 
     async function continueSignupColumnMap() {
@@ -1006,53 +1043,178 @@
       });
     }
 
+    const signupImageForm = document.getElementById('signupImageForm');
+    const signupNavForm = document.getElementById('signupNavForm');
+    const signupPayForm = document.getElementById('signupPayForm');
+    const savedOptional = {
+      wazeUrl: '',
+      mapsUrl: '',
+      daniellePaybox: '',
+      yuvalPaybox: '',
+      danielleBit: '',
+      yuvalBit: '',
+    };
+
+    function setFormBusy(form, busy) {
+      form.querySelectorAll('button').forEach((btn) => {
+        btn.disabled = busy;
+      });
+    }
+
+    function fieldValue(id) {
+      return String(document.getElementById(id).value || '').trim();
+    }
+
+    function signupSettingsBody(extra = {}) {
+      return {
+        brideName: fieldValue('bride'),
+        groomName: fieldValue('groom'),
+        weddingDate: fieldValue('date'),
+        babyMaxAge: Number(document.getElementById('babyMaxAge').value),
+        guestSheetId: fieldValue('guestSheet'),
+        sheetTab: fieldValue('tab'),
+        ...savedOptional,
+        ...extra,
+      };
+    }
+
+    async function openColumnMap(errorEl) {
+      try {
+        await continueSignupColumnMap();
+      } catch (error) {
+        errorEl.textContent = error.message;
+      }
+    }
+
     document.getElementById('image').addEventListener('change', () => {
       const file = document.getElementById('image').files[0];
-      document.getElementById('signupError').textContent = '';
+      document.getElementById('imageError').textContent = '';
       if (file && file.size > MAX_INVITE_IMAGE_BYTES) {
-        document.getElementById('signupError').textContent = 'התמונה חייבת להיות עד 5MB';
+        document.getElementById('imageError').textContent = 'התמונה חייבת להיות עד 5MB';
         document.getElementById('image').value = '';
       }
     });
 
     signupForm.onsubmit = async (e) => {
       e.preventDefault();
-      document.getElementById('signupError').textContent = '';
+      const errorEl = document.getElementById('signupError');
+      errorEl.textContent = '';
       const signupPassword = signupPasswordField.getValue();
       if (!signupPasswordField.passwordOk()) {
         signupPasswordField.showRules();
-        document.getElementById('signupError').textContent = 'הסיסמה לא עומדת בכללים';
+        errorEl.textContent = 'הסיסמה לא עומדת בכללים';
         document.getElementById('sPassword').classList.add('is-invalid');
         document.getElementById('sPassword').focus();
         return;
       }
+      setFormBusy(signupForm, true);
       try {
-        const image = document.getElementById('image').files[0];
-        if (!image) throw new Error('יש להעלות תמונת הזמנה');
-        if (image.size > MAX_INVITE_IMAGE_BYTES) {
-          throw new Error('התמונה חייבת להיות עד 5MB');
-        }
         await post('/api/auth/register', {
-          email: document.getElementById('sEmail').value,
+          email: fieldValue('sEmail'),
           password: signupPassword,
-          brideName: document.getElementById('bride').value,
-          groomName: document.getElementById('groom').value,
-          weddingDate: document.getElementById('date').value,
+          brideName: fieldValue('bride'),
+          groomName: fieldValue('groom'),
+          weddingDate: fieldValue('date'),
           babyMaxAge: Number(document.getElementById('babyMaxAge').value),
-          wazeUrl: document.getElementById('waze').value,
-          mapsUrl: document.getElementById('maps').value,
-          daniellePaybox: document.getElementById('pb1').value,
-          yuvalPaybox: document.getElementById('pb2').value,
-          danielleBit: document.getElementById('bit1').value,
-          yuvalBit: document.getElementById('bit2').value,
-          guestSheetId: document.getElementById('guestSheet').value,
-          sheetTab: document.getElementById('tab').value,
-          inviteImageDataUrl: await fileToDataUrl(image),
+          guestSheetId: fieldValue('guestSheet'),
+          sheetTab: fieldValue('tab'),
         });
-        await continueSignupColumnMap();
+        show(signupImageForm);
       } catch (error) {
-        document.getElementById('signupError').textContent = error.message;
+        errorEl.textContent = error.message;
+      } finally {
+        setFormBusy(signupForm, false);
       }
+    };
+
+    signupImageForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('imageError');
+      errorEl.textContent = '';
+      const image = document.getElementById('image').files[0];
+      if (!image) {
+        errorEl.textContent = 'בחרו תמונה, או דלגו והשלימו אחר כך';
+        return;
+      }
+      if (image.size > MAX_INVITE_IMAGE_BYTES) {
+        errorEl.textContent = 'התמונה חייבת להיות עד 5MB';
+        return;
+      }
+      setFormBusy(signupImageForm, true);
+      try {
+        const inviteImageDataUrl = await fileToDataUrl(image);
+        await put('/api/auth/settings', signupSettingsBody({ inviteImageDataUrl }));
+        show(signupNavForm);
+      } catch (error) {
+        errorEl.textContent = error.message;
+      } finally {
+        setFormBusy(signupImageForm, false);
+      }
+    };
+
+    document.getElementById('skipImage').onclick = () => {
+      document.getElementById('imageError').textContent = '';
+      show(signupNavForm);
+    };
+
+    signupNavForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('navError');
+      errorEl.textContent = '';
+      const wazeUrl = fieldValue('waze');
+      const mapsUrl = fieldValue('maps');
+      if (!wazeUrl && !mapsUrl) {
+        errorEl.textContent = 'הזינו קישור, או דלגו והשלימו אחר כך';
+        return;
+      }
+      setFormBusy(signupNavForm, true);
+      try {
+        await put('/api/auth/settings', signupSettingsBody({ wazeUrl, mapsUrl }));
+        savedOptional.wazeUrl = wazeUrl;
+        savedOptional.mapsUrl = mapsUrl;
+        show(signupPayForm);
+      } catch (error) {
+        errorEl.textContent = error.message;
+      } finally {
+        setFormBusy(signupNavForm, false);
+      }
+    };
+
+    document.getElementById('skipNav').onclick = () => {
+      document.getElementById('navError').textContent = '';
+      show(signupPayForm);
+    };
+
+    signupPayForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('payError');
+      errorEl.textContent = '';
+      const payments = {
+        daniellePaybox: fieldValue('pb1'),
+        yuvalPaybox: fieldValue('pb2'),
+        danielleBit: fieldValue('bit1'),
+        yuvalBit: fieldValue('bit2'),
+      };
+      if (!Object.values(payments).some(Boolean)) {
+        errorEl.textContent = 'הזינו קישור, או דלגו והשלימו אחר כך';
+        return;
+      }
+      setFormBusy(signupPayForm, true);
+      try {
+        await put('/api/auth/settings', signupSettingsBody(payments));
+        Object.assign(savedOptional, payments);
+        await openColumnMap(errorEl);
+      } catch (error) {
+        errorEl.textContent = error.message;
+      } finally {
+        setFormBusy(signupPayForm, false);
+      }
+    };
+
+    document.getElementById('skipPay').onclick = () => {
+      document.getElementById('payError').textContent = '';
+      setFormBusy(signupPayForm, true);
+      openColumnMap(document.getElementById('payError')).finally(() => setFormBusy(signupPayForm, false));
     };
 
     mapForm.onsubmit = async (e) => {

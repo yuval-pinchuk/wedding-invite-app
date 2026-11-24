@@ -418,11 +418,8 @@ export async function createAccount(input) {
   }
   assertWeddingDate(weddingDate);
 
-  if (!input.inviteImageDataUrl) {
-    throw Object.assign(new Error('יש להעלות תמונת הזמנה'), { status: 400 });
-  }
-  // Validate before creating the row.
-  const parsedInvite = parseInviteDataUrl(input.inviteImageDataUrl);
+  // Image is optional at signup; validate before creating the row when one was sent.
+  const parsedInvite = input.inviteImageDataUrl ? parseInviteDataUrl(input.inviteImageDataUrl) : null;
 
   const id = randomUUID();
   const account = {
@@ -461,6 +458,7 @@ export async function createAccount(input) {
     createdAt: new Date().toISOString(),
   };
   await saveAccount(account);
+  if (!parsedInvite) return account;
   try {
     const inviteImageFile = await saveInviteImage(id, input.inviteImageDataUrl);
     return { ...account, inviteImageFile, inviteImageMime: parsedInvite.mime };
