@@ -38,7 +38,7 @@ const __dirname = path.dirname(__filename);
 /** Project root (this file lives in server/services/). */
 const repoRoot = path.join(__dirname, '..', '..');
 
-/** @typedef {{ sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean, lastUsedAt: number, suppressReconnect: boolean }} SenderSession */
+/** @typedef {{ key: string, accountId: string, senderKey: string, authDir: string, sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean, lastUsedAt: number, suppressReconnect: boolean, lastError: string | null, reconnectTimer: ReturnType<typeof setTimeout> | null, loggedOutRetries: number }} SenderSession */
 
 /** @type {Map<string, SenderSession>} */
 const sessions = new Map();
@@ -50,19 +50,61 @@ const DEFAULT_INVITE_IMAGE_NAME = 'WEDDING.png';
 const DEFAULT_CLEANUP_INTERVAL_MS = 900000;
 const DEFAULT_SESSION_IDLE_MS = 2700000;
 const DEFAULT_HEAP_SOFT_LIMIT_MB = 220;
+const WA_VERSION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const WA_VERSION_TIMEOUT_MS = 4000;
+
+/** @type {{ version: [number, number, number] | undefined, fetchedAt: number } | null} */
+let cachedWaVersion = null;
+
+async function getWaWebVersionSafe() {
+  if (cachedWaVersion && Date.now() - cachedWaVersion.fetchedAt < WA_VERSION_CACHE_TTL_MS) {
+    return cachedWaVersion.version;
+  }
+  try {
+    const res = await Promise.race([
+      fetchLatestWaWebVersion(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('fetchLatestWaWebVersion timeout')), WA_VERSION_TIMEOUT_MS)),
+    ]);
+    const version = res?.version;
+    if (Array.isArray(version) && version.length === 3) {
+      cachedWaVersion = { version, fetchedAt: Date.now() };
+      return version;
+    }
+  } catch (error) {
+    console.warn('[WhatsApp] fetchLatestWaWebVersion failed, using Baileys default:', error?.message || error);
+  }
+  return cachedWaVersion?.version;
+}
 
 /** @type {ReturnType<typeof setInterval> | null} */
 let maintenanceTimer = null;
 
+function waOwnerAndKey(senderName) {
+  const accountId = currentAccount()?.id || '';
+  const senderKey = (senderName || '').trim() || 'default';
+  return { accountId, senderKey };
+}
+
 function sessionKey(senderName) {
-  return (senderName || '').trim();
+  const { accountId, senderKey } = waOwnerAndKey(senderName);
+  return `${accountId || 'default'}:${senderKey}`;
+}
+
+export function authDirForSender(senderName) {
+  const { accountId, senderKey } = waOwnerAndKey(senderName);
+  return path.join(getDataDir(), 'wa', accountId || 'default', encodeURIComponent(senderKey));
 }
 
 /** @returns {SenderSession} */
 function getSession(senderName) {
-  const key = sessionKey(senderName);
+  const { accountId, senderKey } = waOwnerAndKey(senderName);
+  const key = `${accountId || 'default'}:${senderKey}`;
   if (!sessions.has(key)) {
     sessions.set(key, {
+      key,
+      accountId,
+      senderKey,
+      authDir: path.join(getDataDir(), 'wa', accountId || 'default', encodeURIComponent(senderKey)),
       sock: null,
       qrCode: null,
       isReady: false,
@@ -70,14 +112,16 @@ function getSession(senderName) {
       userStopped: false,
       lastUsedAt: Date.now(),
       suppressReconnect: false,
+      lastError: null,
+      reconnectTimer: null,
+      loggedOutRetries: 0,
     });
   }
   return sessions.get(key);
 }
 
 function touchSession(senderName) {
-  const key = sessionKey(senderName);
-  const s = sessions.get(key);
+  const s = sessions.get(sessionKey(senderName));
   if (s) {
     s.lastUsedAt = Date.now();
   }
@@ -93,34 +137,30 @@ function envPositiveMb(name, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export function authDirForSender(senderName) {
-  const owner = currentAccount()?.id || 'default';
-  return path.join(getDataDir(), 'wa', owner, encodeURIComponent(sessionKey(senderName)));
-}
-
-function waOwnerAndKey(senderName) {
-  const accountId = currentAccount()?.id || '';
-  const senderKey = sessionKey(senderName) || 'default';
-  return { accountId, senderKey };
-}
-
 /** Debounced Neon sync so rapid Baileys key writes coalesce. */
 const waSyncTimers = new Map();
 
-function scheduleWaAuthSync(senderName) {
-  const { accountId, senderKey } = waOwnerAndKey(senderName);
-  if (!accountId) return;
-  const mapKey = `${accountId}:${senderKey}`;
+/** @param {SenderSession | string} sessionOrSender */
+function scheduleWaAuthSync(sessionOrSender) {
+  const s = typeof sessionOrSender === 'string' ? getSession(sessionOrSender) : sessionOrSender;
+  if (!s?.accountId) return;
+  const mapKey = s.key;
   const prev = waSyncTimers.get(mapKey);
   if (prev) clearTimeout(prev);
   const timer = setTimeout(() => {
     waSyncTimers.delete(mapKey);
-    const dir = authDirForSender(senderName);
-    syncWaAuthToNeon(accountId, senderKey, dir).catch((err) => {
+    syncWaAuthToNeon(s.accountId, s.senderKey, s.authDir).catch((err) => {
       console.error('[WhatsApp] Neon auth sync failed', err?.message || err);
     });
   }, 400);
   waSyncTimers.set(mapKey, timer);
+}
+
+function clearReconnectTimer(s) {
+  if (s?.reconnectTimer) {
+    clearTimeout(s.reconnectTimer);
+    s.reconnectTimer = null;
+  }
 }
 
 const DEFAULT_SEND_DELAY_MS = 2000;
@@ -260,101 +300,167 @@ export function isSenderConfigured(_senderName) {
 }
 
 /**
- * Start or reconnect Baileys for this sender. Idempotent while connecting.
+ * Clear local + Neon auth for a session (used on 401 loggedOut so next connect emits a fresh QR).
+ * @param {SenderSession} s
  */
-async function connectSocket(senderName) {
-  const s = getSession(senderName);
+async function wipeSessionAuth(s) {
+  const pendingSync = waSyncTimers.get(s.key);
+  if (pendingSync) {
+    clearTimeout(pendingSync);
+    waSyncTimers.delete(s.key);
+  }
+  if (fs.existsSync(s.authDir)) {
+    fs.rmSync(s.authDir, { recursive: true, force: true });
+  }
+  if (s.accountId) {
+    try {
+      await deleteWaAuthFromNeon(s.accountId, s.senderKey);
+    } catch (error) {
+      console.error(`[WhatsApp] [${s.key}] Neon auth delete failed:`, error?.message || error);
+    }
+  }
+}
+
+/**
+ * Start or reconnect Baileys for this session. Idempotent while connecting.
+ * @param {SenderSession} s
+ */
+async function connectSession(s) {
   s.suppressReconnect = false;
+  clearReconnectTimer(s);
   if (s.userStopped) {
     return;
   }
   if (s.sock && s.isReady) {
     return;
   }
-  if (s.sock && !s.isReady && !s.connecting) {
-    try {
-      s.sock.end(undefined);
-    } catch {
-      /* ignore */
-    }
-    s.sock = null;
-  }
   if (s.connecting) {
     return s.connecting;
   }
+  if (s.sock && !s.isReady) {
+    const oldSock = s.sock;
+    s.sock = null;
+    try {
+      oldSock.end(undefined);
+    } catch {
+      /* ignore */
+    }
+  }
 
   s.connecting = (async () => {
-    const dir = authDirForSender(senderName);
-    const { accountId, senderKey } = waOwnerAndKey(senderName);
-    await fs.promises.mkdir(dir, { recursive: true });
-    if (accountId) {
+    console.log(`[WhatsApp] [${s.key}] connect start`);
+    await fs.promises.mkdir(s.authDir, { recursive: true });
+    if (s.accountId) {
       try {
-        await restoreWaAuthFromNeon(accountId, senderKey, dir);
+        await restoreWaAuthFromNeon(s.accountId, s.senderKey, s.authDir);
       } catch (error) {
-        console.error('[WhatsApp] Neon auth restore failed', error?.message || error);
+        console.error(`[WhatsApp] [${s.key}] Neon auth restore failed:`, error?.message || error);
       }
     }
-    const { state, saveCreds } = await useMultiFileAuthState(dir);
+    const { state, saveCreds } = await useMultiFileAuthState(s.authDir);
+    const version = await getWaWebVersionSafe();
 
-    const { version } = await fetchLatestWaWebVersion();
-
-    const sock = makeWASocket({
-      version,
+    /** @type {any} */
+    const socketOpts = {
       auth: state,
       logger: silentLogger,
       syncFullHistory: false,
       markOnlineOnConnect: false,
       printQRInTerminal: false,
-    });
+    };
+    if (version) {
+      socketOpts.version = version;
+    }
 
+    const sock = makeWASocket(socketOpts);
     s.sock = sock;
 
     sock.ev.on('creds.update', async () => {
+      if (s.sock !== sock) return;
       await saveCreds();
-      scheduleWaAuthSync(senderName);
+      scheduleWaAuthSync(s);
     });
 
     sock.ev.on('connection.update', (update) => {
+      if (s.sock !== sock) return;
       const { connection, lastDisconnect, qr } = update;
       if (qr) {
         s.qrCode = qr;
+        s.lastError = null;
+        s.loggedOutRetries = 0;
+        console.log(`[WhatsApp] [${s.key}] QR received`);
       }
       if (connection === 'open') {
         s.isReady = true;
         s.qrCode = null;
-        scheduleWaAuthSync(senderName);
+        s.lastError = null;
+        s.loggedOutRetries = 0;
+        console.log(`[WhatsApp] [${s.key}] connected (open)`);
+        scheduleWaAuthSync(s);
       }
       if (connection === 'close') {
         s.isReady = false;
         s.sock = null;
-        scheduleWaAuthSync(senderName);
+        const err = lastDisconnect?.error;
+        const code = err instanceof Boom ? err.output?.statusCode : err?.output?.statusCode;
+        const loggedOut = code === DisconnectReason.loggedOut;
+        console.log(
+          `[WhatsApp] [${s.key}] closed code=${code ?? 'unknown'} loggedOut=${loggedOut} msg=${err?.message || ''}`,
+        );
         if (s.userStopped || s.suppressReconnect) {
+          scheduleWaAuthSync(s);
           return;
         }
-        const err = lastDisconnect?.error;
-        const code = err instanceof Boom ? err.output?.statusCode : undefined;
-        const loggedOut = code === DisconnectReason.loggedOut;
-        if (!loggedOut) {
-          const delayMs = code === DisconnectReason.restartRequired ? 1000 : 3000;
-          setTimeout(() => {
-            const cur = getSession(senderName);
-            if (cur.userStopped || cur.suppressReconnect) {
-              return;
-            }
-            s.connecting = null;
-            void connectSocket(senderName);
-          }, delayMs);
+        if (loggedOut) {
+          s.qrCode = null;
+          if (s.loggedOutRetries < 1) {
+            s.loggedOutRetries += 1;
+            console.log(`[WhatsApp] [${s.key}] stale auth (401) — clearing auth and reconnecting for fresh QR`);
+            void (async () => {
+              await wipeSessionAuth(s);
+              if (s.userStopped || s.suppressReconnect) return;
+              s.connecting = null;
+              await connectSession(s).catch((e) => {
+                s.lastError = e?.message || String(e);
+                console.error(`[WhatsApp] [${s.key}] reconnect after 401 failed:`, s.lastError);
+              });
+            })();
+          } else {
+            s.lastError = 'החיבור לוואטסאפ נותק. לחצו "ניתוק וקוד QR חדש" ונסו שוב.';
+          }
+          return;
         }
+        scheduleWaAuthSync(s);
+        const delayMs = code === DisconnectReason.restartRequired ? 1000 : 3000;
+        clearReconnectTimer(s);
+        s.reconnectTimer = setTimeout(() => {
+          s.reconnectTimer = null;
+          if (s.userStopped || s.suppressReconnect) {
+            return;
+          }
+          s.connecting = null;
+          void connectSession(s).catch((e) => {
+            s.lastError = e?.message || String(e);
+            console.error(`[WhatsApp] [${s.key}] reconnect failed:`, s.lastError);
+          });
+        }, delayMs);
       }
     });
   })();
 
   try {
     await s.connecting;
+  } catch (error) {
+    s.lastError = error?.message || String(error);
+    console.error(`[WhatsApp] [${s.key}] connect failed:`, s.lastError);
+    throw error;
   } finally {
     s.connecting = null;
-    scheduleWaAuthSync(senderName);
   }
+}
+
+async function connectSocket(senderName) {
+  return connectSession(getSession(senderName));
 }
 
 /**
@@ -363,9 +469,11 @@ async function connectSocket(senderName) {
 export async function initializeWhatsApp(senderName = 'default') {
   const s = getSession(senderName);
   s.userStopped = false;
+  s.lastError = null;
+  s.loggedOutRetries = 0;
   touchSession(senderName);
-  await connectSocket(senderName);
-  return getSession(senderName).sock;
+  await connectSession(s);
+  return s.sock;
 }
 
 /**
@@ -403,6 +511,7 @@ export function getStatus(senderName = 'default') {
   return {
     ready: s.isReady,
     qrCode: s.qrCode,
+    lastError: s.lastError,
   };
 }
 
@@ -424,17 +533,16 @@ export async function baileysPairingToQrDataUrl(pairingString) {
 }
 
 /**
- * End the socket but keep auth on disk so the next connect can restore without a new QR.
- * @param {string} senderName
+ * End the socket for a session object but keep auth on disk so the next connect can restore without a new QR.
+ * @param {SenderSession} s
  * @param {string} [reason]
  */
-export function softCloseSession(senderName, reason = 'idle') {
-  const key = sessionKey(senderName);
-  const s = sessions.get(key);
+function softCloseSessionObj(s, reason = 'idle') {
   if (!s?.sock) {
     return;
   }
 
+  clearReconnectTimer(s);
   const sock = s.sock;
   s.sock = null;
   s.qrCode = null;
@@ -448,8 +556,18 @@ export function softCloseSession(senderName, reason = 'idle') {
     /* ignore */
   }
 
-  scheduleWaAuthSync(senderName);
-  console.log(`[WhatsApp] soft-closed ${key || senderName} (${reason})`);
+  scheduleWaAuthSync(s);
+  console.log(`[WhatsApp] soft-closed ${s.key} (${reason})`);
+}
+
+/**
+ * End the socket but keep auth on disk so the next connect can restore without a new QR.
+ * @param {string} senderName
+ * @param {string} [reason]
+ */
+export function softCloseSession(senderName, reason = 'idle') {
+  const s = sessions.get(sessionKey(senderName));
+  if (s) softCloseSessionObj(s, reason);
 }
 
 /**
@@ -457,37 +575,26 @@ export function softCloseSession(senderName, reason = 'idle') {
  */
 export async function destroySession(senderName) {
   const key = sessionKey(senderName);
-  const { accountId, senderKey } = waOwnerAndKey(senderName);
-  const s = sessions.get(key);
-  if (s) {
-    s.userStopped = true;
-    s.qrCode = null;
-    s.isReady = false;
-    const sock = s.sock;
-    s.sock = null;
-    if (sock) {
+  const s = sessions.get(key) || getSession(senderName);
+  clearReconnectTimer(s);
+  s.userStopped = true;
+  s.qrCode = null;
+  s.isReady = false;
+  s.lastError = null;
+  const sock = s.sock;
+  s.sock = null;
+  if (sock) {
+    try {
+      await sock.logout();
+    } catch {
       try {
-        await sock.logout();
+        sock.end(undefined);
       } catch {
-        try {
-          sock.end(undefined);
-        } catch {
-          /* ignore */
-        }
+        /* ignore */
       }
     }
   }
-  const dir = authDirForSender(senderName);
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-  if (accountId) {
-    try {
-      await deleteWaAuthFromNeon(accountId, senderKey);
-    } catch (error) {
-      console.error('[WhatsApp] Neon auth delete failed', error?.message || error);
-    }
-  }
+  await wipeSessionAuth(s);
   sessions.delete(key);
 }
 
@@ -729,18 +836,18 @@ function runSessionMaintenanceTick() {
   const now = Date.now();
 
   if (heapUsedMb >= heapSoftLimitMb) {
-    for (const [name, s] of sessions) {
+    for (const s of sessions.values()) {
       if (s.sock) {
-        softCloseSession(name, `heap-pressure ${heapUsedMb.toFixed(1)}MB>=${heapSoftLimitMb}MB`);
+        softCloseSessionObj(s, `heap-pressure ${heapUsedMb.toFixed(1)}MB>=${heapSoftLimitMb}MB`);
       }
     }
     return;
   }
 
-  for (const [name, s] of sessions) {
+  for (const s of sessions.values()) {
     if (!s.sock) continue;
     if (now - (s.lastUsedAt || 0) >= idleMs) {
-      softCloseSession(name, `idle ${Math.round((now - s.lastUsedAt) / 60000)}m`);
+      softCloseSessionObj(s, `idle ${Math.round((now - s.lastUsedAt) / 60000)}m`);
     }
   }
 }

@@ -1177,6 +1177,9 @@
             if (changed) {
               document.getElementById('qrStatus').textContent = 'Scan QR with WhatsApp (Linked devices).';
             }
+          } else if (data.error) {
+            setWaConnectedUi(false);
+            document.getElementById('qrStatus').textContent = data.error;
           }
         } catch {
           /* ignore */

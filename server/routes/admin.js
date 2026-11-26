@@ -438,17 +438,7 @@ router.post('/init-whatsapp', async (req, res) => {
 router.get('/whatsapp-status/:sender', async (req, res) => {
   try {
     const { sender } = req.params;
-    let status = getStatus(sender);
-
-    try {
-      const client = getClient(sender);
-      if (client?.user?.id) {
-        status = { ready: true, qrCode: null };
-      }
-    } catch {
-      /* ignore */
-    }
-
+    const status = getStatus(sender);
     const raw = status.qrCode || null;
     const qrDataUrl = raw ? await safeQrDataUrl(raw) : null;
     res.json({
@@ -456,6 +446,7 @@ router.get('/whatsapp-status/:sender', async (req, res) => {
       ready: status.ready || false,
       qr: raw,
       qrDataUrl,
+      error: status.lastError || null,
     });
   } catch (error) {
     console.error('[whatsapp-status]', error);
@@ -464,6 +455,7 @@ router.get('/whatsapp-status/:sender', async (req, res) => {
       ready: false,
       qr: null,
       qrDataUrl: null,
+      error: error.message || null,
     });
   }
 });
