@@ -29,6 +29,7 @@ const SESSION_PURGE_MS = 15 * 60 * 1000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../public');
+const viewsDir = path.resolve(__dirname, './views');
 
 app.set('trust proxy', 1);
 app.use(securityHeaders);
@@ -56,7 +57,7 @@ async function requireLoginPage(req, res, nextFile) {
     }
     refreshSessionCookieIfNeeded(req, res);
     noStore(res);
-    return res.sendFile(path.join(publicDir, nextFile));
+    return res.sendFile(path.join(viewsDir, nextFile));
   } catch (error) {
     console.error('[auth] page session check failed', error);
     noStore(res);

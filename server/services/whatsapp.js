@@ -19,6 +19,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { getDataDir } from '../config/dataDir.js';
 import { currentAccount } from './accountContext.js';
@@ -38,7 +39,7 @@ const __dirname = path.dirname(__filename);
 /** Project root (this file lives in server/services/). */
 const repoRoot = path.join(__dirname, '..', '..');
 
-/** @typedef {{ key: string, accountId: string, senderKey: string, authDir: string, sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean, lastUsedAt: number, suppressReconnect: boolean, lastError: string | null, reconnectTimer: ReturnType<typeof setTimeout> | null, loggedOutRetries: number }} SenderSession */
+/** @typedef {{ key: string, accountId: string, senderKey: string, accountWaRoot: string, authDir: string, sock: any, qrCode: string | null, isReady: boolean, connecting: Promise<unknown> | null, userStopped: boolean, lastUsedAt: number, suppressReconnect: boolean, lastError: string | null, reconnectTimer: ReturnType<typeof setTimeout> | null, loggedOutRetries: number }} SenderSession */
 
 /** @type {Map<string, SenderSession>} */
 const sessions = new Map();
@@ -79,9 +80,32 @@ async function getWaWebVersionSafe() {
 /** @type {ReturnType<typeof setInterval> | null} */
 let maintenanceTimer = null;
 
+function assertValidSenderKey(senderName) {
+  const senderKey = String(senderName ?? '').trim() || 'default';
+  if (
+    senderKey === '.'
+    || senderKey === '..'
+    || senderKey.length > 120
+    || /[\\/\0]/.test(senderKey)
+    || senderKey.includes('..')
+  ) {
+    throw Object.assign(new Error('שם שולח לא תקין'), { status: 400 });
+  }
+  return senderKey;
+}
+
+function assertPathWithinRoot(targetPath, rootDir) {
+  const resolvedRoot = path.resolve(rootDir);
+  const resolvedTarget = path.resolve(targetPath);
+  if (!resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+    throw Object.assign(new Error('Invalid WhatsApp auth path'), { status: 400 });
+  }
+  return resolvedTarget;
+}
+
 function waOwnerAndKey(senderName) {
   const accountId = currentAccount()?.id || '';
-  const senderKey = (senderName || '').trim() || 'default';
+  const senderKey = assertValidSenderKey(senderName);
   return { accountId, senderKey };
 }
 
@@ -90,9 +114,17 @@ function sessionKey(senderName) {
   return `${accountId || 'default'}:${senderKey}`;
 }
 
+function resolveAccountWaPaths(accountId, senderKey) {
+  const owner = String(accountId || 'default').replace(/[^a-zA-Z0-9_-]/g, '') || 'default';
+  const accountWaRoot = path.resolve(getDataDir(), 'wa', owner);
+  const dirHash = createHash('sha256').update(senderKey).digest('hex').slice(0, 32);
+  const authDir = assertPathWithinRoot(path.resolve(accountWaRoot, dirHash), accountWaRoot);
+  return { accountWaRoot, authDir };
+}
+
 export function authDirForSender(senderName) {
   const { accountId, senderKey } = waOwnerAndKey(senderName);
-  return path.join(getDataDir(), 'wa', accountId || 'default', encodeURIComponent(senderKey));
+  return resolveAccountWaPaths(accountId, senderKey).authDir;
 }
 
 /** @returns {SenderSession} */
@@ -100,11 +132,13 @@ function getSession(senderName) {
   const { accountId, senderKey } = waOwnerAndKey(senderName);
   const key = `${accountId || 'default'}:${senderKey}`;
   if (!sessions.has(key)) {
+    const { accountWaRoot, authDir } = resolveAccountWaPaths(accountId, senderKey);
     sessions.set(key, {
       key,
       accountId,
       senderKey,
-      authDir: path.join(getDataDir(), 'wa', accountId || 'default', encodeURIComponent(senderKey)),
+      accountWaRoot,
+      authDir,
       sock: null,
       qrCode: null,
       isReady: false,
@@ -149,7 +183,8 @@ function scheduleWaAuthSync(sessionOrSender) {
   if (prev) clearTimeout(prev);
   const timer = setTimeout(() => {
     waSyncTimers.delete(mapKey);
-    syncWaAuthToNeon(s.accountId, s.senderKey, s.authDir).catch((err) => {
+    const safeDir = assertPathWithinRoot(s.authDir, s.accountWaRoot);
+    syncWaAuthToNeon(s.accountId, s.senderKey, safeDir).catch((err) => {
       console.error('[WhatsApp] Neon auth sync failed', err?.message || err);
     });
   }, 400);
@@ -309,8 +344,9 @@ async function wipeSessionAuth(s) {
     clearTimeout(pendingSync);
     waSyncTimers.delete(s.key);
   }
-  if (fs.existsSync(s.authDir)) {
-    fs.rmSync(s.authDir, { recursive: true, force: true });
+  const safeDir = assertPathWithinRoot(s.authDir, s.accountWaRoot);
+  if (fs.existsSync(safeDir)) {
+    fs.rmSync(safeDir, { recursive: true, force: true });
   }
   if (s.accountId) {
     try {
@@ -349,15 +385,16 @@ async function connectSession(s) {
 
   s.connecting = (async () => {
     console.log(`[WhatsApp] [${s.key}] connect start`);
-    await fs.promises.mkdir(s.authDir, { recursive: true });
+    const safeDir = assertPathWithinRoot(s.authDir, s.accountWaRoot);
+    await fs.promises.mkdir(safeDir, { recursive: true });
     if (s.accountId) {
       try {
-        await restoreWaAuthFromNeon(s.accountId, s.senderKey, s.authDir);
+        await restoreWaAuthFromNeon(s.accountId, s.senderKey, safeDir);
       } catch (error) {
         console.error(`[WhatsApp] [${s.key}] Neon auth restore failed:`, error?.message || error);
       }
     }
-    const { state, saveCreds } = await useMultiFileAuthState(s.authDir);
+    const { state, saveCreds } = await useMultiFileAuthState(safeDir);
     const version = await getWaWebVersionSafe();
 
     /** @type {any} */

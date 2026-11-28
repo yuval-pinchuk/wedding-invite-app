@@ -1,11 +1,13 @@
 import express from 'express';
-import { getServiceAccountEmail, readHeaderRow } from '../services/googleSheets.js';
+import { getServiceAccountEmail, readHeaderRow, verifySheetOwnership } from '../services/googleSheets.js';
 import { sendMail } from '../services/mailer.js';
 import { getPaymentSeedUrls, seedPaymentFile, updatePaymentSeedUrls } from '../services/paymentRouting.js';
 import {
   createAccount,
   deleteAccount,
+  ensureSheetVerifyCode,
   findAccountByEmail,
+  findAccountByGuestSheetId,
   issueResetCode,
   issueUnlockCode,
   normalizeBabyMaxAge,
@@ -31,7 +33,16 @@ import {
   requireAccount,
   setSessionCookie,
 } from '../services/sessions.js';
-import { clearCodeFailures, rateLimit, recordCodeFailure, tooManyCodeAttempts } from '../middleware/security.js';
+import {
+  clearCodeFailures,
+  createSheetChallenge,
+  rateLimit,
+  recordCodeFailure,
+  tooManyCodeAttempts,
+  validateMapsUrl,
+  validateWazeUrl,
+  verifySheetChallengeToken,
+} from '../middleware/security.js';
 
 const router = express.Router();
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: 'auth' });
@@ -43,9 +54,12 @@ function sheetIdFromInput(value) {
 }
 
 router.get('/setup', (_req, res) => {
+  const challenge = createSheetChallenge();
   res.json({
     success: true,
     serviceAccountEmail: getServiceAccountEmail() || '',
+    sheetVerifyCode: challenge.code,
+    sheetVerifyToken: challenge.token,
   });
 });
 
@@ -62,8 +76,6 @@ router.post('/register', authLimit, async (req, res) => {
   let createdId = '';
   try {
     const body = req.body || {};
-    const email = String(body.email || '').trim().toLowerCase();
-    const password = String(body.password || '');
     const guestSheetId = sheetIdFromInput(body.guestSheetId);
     const responseSheetId = sheetIdFromInput(body.responseSheetId);
     const sheetTab = String(body.sheetTab || '').trim() || 'חתונה';
@@ -72,8 +84,31 @@ router.post('/register', authLimit, async (req, res) => {
       return res.status(400).json({ success: false, error: 'יש למלא את כל פרטי החתונה והגיליון' });
     }
 
-    // Fail before creating a row if the sheet is not readable yet.
+    const existingOwner = await findAccountByGuestSheetId(guestSheetId);
+    if (existingOwner) {
+      return res.status(409).json({
+        success: false,
+        error: 'גיליון זה כבר משויך לחשבון אחר.',
+      });
+    }
+
+    const challengeCode = verifySheetChallengeToken(body.sheetVerifyToken);
+    if (!challengeCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'קוד אימות הגיליון חסר או פג תוקף. רעננו את העמוד ונסו שוב.',
+      });
+    }
+
+    // Fail before creating a row if the sheet is not readable or ownership is not proven.
     try {
+      const ownsSheet = await verifySheetOwnership(guestSheetId, sheetTab, challengeCode);
+      if (!ownsSheet) {
+        return res.status(400).json({
+          success: false,
+          error: `כדי לאמת בעלות על הגיליון, הוסיפו את הקוד ${challengeCode} לכותרת הגיליון או לאחד התאים בשורה 1 ונסו שוב.`,
+        });
+      }
       await readHeaderRow(guestSheetId, sheetTab);
     } catch (sheetError) {
       return res.status(400).json({
@@ -93,34 +128,17 @@ router.post('/register', authLimit, async (req, res) => {
       });
       createdId = account.id;
     } catch (error) {
-      // Same email+password after a previous half-finished signup: resume instead of hard-fail.
-      if (error.status === 409 && email && password) {
-        const existing = await findAccountByEmail(email);
-        if (existing && await verifyPassword(password, existing.passwordHash)) {
-          account = await updateAccount(existing.id, {
-            brideName: String(body.brideName || existing.brideName || '').trim(),
-            groomName: String(body.groomName || existing.groomName || '').trim(),
-            weddingDate: String(body.weddingDate || existing.weddingDate || '').trim(),
-            wazeUrl: String(body.wazeUrl || '').trim(),
-            mapsUrl: String(body.mapsUrl || '').trim(),
-            guestSheetId,
-            responseSheetId,
-            sheetTab,
-            babyMaxAge: normalizeBabyMaxAge(body.babyMaxAge ?? existing.babyMaxAge),
-          });
-          if (body.inviteImageDataUrl) {
-            const file = await saveInviteImage(existing.id, body.inviteImageDataUrl);
-            account = await updateAccount(existing.id, { inviteImageFile: file });
-          }
-          await seedPaymentFile(existing.id, {
-            daniellePaybox: body.daniellePaybox,
-            yuvalPaybox: body.yuvalPaybox,
-            danielleBit: body.danielleBit,
-            yuvalBit: body.yuvalBit,
-          });
-          setSessionCookie(res, await createSession(account, req));
-          return res.json({ success: true, account: publicAccount(account), resumed: true });
-        }
+      if (error?.status === 409) {
+        return res.status(409).json({
+          success: false,
+          error: 'כבר קיים חשבון עם האימייל הזה. התחברו דרך מסך ההתחברות.',
+        });
+      }
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          success: false,
+          error: 'גיליון זה או האימייל כבר משויכים לחשבון קיים.',
+        });
       }
       throw error;
     }
@@ -132,7 +150,7 @@ router.post('/register', authLimit, async (req, res) => {
       createdId = '';
       throw Object.assign(
         new Error(seedError.message || 'שמירת קישורי התשלום נכשלה'),
-        { status: 500 },
+        { status: seedError.status || 500 },
       );
     }
 
@@ -267,6 +285,26 @@ router.get('/headers', requireAccount, async (req, res) => {
   try {
     const guestSheetId = sheetIdFromInput(req.query.guestSheetId || req.account.guestSheetId);
     const sheetTab = String(req.query.sheetTab || req.account.sheetTab || 'חתונה').trim() || 'חתונה';
+    if (!guestSheetId) {
+      return res.status(400).json({ success: false, error: 'יש להזין קישור לגיליון אורחים' });
+    }
+    const otherOwner = await findAccountByGuestSheetId(guestSheetId, req.account.id);
+    if (otherOwner) {
+      return res.status(403).json({
+        success: false,
+        error: 'גיליון זה משויך לחשבון אחר.',
+      });
+    }
+    if (guestSheetId !== req.account.guestSheetId) {
+      const verifyCode = await ensureSheetVerifyCode(req.account);
+      const ownsSheet = await verifySheetOwnership(guestSheetId, sheetTab, verifyCode);
+      if (!ownsSheet) {
+        return res.status(403).json({
+          success: false,
+          error: `כדי לקרוא גיליון חדש, הוסיפו את קוד האימות ${verifyCode} לכותרת הגיליון או לתא בשורה 1 ונסו שוב.`,
+        });
+      }
+    }
     const headers = await readHeaderRow(guestSheetId, sheetTab);
     res.json({ success: true, headers });
   } catch (error) {
@@ -285,6 +323,7 @@ router.post('/columns', requireAccount, async (req, res) => {
 
 router.get('/settings', requireAccount, async (req, res) => {
   try {
+    await ensureSheetVerifyCode(req.account);
     const paymentUrls = await getPaymentSeedUrls();
     res.json({
       success: true,
@@ -326,8 +365,8 @@ router.put('/landing-prefs', requireAccount, async (req, res) => {
       }
       patch.weddingDate = weddingDate;
     }
-    if (body.wazeUrl !== undefined) patch.wazeUrl = String(body.wazeUrl || '').trim();
-    if (body.mapsUrl !== undefined) patch.mapsUrl = String(body.mapsUrl || '').trim();
+    if (body.wazeUrl !== undefined) patch.wazeUrl = validateWazeUrl(body.wazeUrl);
+    if (body.mapsUrl !== undefined) patch.mapsUrl = validateMapsUrl(body.mapsUrl);
 
     if (patch.brideName !== undefined && !patch.brideName) {
       return res.status(400).json({ success: false, error: 'יש להזין שם כלה' });
@@ -365,12 +404,41 @@ router.put('/settings', requireAccount, async (req, res) => {
       return res.status(400).json({ success: false, error: 'יש לבחור תאריך חתונה' });
     }
 
+    const wazeUrl = validateWazeUrl(body.wazeUrl);
+    const mapsUrl = validateMapsUrl(body.mapsUrl);
+
+    if (guestSheetId !== req.account.guestSheetId) {
+      const otherOwner = await findAccountByGuestSheetId(guestSheetId, req.account.id);
+      if (otherOwner) {
+        return res.status(409).json({
+          success: false,
+          error: 'גיליון זה כבר משויך לחשבון אחר.',
+        });
+      }
+      const verifyCode = await ensureSheetVerifyCode(req.account);
+      let ownsSheet = false;
+      try {
+        ownsSheet = await verifySheetOwnership(guestSheetId, sheetTab, verifyCode);
+      } catch (sheetError) {
+        return res.status(400).json({
+          success: false,
+          error: sheetError.message || 'לא הצלחנו לקרוא את הגיליון החדש. ודאו שהוא משותף עם חשבון השירות.',
+        });
+      }
+      if (!ownsSheet) {
+        return res.status(400).json({
+          success: false,
+          error: `כדי להחליף לגיליון חדש, הוסיפו את קוד האימות ${verifyCode} לכותרת הגיליון או לאחד התאים בשורה 1 ונסו שוב.`,
+        });
+      }
+    }
+
     const patch = {
       brideName,
       groomName,
       weddingDate,
-      wazeUrl: String(body.wazeUrl || '').trim(),
-      mapsUrl: String(body.mapsUrl || '').trim(),
+      wazeUrl,
+      mapsUrl,
       guestSheetId,
       sheetTab,
       babyMaxAge: normalizeBabyMaxAge(body.babyMaxAge),
@@ -381,8 +449,6 @@ router.put('/settings', requireAccount, async (req, res) => {
       patch.inviteImageFile = await saveInviteImage(req.account.id, body.inviteImageDataUrl);
     }
 
-    const account = await updateAccount(req.account.id, patch);
-
     const paymentUrls = await updatePaymentSeedUrls({
       daniellePaybox: body.daniellePaybox,
       yuvalPaybox: body.yuvalPaybox,
@@ -390,12 +456,17 @@ router.put('/settings', requireAccount, async (req, res) => {
       yuvalBit: body.yuvalBit,
     });
 
+    const account = await updateAccount(req.account.id, patch);
+
     res.json({
       success: true,
       account: publicAccount(account),
       paymentUrls,
     });
   } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ success: false, error: 'גיליון זה כבר משויך לחשבון אחר.' });
+    }
     res.status(error.status || 500).json({ success: false, error: error.message || 'שמירת ההגדרות נכשלה' });
   }
 });

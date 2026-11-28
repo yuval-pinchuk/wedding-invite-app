@@ -41,13 +41,6 @@ export async function sendMail(message) {
     console.warn(`[mail] SMTP not configured. To ${message.to}\n${message.subject}\n${message.text}`);
     return { delivered: false };
   }
-  // #region agent log
-  {
-    const passRaw = String(process.env.SMTP_PASS || '');
-    const passCompact = passRaw.replace(/\s+/g, '');
-    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'82d556'},body:JSON.stringify({sessionId:'82d556',runId:'smtp-auth',hypothesisId:'A',location:'mailer.js:sendMail',message:'smtp auth preflight',data:{host:String(process.env.SMTP_HOST||''),userSet:Boolean(process.env.SMTP_USER),passLen:passRaw.length,passCompactLen:passCompact.length,looksLikeAppPassword:passCompact.length===16&&/^[a-zA-Z0-9]+$/.test(passCompact),secure:String(process.env.SMTP_SECURE||''),port:Number(process.env.SMTP_PORT||587)},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
   try {
     await transport().sendMail({
       from: stripEnvQuotes(process.env.SMTP_FROM),
@@ -55,14 +48,8 @@ export async function sendMail(message) {
       subject: message.subject,
       text: message.text,
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'82d556'},body:JSON.stringify({sessionId:'82d556',runId:'smtp-auth',hypothesisId:'E',location:'mailer.js:sendMail',message:'smtp send ok',data:{delivered:true},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return { delivered: true };
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7256/ingest/61c79d4c-5ece-4783-9102-c3a6465a4cec',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'82d556'},body:JSON.stringify({sessionId:'82d556',runId:'smtp-auth',hypothesisId:'A',location:'mailer.js:sendMail',message:'smtp send failed',data:{code:error?.code||'',responseCode:error?.responseCode||null,command:error?.command||'',responseSnippet:String(error?.response||error?.message||'').slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     console.error('[mail] send failed:', error?.code || '', error?.responseCode || '', error?.message || error);
     return { delivered: false, error: error?.code || 'SEND_FAILED' };
   }

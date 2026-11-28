@@ -1,6 +1,5 @@
 import express from 'express';
-import { envGuestSheetId } from '../config/loadEnv.js';
-import { updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
+import { getGuestByPhone, parseStoredRsvp, updateGuestRsvpOnGuestSheet } from '../services/googleSheets.js';
 import { findByPublicToken } from '../services/accounts.js';
 import { runAsAccount, currentAccount } from '../services/accountContext.js';
 import { upsertRsvpResponse } from '../services/rsvpResponses.js';
@@ -8,6 +7,7 @@ import { rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
 const publicWriteLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: 'rsvp' });
+const publicGuestLookupLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: 'rsvp-guest' });
 
 async function accountForRequest(req) {
   const token = String(req.query.token || req.body?.inviteToken || '').trim();
@@ -99,7 +99,7 @@ router.post('/', publicWriteLimit, async (req, res) => {
       });
     }
 
-    const guestSheetId = envGuestSheetId();
+    const guestSheetId = String(currentAccount().guestSheetId || '').trim();
     if (!guestSheetId) {
       return res.status(500).json({
         success: false,
@@ -162,10 +162,17 @@ router.post('/', publicWriteLimit, async (req, res) => {
  * GET /api/rsvp/guest/:phone
  * Get guest information by phone number for auto-filling the form
  */
-router.get('/guest/:phone', async (req, res) => {
+router.get('/guest/:phone', publicGuestLookupLimit, async (req, res) => {
   try {
+    if (!currentAccount()?.id) {
+      return res.status(404).json({
+        success: false,
+        error: 'החתונה לא נמצאה',
+      });
+    }
+
     const { phone } = req.params;
-    const guestSheetId = envGuestSheetId();
+    const guestSheetId = String(currentAccount().guestSheetId || '').trim();
 
     if (!guestSheetId) {
       return res.status(500).json({
@@ -174,7 +181,6 @@ router.get('/guest/:phone', async (req, res) => {
       });
     }
 
-    const { getGuestByPhone, parseStoredRsvp } = await import('../services/googleSheets.js');
     const guest = await getGuestByPhone(guestSheetId, phone);
 
     if (!guest) {

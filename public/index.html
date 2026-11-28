@@ -1830,6 +1830,11 @@
       }
     }
 
+    function safeHttpsUrl(raw) {
+      const value = String(raw || '').trim();
+      return /^https:\/\//i.test(value) ? value : '';
+    }
+
     function applyWeddingDraft(wedding) {
       if (!wedding || typeof wedding !== 'object') return;
       setWeddingHeaderFields({
@@ -1840,8 +1845,8 @@
       });
       const waze = document.querySelector('a[aria-label="ניווט ב-Waze"]');
       const maps = document.querySelector('a[aria-label="מיקום ב-Google Maps"]');
-      if (waze && wedding.wazeUrl != null) waze.href = wedding.wazeUrl || '#';
-      if (maps && wedding.mapsUrl != null) maps.href = wedding.mapsUrl || '#';
+      if (waze && wedding.wazeUrl != null) waze.href = safeHttpsUrl(wedding.wazeUrl) || '#';
+      if (maps && wedding.mapsUrl != null) maps.href = safeHttpsUrl(wedding.mapsUrl) || '#';
     }
 
     async function applyWeddingProfile() {
@@ -1865,8 +1870,10 @@
         if (image && data.imageUrl) image.src = data.imageUrl;
         const waze = document.querySelector('a[aria-label="ניווט ב-Waze"]');
         const maps = document.querySelector('a[aria-label="מיקום ב-Google Maps"]');
-        if (waze && data.wazeUrl) waze.href = data.wazeUrl;
-        if (maps && data.mapsUrl) maps.href = data.mapsUrl;
+        const safeWaze = safeHttpsUrl(data.wazeUrl);
+        const safeMaps = safeHttpsUrl(data.mapsUrl);
+        if (waze && safeWaze) waze.href = safeWaze;
+        if (maps && safeMaps) maps.href = safeMaps;
         if (data.landingPrefs) applyLandingPrefs(data.landingPrefs);
       } catch (error) {
         console.error('wedding profile', error);
@@ -2538,12 +2545,13 @@
           }),
         });
         const result = await response.json();
-        if (!result.success || !result.url) {
+        const checkoutUrl = safeHttpsUrl(result.url);
+        if (!result.success || !checkoutUrl) {
           throw new Error(result.error || 'לא הצלחנו לפתוח את אפליקציית התשלום');
         }
         if (pendingGiftMode === 'replace') priorGiftAmount = pendingGiftAmount;
         else priorGiftAmount += pendingGiftAmount;
-        window.location.href = result.url;
+        window.location.href = checkoutUrl;
       } catch (error) {
         closeGiftModal(giftConfirmModal);
         showGiftError(mapGiftError(error.message));

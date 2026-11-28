@@ -7,8 +7,9 @@
  */
 
 import { randomBytes } from 'crypto';
-import { query } from '../db/pool.js';
+import { query, withTransaction } from '../db/pool.js';
 import { currentAccount } from './accountContext.js';
+import { isValidPaymentUrl, validatePaymentUrl } from '../middleware/security.js';
 
 function requireAccountId() {
   const account = currentAccount();
@@ -29,37 +30,37 @@ function defaultState() {
     links: [
       {
         id: 'danielle-paybox',
-        label: "Danielle's PayBox",
+        label: 'PayBox (כלה)',
         provider: 'paybox',
         owner: 'danielle',
-        url: 'https://links.payboxapp.com/4Yn6uDXwWUb',
+        url: '',
         threshold: 20000,
         currentSum: 0,
       },
       {
         id: 'yuval-paybox',
-        label: "Yuval's PayBox",
+        label: 'PayBox (חתן)',
         provider: 'paybox',
         owner: 'yuval',
-        url: 'https://links.payboxapp.com/AdfUleihXUb',
+        url: '',
         threshold: 20000,
         currentSum: 0,
       },
       {
         id: 'danielle-bit',
-        label: "Danielle's Bit",
+        label: 'Bit (כלה)',
         provider: 'bit',
         owner: 'danielle',
-        url: 'https://www.bitpay.co.il/app/me/8583B20C-F2B6-1E4E-0480-7EAEBE6D88D33F2A',
+        url: '',
         threshold: 10000,
         currentSum: 0,
       },
       {
         id: 'yuval-bit',
-        label: "Yuval's Bit",
+        label: 'Bit (חתן)',
         provider: 'bit',
         owner: 'yuval',
-        url: 'https://www.bitpay.co.il/app/me/B2959BBF-6DA3-CCA7-E778-A221BAE7B7D3A173',
+        url: '',
         threshold: 10000,
         currentSum: 0,
       },
@@ -181,6 +182,7 @@ function linkFitsAmount(link, amount) {
 
 /** @param {PaymentLink} link @param {number} amount */
 function linkEligibleForAmount(link, amount) {
+  if (!isValidPaymentUrl(link?.url)) return false;
   if (!linkFitsAmount(link, amount)) return false;
   if (amount >= BIT_REQUIRED_MIN_AMOUNT && link.provider !== 'bit') return false;
   return true;
@@ -210,8 +212,10 @@ export function resolveLinkForAmount(state, amount) {
   const ordered = linksInAutoOrder(state.links);
   const fitting = ordered.find((l) => linkEligibleForAmount(l, value));
   if (!fitting) {
-    const message =
-      value >= BIT_REQUIRED_MIN_AMOUNT
+    const anyConfigured = ordered.some((l) => isValidPaymentUrl(l.url));
+    const message = !anyConfigured
+      ? 'לא הוגדר קישור תשלום תקין עבור חתונה זו'
+      : value >= BIT_REQUIRED_MIN_AMOUNT
         ? 'No Bit payment link can accept this amount right now'
         : 'No payment link can accept this amount right now';
     throw Object.assign(new Error(message), { status: 503 });
@@ -221,22 +225,23 @@ export function resolveLinkForAmount(state, amount) {
 }
 
 /**
- * Auto: first PayBox (then Bit) link that still has capacity.
- * If all are full, falls back to the last link in that same order.
- * Manual: forced link id.
+ * Auto: first configured link that still has capacity.
+ * If all configured links are full, falls back to the last configured link (or null if none configured).
+ * Manual: forced link id (if configured).
  * @param {PaymentState} [state]
- * @returns {PaymentLink}
+ * @returns {PaymentLink | null}
  */
 export function resolveActiveLink(state) {
   if (!state) throw new Error('resolveActiveLink requires payment state');
   if (state.mode === 'manual' && state.manualLinkId) {
-    const forced = state.links.find((l) => l.id === state.manualLinkId);
+    const forced = state.links.find((l) => l.id === state.manualLinkId && isValidPaymentUrl(l.url));
     if (forced) return forced;
   }
 
-  const ordered = linksInAutoOrder(state.links);
-  const available = ordered.find((l) => l.currentSum < l.threshold);
-  return available || ordered[ordered.length - 1];
+  const configured = linksInAutoOrder(state.links).filter((l) => isValidPaymentUrl(l.url));
+  if (!configured.length) return null;
+  const available = configured.find((l) => l.currentSum < l.threshold);
+  return available || configured[configured.length - 1];
 }
 
 /** @param {PaymentState} [state] */
@@ -249,14 +254,14 @@ export async function getPaymentStatus(state) {
   return {
     mode: resolved.mode,
     manualLinkId: resolved.manualLinkId,
-    activeLinkId: active.id,
+    activeLinkId: active ? active.id : null,
     totalReceived,
     totalCapacity,
     links: resolved.links.map((link) => ({
       ...link,
       remaining: remaining(link),
       isFull: link.currentSum >= link.threshold,
-      isActive: link.id === active.id,
+      isActive: Boolean(active && link.id === active.id),
     })),
     recentHistory: resolved.history.slice(-30).reverse(),
   };
@@ -305,33 +310,52 @@ export async function previewGiftLink(amount) {
 
 /**
  * Record a guest gift intent and return the link they should open.
+ * Uses a Postgres transaction with SELECT ... FOR UPDATE to prevent concurrent lost updates.
  * @param {number} amount
  * @param {{ guestPhone?: string, guestName?: string }} [meta]
  */
 export async function recordGiftAndGetLink(amount, meta = {}) {
   const value = assertGiftAmount(amount);
+  const accountId = requireAccountId();
 
-  const state = await readPaymentState();
-  const active = resolveLinkForAmount(state, value);
-  const link = state.links.find((l) => l.id === active.id);
-  if (!link) {
-    throw Object.assign(new Error('No payment link available'), { status: 500 });
-  }
+  const { state, link } = await withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO payment_states (account_id, state, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (account_id) DO NOTHING`,
+      [accountId, JSON.stringify(defaultState())],
+    );
+    const rowRes = await client.query(
+      'SELECT state FROM payment_states WHERE account_id = $1 FOR UPDATE',
+      [accountId],
+    );
+    const current = normalizeState(rowRes.rows[0]?.state);
+    const active = resolveLinkForAmount(current, value);
+    const chosen = current.links.find((l) => l.id === active.id);
+    if (!chosen || !isValidPaymentUrl(chosen.url)) {
+      throw Object.assign(new Error('לא הוגדר קישור תשלום תקין'), { status: 503 });
+    }
 
-  link.currentSum += value;
-  state.history.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toISOString(),
-    linkId: link.id,
-    amount: value,
-    source: 'guest',
-    note: [meta.guestName, meta.guestPhone].filter(Boolean).join(' · ') || undefined,
+    chosen.currentSum += value;
+    current.history.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      linkId: chosen.id,
+      amount: value,
+      source: 'guest',
+      note: [meta.guestName, meta.guestPhone].filter(Boolean).join(' · ') || undefined,
+    });
+    if (current.history.length > 200) {
+      current.history = current.history.slice(-200);
+    }
+
+    await client.query(
+      `UPDATE payment_states SET state = $2::jsonb, updated_at = NOW() WHERE account_id = $1`,
+      [accountId, JSON.stringify(current)],
+    );
+    return { state: current, link: chosen };
   });
-  if (state.history.length > 200) {
-    state.history = state.history.slice(-200);
-  }
 
-  await writePaymentState(state);
   const status = await getPaymentStatus(state);
 
   return {
@@ -393,8 +417,8 @@ export async function updateLink(linkId, updates = {}) {
     link.currentSum = currentSum;
   }
 
-  if (typeof updates.url === 'string' && updates.url.trim()) {
-    link.url = updates.url.trim();
+  if (updates.url !== undefined) {
+    link.url = validatePaymentUrl(updates.url, { allowEmpty: true });
   }
 
   if (typeof updates.label === 'string' && updates.label.trim()) {
@@ -428,7 +452,7 @@ export async function updateLink(linkId, updates = {}) {
 export async function addLink(payload = {}) {
   const state = await readPaymentState();
   const label = String(payload.label || '').trim();
-  const url = String(payload.url || '').trim();
+  const url = validatePaymentUrl(payload.url, { allowEmpty: false });
   if (!label || !url) {
     throw Object.assign(new Error('label and url are required'), { status: 400 });
   }
@@ -584,7 +608,7 @@ export async function seedPaymentFile(accountId, urls = {}) {
     'yuval-bit': urls.yuvalBit,
   };
   for (const link of state.links) {
-    if (byId[link.id]) link.url = String(byId[link.id]).trim();
+    link.url = validatePaymentUrl(byId[link.id], { allowEmpty: true });
   }
   await query(
     `INSERT INTO payment_states (account_id, state, updated_at)
@@ -616,7 +640,7 @@ export async function updatePaymentSeedUrls(urls = {}) {
   };
   for (const link of state.links) {
     if (Object.prototype.hasOwnProperty.call(byId, link.id) && byId[link.id] !== undefined) {
-      link.url = String(byId[link.id] || '').trim();
+      link.url = validatePaymentUrl(byId[link.id], { allowEmpty: true });
     }
   }
   await writePaymentState(state);

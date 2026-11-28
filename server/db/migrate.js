@@ -70,6 +70,7 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS baby_max_age INTEGER NOT NULL DEFA
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_bytes BYTEA;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS invite_image_mime TEXT NOT NULL DEFAULT '';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS landing_prefs JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sheet_verify_code TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS wa_auth_files (
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -84,10 +85,27 @@ CREATE INDEX IF NOT EXISTS wa_auth_files_account_sender_idx
   ON wa_auth_files (account_id, sender_key);
 `;
 
+const UNIQUE_SHEET_INDEX_SQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_guest_sheet_id_unique_idx
+  ON accounts (guest_sheet_id)
+  WHERE guest_sheet_id <> '';
+`;
+
 export async function migrate() {
   // Neon skill: schema migrations should use the direct (unpooled) connection.
   await withMigrationClient(async (client) => {
     await client.query(SCHEMA_SQL);
+    try {
+      await client.query(UNIQUE_SHEET_INDEX_SQL);
+    } catch (error) {
+      if (error?.code === '23505') {
+        console.warn(
+          '[db] WARNING: could not create unique index on accounts(guest_sheet_id) because duplicate guest_sheet_id rows exist. Deduplicate existing accounts and re-run db:migrate.',
+        );
+      } else {
+        throw error;
+      }
+    }
   });
   console.log('[db] schema ready');
 }

@@ -45,6 +45,22 @@ export async function query(text, params = []) {
   return getPool().query(text, params);
 }
 
+/** Run `fn(client)` inside a Postgres transaction (BEGIN / COMMIT / ROLLBACK). */
+export async function withTransaction(fn) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** One-off client on the direct (unpooled) URL — use for schema migrations. */
 export async function withMigrationClient(fn) {
   const client = new pg.Client({

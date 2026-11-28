@@ -1,9 +1,8 @@
 import express from 'express';
-import { envGuestSheetId } from '../config/loadEnv.js';
-import { addGuestGiftAmount, setGuestGiftAmount } from '../services/googleSheets.js';
+import { addGuestGiftAmount, getGuestByPhone, setGuestGiftAmount } from '../services/googleSheets.js';
 import { getPaymentStatus, previewGiftLink, recordGiftAndGetLink } from '../services/paymentRouting.js';
 import { findByPublicToken } from '../services/accounts.js';
-import { runAsAccount } from '../services/accountContext.js';
+import { currentAccount, runAsAccount } from '../services/accountContext.js';
 import { rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
@@ -76,23 +75,41 @@ router.post('/checkout', checkoutLimit, async (req, res) => {
     const mode = String(req.body?.mode || 'add').trim().toLowerCase() === 'replace'
       ? 'replace'
       : 'add';
-    const result = await recordGiftAndGetLink(amount, { guestPhone, guestName });
     const phone = String(guestPhone || '').trim();
-    const spreadsheetId = envGuestSheetId();
+    const spreadsheetId = String(currentAccount()?.guestSheetId || '').trim();
     if (!phone) {
-      console.warn('[pay/checkout] no guest phone; skipped gift sheet update');
-    } else if (!spreadsheetId) {
-      console.warn('[pay/checkout] guest sheet not configured; skipped gift sheet update');
-    } else {
-      try {
-        if (mode === 'replace') {
-          await setGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
-        } else {
-          await addGuestGiftAmount(spreadsheetId, phone, result.amount, result.label);
-        }
-      } catch (sheetError) {
-        console.error('[pay/checkout] gift sheet update failed:', sheetError.message || sheetError);
+      return res.status(400).json({
+        success: false,
+        error: 'נדרש מספר טלפון תקין של אורח לביצוע תשלום',
+      });
+    }
+    if (!spreadsheetId) {
+      return res.status(500).json({
+        success: false,
+        error: 'Guest sheet not configured',
+      });
+    }
+    const guest = await getGuestByPhone(spreadsheetId, phone);
+    if (!guest) {
+      return res.status(404).json({
+        success: false,
+        error: 'האורח לא נמצא ברשימת המוזמנים',
+      });
+    }
+
+    const canonicalName = guest.fullName || guest.name || guestName || '';
+    const result = await recordGiftAndGetLink(amount, {
+      guestPhone: guest.phoneTo || phone,
+      guestName: canonicalName,
+    });
+    try {
+      if (mode === 'replace') {
+        await setGuestGiftAmount(spreadsheetId, guest.phoneTo || phone, result.amount, result.label);
+      } else {
+        await addGuestGiftAmount(spreadsheetId, guest.phoneTo || phone, result.amount, result.label);
       }
+    } catch (sheetError) {
+      console.error('[pay/checkout] gift sheet update failed:', sheetError.message || sheetError);
     }
     res.json({
       success: true,

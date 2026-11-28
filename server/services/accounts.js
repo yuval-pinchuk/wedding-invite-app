@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual, createHas
 import { promisify } from 'util';
 import { getDataDir } from '../config/dataDir.js';
 import { query } from '../db/pool.js';
+import { generateSheetVerifyCode, validateMapsUrl, validateWazeUrl } from '../middleware/security.js';
 
 const scrypt = promisify(scryptCb);
 const MAX_FAILURES = 5;
@@ -23,7 +24,7 @@ const ACCOUNT_COLUMNS = `
   legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
   guest_sheet_id, response_sheet_id, sheet_tab, column_map,
   invitation_message, reminder_template, invite_image_file, invite_image_mime,
-  baby_max_age, landing_prefs, created_at
+  baby_max_age, landing_prefs, sheet_verify_code, created_at
 `;
 
 export const DEFAULT_LANDING_PREFS = {
@@ -117,6 +118,7 @@ function rowToAccount(row) {
     inviteImageMime: row.invite_image_mime || '',
     babyMaxAge: Number.isFinite(Number(row.baby_max_age)) ? Number(row.baby_max_age) : 6,
     landingPrefs: normalizeLandingPrefs(row.landing_prefs),
+    sheetVerifyCode: row.sheet_verify_code || '',
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || ''),
   };
 }
@@ -151,9 +153,36 @@ export function publicAccount(account) {
     reminderTemplate: account.reminderTemplate || '',
     babyMaxAge: normalizeBabyMaxAge(account.babyMaxAge),
     landingPrefs: normalizeLandingPrefs(account.landingPrefs),
+    sheetVerifyCode: account.sheetVerifyCode || '',
     locked: Boolean(account.locked),
     hasInviteImage: accountHasInviteImage(account),
   };
+}
+
+export async function findAccountByGuestSheetId(guestSheetId, excludeAccountId = '') {
+  const key = String(guestSheetId || '').trim();
+  if (!key) return null;
+  if (excludeAccountId) {
+    const result = await query(
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE guest_sheet_id = $1 AND id <> $2 LIMIT 1`,
+      [key, excludeAccountId],
+    );
+    return rowToAccount(result.rows[0]);
+  }
+  const result = await query(
+    `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE guest_sheet_id = $1 LIMIT 1`,
+    [key],
+  );
+  return rowToAccount(result.rows[0]);
+}
+
+export async function ensureSheetVerifyCode(account) {
+  if (!account?.id) return '';
+  if (account.sheetVerifyCode) return account.sheetVerifyCode;
+  const code = generateSheetVerifyCode();
+  await query('UPDATE accounts SET sheet_verify_code = $2 WHERE id = $1', [account.id, code]);
+  account.sheetVerifyCode = code;
+  return code;
 }
 
 export async function listAccounts() {
@@ -222,6 +251,7 @@ function hashToken(value) {
 
 export async function saveAccount(next) {
   const landingPrefs = normalizeLandingPrefs(next.landingPrefs);
+  const sheetVerifyCode = String(next.sheetVerifyCode || '').trim() || generateSheetVerifyCode();
   await query(
     `INSERT INTO accounts (
       id, email, public_token, password_hash, failed_logins, locked,
@@ -229,9 +259,9 @@ export async function saveAccount(next) {
       legacy, bride_name, groom_name, wedding_date, waze_url, maps_url,
       guest_sheet_id, response_sheet_id, sheet_tab, column_map,
       invitation_message, reminder_template, invite_image_file, baby_max_age,
-      landing_prefs, created_at
+      landing_prefs, sheet_verify_code, created_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25::jsonb,$26
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25::jsonb,$26,$27
     )
     ON CONFLICT (id) DO UPDATE SET
       email = EXCLUDED.email,
@@ -257,7 +287,8 @@ export async function saveAccount(next) {
       reminder_template = EXCLUDED.reminder_template,
       invite_image_file = EXCLUDED.invite_image_file,
       baby_max_age = EXCLUDED.baby_max_age,
-      landing_prefs = EXCLUDED.landing_prefs`,
+      landing_prefs = EXCLUDED.landing_prefs,
+      sheet_verify_code = EXCLUDED.sheet_verify_code`,
     [
       next.id,
       next.email,
@@ -284,10 +315,11 @@ export async function saveAccount(next) {
       next.inviteImageFile || '',
       normalizeBabyMaxAge(next.babyMaxAge),
       JSON.stringify(landingPrefs),
+      sheetVerifyCode,
       next.createdAt || new Date().toISOString(),
     ],
   );
-  return { ...next, landingPrefs };
+  return { ...next, landingPrefs, sheetVerifyCode };
 }
 
 export function inviteImagePath(account) {
@@ -437,8 +469,8 @@ export async function createAccount(input) {
     brideName,
     groomName,
     weddingDate,
-    wazeUrl: String(input.wazeUrl || '').trim(),
-    mapsUrl: String(input.mapsUrl || '').trim(),
+    wazeUrl: validateWazeUrl(input.wazeUrl),
+    mapsUrl: validateMapsUrl(input.mapsUrl),
     guestSheetId,
     responseSheetId,
     sheetTab,
@@ -449,6 +481,7 @@ export async function createAccount(input) {
     inviteImageMime: '',
     babyMaxAge: normalizeBabyMaxAge(input.babyMaxAge),
     landingPrefs: normalizeLandingPrefs({}),
+    sheetVerifyCode: generateSheetVerifyCode(),
     paymentSeed: {
       daniellePaybox: String(input.daniellePaybox || '').trim(),
       yuvalPaybox: String(input.yuvalPaybox || '').trim(),

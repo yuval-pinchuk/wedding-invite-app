@@ -590,6 +590,7 @@
             <input id="babyMaxAge" type="number" min="0" max="18" value="6" required>
             <label for="guestSheet">קישור ל- Google Sheets של האורחים</label>
             <p class="hint">פתחו את הגיליון בדפדפן, העתיקו את הכתובת המלאה משורת הכתובת (היא נראית כמו https://docs.google.com/spreadsheets/d/...) והדביקו אותה כאן. אישורי הגעה ומתנות יופיעו בלוח הבקרה.</p>
+            <p class="hint">לאימות בעלות על הגיליון, הוסיפו את הקוד <strong id="sheetVerifyCode">טוען…</strong> לכותרת הגיליון או לתא בשורה 1 (אפשר להסיר לאחר ההרשמה).</p>
             <input id="guestSheet" required>
             <label for="tab">שם הלשונית</label>
             <input id="tab" required placeholder="חתונה">
@@ -856,8 +857,11 @@
     document.getElementById('resetPassword').addEventListener('input', updateResetConfirmMatch);
     document.getElementById('resetPasswordConfirm').addEventListener('input', updateResetConfirmMatch);
 
+    let sheetVerifyToken = '';
     fetch('/api/auth/setup').then((r) => r.json()).then((data) => {
       document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || 'האימייל של חשבון השירות';
+      document.getElementById('sheetVerifyCode').textContent = data.sheetVerifyCode || '';
+      sheetVerifyToken = data.sheetVerifyToken || '';
     }).catch(() => {});
 
     async function send(url, method, body) {
@@ -1118,6 +1122,7 @@
           babyMaxAge: Number(document.getElementById('babyMaxAge').value),
           guestSheetId: fieldValue('guestSheet'),
           sheetTab: fieldValue('tab'),
+          sheetVerifyToken,
         });
         show(signupImageForm);
       } catch (error) {

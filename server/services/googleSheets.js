@@ -183,6 +183,29 @@ export async function readHeaderRow(spreadsheetId, tab) {
 }
 
 /**
+ * Lightweight ownership verification: confirms `expectedCode` appears either in the
+ * Google Spreadsheet title or in row 1 of the target sheet tab.
+ */
+export async function verifySheetOwnership(spreadsheetId, tab, expectedCode) {
+  const needle = String(expectedCode || '').trim().toUpperCase();
+  if (!spreadsheetId || !needle) return false;
+  if (!sheets) {
+    await configureSheets();
+  }
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'properties.title',
+  });
+  const title = String(meta.data?.properties?.title || '').toUpperCase();
+  if (title.includes(needle)) return true;
+
+  const name = String(tab || guestTab()).trim();
+  const rows = await fetchSheetRows(spreadsheetId, `${name}!1:1`);
+  const header = rows[0] || [];
+  return header.some((cell) => String(cell || '').toUpperCase().includes(needle));
+}
+
+/**
  * Map data rows (excluding header) to guest objects; does not filter by name/phone.
  * @param {string[][]} rows full sheet including row 0 = header
  */
@@ -417,16 +440,37 @@ export async function getGuestByPhone(spreadsheetId, phone, range = guestReadRan
   }
 }
 
+/**
+ * Normalize a phone number to canonical digits (e.g., Israeli 05X... -> 9725X...).
+ * Returns '' if fewer than 9 digits remain.
+ */
+export function canonicalPhoneDigits(raw) {
+  let digits = normalizePhoneCell(raw).replace(/\D/g, '');
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+  if (digits.startsWith('0') && (digits.length === 9 || digits.length === 10)) {
+    digits = `972${digits.slice(1)}`;
+  } else if (digits.length === 9 && digits.startsWith('5')) {
+    digits = `972${digits}`;
+  }
+  return digits.length >= 9 ? digits : '';
+}
+
 function phonesMatch(phoneA, phoneB) {
-  const a = normalizePhoneCell(phoneA).replace(/\D/g, '');
-  const b = normalizePhoneCell(phoneB).replace(/\D/g, '');
+  const a = canonicalPhoneDigits(phoneA);
+  const b = canonicalPhoneDigits(phoneB);
   if (!a || !b) {
     return false;
   }
-  return a === b || a.endsWith(b) || b.endsWith(a);
+  return a === b;
 }
 
 function rowContainsPhone(row, phone) {
+  const mappedPhone = String(cellAt(row, 'phone') || '').trim();
+  if (mappedPhone && phonesMatch(mappedPhone, phone)) {
+    return true;
+  }
   const rowPhone = findPhoneNumber(row);
   return rowPhone ? phonesMatch(rowPhone, phone) : false;
 }

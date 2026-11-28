@@ -300,6 +300,7 @@
       <div class="card">
         <h2>גיליון אורחים</h2>
         <p class="hint">שתפו את הגיליון עם: <strong id="serviceEmail">טוען…</strong></p>
+        <p class="hint">להחלפה לגיליון חדש, הוסיפו את קוד האימות <strong id="sheetVerifyCode">טוען…</strong> לכותרת הגיליון או לתא בשורה 1.</p>
         <label for="guestSheet">קישור / מזהה Google Sheets</label>
         <input id="guestSheet" required>
         <label for="tab">שם הלשונית</label>
@@ -401,6 +402,7 @@
       const account = data.account || {};
       const pay = data.paymentUrls || {};
       document.getElementById('serviceEmail').textContent = data.serviceAccountEmail || '—';
+      document.getElementById('sheetVerifyCode').textContent = account.sheetVerifyCode || '—';
       document.getElementById('bride').value = account.brideName || '';
       document.getElementById('groom').value = account.groomName || '';
       document.getElementById('date').value = account.weddingDate || '';

@@ -425,7 +425,7 @@ router.post('/init-whatsapp', async (req, res) => {
     });
   } catch (error) {
     console.error('[init-whatsapp]', error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       success: false,
       error: error.message || 'Failed to initialize WhatsApp',
     });
@@ -450,6 +450,12 @@ router.get('/whatsapp-status/:sender', async (req, res) => {
     });
   } catch (error) {
     console.error('[whatsapp-status]', error);
+    if (error.status === 400) {
+      return res.status(400).json({
+        success: false,
+        error: error.message || 'Invalid sender',
+      });
+    }
     res.json({
       success: true,
       ready: false,
@@ -474,7 +480,7 @@ router.delete('/clear-session/:sender', async (req, res) => {
     });
   } catch (error) {
     console.error('Error clearing session:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message || 'Failed to clear session',
     });
